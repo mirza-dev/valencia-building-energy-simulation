@@ -1,0 +1,68 @@
+{
+  "schema_version": 4,
+  "adapter_sha256": "e87285943d4c997f5fa36f90fdc23b770688639a170a21b4f8b7422e26f2c63e",
+  "graph_adapter": "src/workbench/model_graph.py",
+  "graph_adapter_sha256": "775f4ef53469532b49e1915a3801baace56a774d0a0e2318c7b7b3ab2ba19d9a",
+  "measure_runner": "src/workbench/measure_runner.py",
+  "measure_runner_sha256": "57d7ed55104c9693fb8ea9d4fea4fafe5fcd59d1d14ffbe74c0fbb7c9dba8ba5",
+  "measure_worker": "src/workbench/measure_worker.py",
+  "measure_worker_sha256": "b5603112ebcdfe33a710e2821b7bf9dc86fe471726afa11d2a38f79f8191e4af",
+  "artifact": "out/ui_runs/dbee15e90fb1466099197d18d5aebd32/model_python.osm",
+  "artifact_sha256": "9b7a69307460b17511cf00f9fe9264c5146aca16c9513a43f6990c94ed9b417d",
+  "before_graph_sha256": "697bf67a5a888e992ac7f79f2c9f2ffa84bdadd84577f1483537adfd99e6dd12",
+  "after_graph_changed": true,
+  "runtime": { "openstudio": "3.11.0" },
+  "expected_counts": {
+    "constructions": 107,
+    "materials": 195,
+    "schedules": 72,
+    "space_types": 13,
+    "spaces": 6,
+    "zones": 6,
+    "hvac_equipment": 5,
+    "air_loops": 0,
+    "plant_loops": 0,
+    "output_variables": 2,
+    "project_parameters": 13
+  },
+  "smoke": {
+    "patches": [
+      {"op": "project_parameter.update", "payload": {"key": "wall_u", "value": 1.5}},
+      {"op": "thermostat.set_setpoints", "target_id": "first_conditioned_zone", "payload": {"heating_delta_c": 1.0, "cooling_delta_c": -1.0}},
+      {"op": "subsurface.create", "target_id": "{495cf7d3-00fe-4513-8b0a-c83339c8c790}", "payload": {"name": "Faz 2 golden window", "subsurface_type": "FixedWindow", "normalized_rect": {"u_min": 0.105, "u_max": 0.145, "v_min": 0.75, "v_max": 0.95}}}
+    ],
+    "applied": 3,
+    "rejected": 0,
+    "preflight_ready": true,
+    "geometry_preflight_ready": true,
+    "opening_count_delta": 1,
+    "after_wall_u": 1.5,
+    "sentinel_values_unchanged": true,
+    "default_day_unchanged": true
+  },
+  "phase3": {
+    "air_loop_template": "vav_reheat_dx",
+    "air_loops": 1,
+    "plant_loops": 1,
+    "connected_conditioned_zones": 5,
+    "design_days": 2,
+    "preflight_ready": true,
+    "energy_basis": "detailed_hvac_consumption",
+    "measure_id": "builtin:set_building_north_axis",
+    "measure_step_result": "Success",
+    "measure_north_axis_deg": 17.5,
+    "annual_energyplus": {
+      "status": "passed",
+      "energyplus_version": "25.2.0",
+      "warning_count": 26,
+      "severe_count": 0,
+      "heating_kwh_m2": 21.30,
+      "cooling_kwh_m2": 22.91,
+      "hvac_consumption_kwh_m2": 45.55,
+      "total_site_kwh_m2": 75.75,
+      "hvac_co2_kg_m2": 13.39,
+      "validated_at": "2026-07-20T07:50:32Z"
+    }
+  },
+  "smoke_status": "passed"
+}

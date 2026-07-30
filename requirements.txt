@@ -1,0 +1,16 @@
+# Valencia Energy Sim - Python bağımlılıkları (Python 3.13)
+# OpenStudio SDK 3.11.0 (yerel: /Applications/OpenStudio-3.11.0, gömülü EnergyPlus 25.2.0)
+openstudio==3.11.0
+pandas==3.0.3
+numpy==2.5.0
+scipy==1.18.0
+matplotlib==3.11.0
+geopandas==1.1.4
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+pydantic==2.11.7
+python-multipart==0.0.20
+httpx==0.28.1
+pytest==8.4.1
+cryptography>=43.0
+mapbox-vector-tile>=2.0

@@ -1,0 +1,19 @@
+{
+  "name": "valencia_iwec",
+  "description": "The climate every verified number in this project was produced with. Design days are the official ASHRAE 2009 pair that ships with the EPW; Rai's Coil Sizing Summary names these two outright.",
+
+  "epw": "data/weather/ESP_Valencia.082840_IWEC.epw",
+  "ddy": "data/weather/ESP_Valencia.082840_IWEC.ddy",
+
+  "heating_design_day": "VALENCIA Ann Htg 99.6% Condns DB",
+  "cooling_design_day": "VALENCIA Ann Clg .4% Condns DB=>MWB",
+
+  "ground_temperature_c": 18.0,
+  "water_mains_temperature_c": 10.0,
+
+  "_notes": {
+    "ground_temperature_c": "Rai: Site:GroundTemperature:BuildingSurface, flat all year. Stated rather than derived - it cannot be read from an EPW, and deriving it from the annual mean would move the verified pilot baseline.",
+    "water_mains_temperature_c": "Rai: FixedDefault.",
+    "design_days": "Read from the .ddy at load time, never transcribed. Both are cross-checked against the EPW's own DESIGN CONDITIONS header line before a run starts."
+  }
+}

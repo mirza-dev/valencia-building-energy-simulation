@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "adapter_sha256": "549ab7179f147978e4cd6d656e807d0015bcc81a20855a15287926bb9746ae68",
+  "builder": "src/model_builder.py",
+  "builder_sha256": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
+  "required_functions": [
+    "apply_comfort_offsets",
+    "set_weather_file"
+  ],
+  "expected": {
+    "heat_delta_c": 1.0,
+    "cool_delta_c": -1.0,
+    "heating_kwh_m2": 12.38,
+    "cooling_kwh_m2": 17.22,
+    "qa_all_pass": true,
+    "default_day_unchanged": true,
+    "sentinel_values_unchanged": true
+  },
+  "acceptance": {
+    "validated_at": "2026-07-16T08:31:23.179788+00:00",
+    "scenario_id": "55d2d7a019c6460cbd176fddbc1a0e6c",
+    "model_run_id": "4d49241ce39a4fb4a563ff715f30a64f",
+    "simulation_run_id": "93769d4a225f46a283db8314a46d70f1",
+    "model_manifest_sha256": "b9bbc63d087338d76fbc24ee13ca531cae22456cb8afe50e21ff2456be6778e8",
+    "simulation_manifest_sha256": "6abab0dfa80e2f534c5724b562a6fa7c5065655b84aa101a97a04b1a34929ca0",
+    "warning_count": 11,
+    "severe_count": 0,
+    "fatal_count": 0
+  },
+  "smoke_status": "passed"
+}

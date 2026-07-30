@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# Third-party data - NOT ours to redistribute
+# ---------------------------------------------------------------------------
+# The cadastre shapefile and the Tipo15 dwelling register were provided by the
+# UPV supervisors for this internship and are unpublished research data; the
+# OpenStudio template is their own model; the IWEC weather file is ASHRAE
+# licensed. README.md documents what each input is and where it comes from.
+data/
+
+# ---------------------------------------------------------------------------
+# Run outputs and mutable state
+# ---------------------------------------------------------------------------
+out/
+var/
+tmp/
+*.sql
+*.eso
+*.mtr
+*.err
+eplusout.*
+eplustbl.htm
+
+# ---------------------------------------------------------------------------
+# Environments and build artefacts
+# ---------------------------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.vite/
+
+# ---------------------------------------------------------------------------
+# Secrets - never
+# ---------------------------------------------------------------------------
+*.key
+*.pem
+.env
+.env.*
+
+# ---------------------------------------------------------------------------
+# OS noise
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# Local working notes (machine paths, Turkish) - kept on disk, not published
+README.local.md
+docs_local_*.md
+
+# Abandoned scaffold (886 bytes, referenced by nothing) and test-runner leftovers
+model_pipeline.py_project/
+test-results/

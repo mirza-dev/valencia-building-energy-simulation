@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+
+  "gis_dataset_id": "valencia-city",
+  "reference_field": "refparcela",
+  "district_field": "nombre",
+  "cluster_field": "cluster",
+  "cluster_mapping": {},
+
+  "footprint_area_mode": "field",
+  "footprint_area_field": "Shape_Area",
+
+  "floors_field": "altura_max",
+  "floor_invalid_policy": "cluster_family_one",
+  "floor_fixed_fallback": null,
+
+  "ground_floor_mode": "tipo15_family_fallback",
+
+  "residential_area_mode": "tipo15_proxy",
+  "residential_area_field": null,
+
+  "_notes": {
+    "purpose": "The policy every stock result so far was produced with. It is written out here so that a different GIS dataset - different column names, different rules - can be bound without touching any code.",
+    "identity": "Loading this file reproduces the runner's built-in default exactly. The applied fingerprint is 6b730d4946e772c1..., which is the fingerprint of the RESOLVED policy: resolve_policy() first expands the recognised cluster codes into an explicit map, so the stamp describes what was actually applied rather than what was asked for.",
+    "floor_invalid_policy": "cluster_family_one = a floor count of 0 or missing falls back to the cluster median, then the family median, then 1. On the Valencia cadastre this imputes 1.648 buildings city-wide.",
+    "residential_area_mode": "tipo15_proxy = residential area comes from the Tipo15 dwelling register; where a building is absent, a ratio proxy is used and flagged (192 buildings city-wide).",
+    "ground_floor_mode": "tipo15_family_fallback = whether the ground storey is residential is read per building from Tipo15, falling back to the typology family."
+  }
+}

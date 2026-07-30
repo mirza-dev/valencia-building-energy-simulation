@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "capabilities": {
+    "model_builder": {
+      "part": "A",
+      "ready": true,
+      "module": "src/model_builder.py",
+      "entrypoint": "build_model_with_config",
+      "version": "1"
+    },
+    "simulation": {
+      "part": "B",
+      "ready": true,
+      "module": "src/workbench/simulation_adapter.py",
+      "entrypoint": "run_simulation",
+      "version": "1",
+      "fixture": "tests/fixtures/simulation_smoke.json"
+    },
+    "scenario": {
+      "part": "G",
+      "ready": true,
+      "module": "src/workbench/scenario_adapter.py",
+      "entrypoint": "create_model_variant",
+      "version": "1",
+      "fixture": "tests/fixtures/scenario_smoke.json"
+    },
+    "neighborhood": {
+      "part": "C",
+      "ready": true,
+      "module": "src/workbench/neighborhood_adapter.py",
+      "entrypoint": "run_neighborhood",
+      "version": "1",
+      "fixture": "tests/fixtures/neighborhood_smoke.json"
+    },
+    "city": {
+      "part": "D",
+      "ready": true,
+      "module": "src/workbench/city_adapter.py",
+      "entrypoint": "run_city",
+      "version": "1",
+      "fixture": "tests/fixtures/city_smoke.json"
+    },
+    "lhs": {
+      "part": "LHS",
+      "ready": true,
+      "module": "src/workbench/lhs_adapter.py",
+      "entrypoint": "run_lhs",
+      "version": "1",
+      "fixture": "tests/fixtures/lhs_smoke.json"
+    },
+    "model_editor": {
+      "part": "E3",
+      "ready": true,
+      "module": "src/workbench/model_editor.py",
+      "entrypoint": "apply_typed_patches",
+      "version": "3",
+      "fixture": "tests/fixtures/model_editor_smoke.json"
+    }
+  }
+}

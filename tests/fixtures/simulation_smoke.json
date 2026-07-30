@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "smoke_status": "passed",
+  "adapter_sha256": "c14bb64f6ff7aceb95854d16ce3d83514c18ce3843766efc50ded87b0fbbcc76",
+  "runner": "src/run_simulation.py",
+  "runner_sha256": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
+  "weather_path": "data/weather/ESP_Valencia.082840_IWEC.epw",
+  "weather_snapshot_hash": "b52a8a7e4b08f167f473e69af907d759d0608e15f6f132019a0034d09d559bea",
+  "energyplus": {
+    "executable": "/Applications/OpenStudio-3.11.0/EnergyPlus/energyplus",
+    "sha256": "8be88023706a88f6079fcab389661d3135691c6051cf19bbe8ce0d70c75d7677",
+    "version": "25.2.0"
+  },
+  "runtime": {
+    "openstudio": "3.11.0",
+    "energyplus": "25.2.0"
+  },
+  "expected": {
+    "heating_kwh_m2": 11.21,
+    "cooling_kwh_m2": 16.6,
+    "absolute_tolerance_kwh_m2": 0.02,
+    "qa_all_pass": true,
+    "warning_count": 11,
+    "severe_count": 0,
+    "s1_co2_kg_m2": 6.46,
+    "s2_co2_kg_m2": 3.68
+  },
+  "acceptance": {
+    "validated_at": "2026-07-22T14:44:41+03:00",
+    "run_id": "phase2-demanda-semantics-regression",
+    "manifest_sha256": "8aa1262b4d03f70017818bc876f4260eef4e3b839572c2a8be96f08cc8f50d57",
+    "results_sha256": "da30066452a08cf8ddbc7c09a4019533efc135fb7177c5ec06a72c8d9aef1f88",
+    "qa_report_sha256": "518f0d5bccacde3cdbdb843e91f9dfdec2f0adfbb4d22dd153af3d3f5855ffc7",
+    "source_rehash": {
+      "reason": "run_energyplus gained an optional epw_path argument so a scenario weather file reaches EnergyPlus itself",
+      "why_it_was_needed": "EnergyPlus's --weather overrides the model, so mb.set_weather_file() alone changed nothing: measured 2026-07-30, an EPW with every hour +5 K and the city renamed gave a byte-identical result while eplusout.eio named VALENCIA and the OSM named TESTCITY",
+      "physics_unchanged": "epw_path defaults to None -> mb.EPW_FILE, i.e. the previous behaviour; pilot regression 11.21 / 16.60 kWh/m2 QA ALL PASSED, verified_model --verify 13/13 with every gate bit-identical to the previous golden",
+      "workbench_unaffected": "simulation_adapter.py sets runner.mb.EPW_FILE around the call; with epw_path unset the fallback is still mb.EPW_FILE, so Part B/G behave exactly as before",
+      "no_result_invalidated": "the project has only ever held one EPW (ESP_Valencia.082840_IWEC.epw), so no recorded run was ever produced through the broken --epw path",
+      "previous_runner_sha256": "2ffd20ccfd3961ed0962bc3c08914abb3b71b79460f2460ad30e63866732ef8e",
+      "rehashed_at": "2026-07-30T10:53:27+03:00"
+    }
+  }
+}

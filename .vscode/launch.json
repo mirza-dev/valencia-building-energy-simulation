@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: verify_toolchain",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/verify_toolchain.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python Package: model_pipeline.py",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "model_pipeline.py"
+        }
+    ]
+}

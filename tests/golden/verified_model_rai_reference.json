@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "status": "LOCKED_VERIFIED_MODEL",
+  "profile_id": "valencia-deep-v1",
+  "profile_fingerprint": "796183a04c68a6450fcdd759b3f1857476bfe4d8ca45d6648fb009985a308ccd",
+  "locked_source_hashes": {
+    "model_builder.py": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
+    "run_simulation.py": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
+    "model_config.py": "b2edcb2b7407ebcf21de12679a00d27c1723dc1bea549f710bedb54ee9efdba2",
+    "deep_building.py": "dbbfbbd9fc56d87d161c24bd25e0a9ceb208de53bf119183f08dd5db0d424987"
+  },
+  "verified_on": "2026-07-27",
+  "verified_against": "Rai EdiPluriP04 (informe_openstudio + eplustbl)",
+  "runtime": {
+    "openstudio": "3.11.0",
+    "energyplus": "25.2.0"
+  },
+  "replica": {
+    "geometry": {
+      "facade_length_m": 15.5,
+      "party_length_m": 15.4,
+      "storey_height_m": 3.0,
+      "residential_storeys": 4,
+      "rotation_deg": 45
+    },
+    "envelope": {
+      "wall_u_target": 1.37,
+      "roof_u_target": 2.48,
+      "thermal_bridge_du": 0.0,
+      "window_u": 5.7,
+      "window_g": 0.85,
+      "wwr_north": 0.1342,
+      "wwr_south": 0.2614
+    },
+    "operation": {
+      "occupancy_m2_per_person": 20.0,
+      "dhw_litres_per_storey_day": 150.0,
+      "shading": false
+    }
+  },
+  "replica_vs_production_deltas": [
+    {
+      "item": "inter-storey slab",
+      "replica": "Techo/Suelo Interior Referencia (EnergyPlus 2.24, matches Rai's 2.119)",
+      "production": "template default Techo/Suelo sin aislante (EnergyPlus 1.674)",
+      "why": "Rai's 2.119 belongs to his EdiPluriP04 cluster; ours varies with the TABULA construction era and is period appropriate for the 1974 stock. User decision 2026-07-27.",
+      "applied_by": "deep_building.apply_rai_interzone_slabs",
+      "in_production": false
+    },
+    {
+      "item": "shading",
+      "replica": "none - matches Rai",
+      "production": "persiana + balcony overhangs + neighbour context shading",
+      "why": "Rai models no shading at all (Shading Summary 0/0/0, Window Control None). We model more detail, not less; persiana is the top cooling driver in the LHS study.",
+      "applied_by": "model_builder (context/balcony) + ShadingControl",
+      "in_production": true
+    },
+    {
+      "item": "occupancy",
+      "replica": "CTE norm, 20 m2/person - matches Rai",
+      "production": "real cadastre pob_total, area weighted over residential storeys",
+      "why": "The CTE norm overstates Valencia by ~2.9x at city scale (2.22 M vs 775 k residents).",
+      "applied_by": "deep_building.apply_real_occupancy",
+      "in_production": true
+    },
+    {
+      "item": "domestic hot water",
+      "replica": "Rai's fixed 150 l/day per storey",
+      "production": "CTE DB-HE4, 28 l/person/day on the real head count",
+      "why": "Documented Spanish standard, follows the real occupancy, and lands within 5 % of Rai's per-m2 intensity.",
+      "applied_by": "deep_building.add_dhw_loop",
+      "in_production": true
+    },
+    {
+      "item": "window-wall ratio",
+      "replica": "Rai's two-facade typological 13.42 / 26.14 %",
+      "production": "building specific, from the GIS footprint and IVE typology",
+      "why": "Rai simplifies to two facades; we place openings per real facade.",
+      "applied_by": "model_builder.wwr_for_azimuth",
+      "in_production": true
+    }
+  ],
+  "known_differences_from_rai": [
+    {
+      "item": "EnergyPlus version",
+      "rai": "9.5.0 (2024-05-23)",
+      "ours": "25.2.0",
+      "effect": "DX coil part-load curves and the supplemental-heater logic changed across ~16 releases. At matched zone loads our heat pump draws +22.8 % heating and -21.8 % cooling electricity; effective COP ours 3.11/4.55 against his 3.99/3.38 on a nominal 4.07/5.0. The two largely cancel in total site energy.",
+      "resolvable": false
+    },
+    {
+      "item": "roof solar absorptance",
+      "rai": "0.70 (his Opaque Exterior row reports reflectance 0.30)",
+      "ours": "0.93 (template material default, reflectance 0.07)",
+      "effect": "Wall and ground slab report 0.07 in BOTH models, so the roof is the one surface property in the whole envelope that differs. It is worth ~35 % of the top storey's cooling design load, and it is why our delivered cooling sits +5.19 % above his. Copying it alone was measured and made agreement WORSE: heating -2.83 % -> +12.93 %, cooling +5.19 % -> -6.16 %. His roof therefore also carries more thermal mass than ours at the same U (2.495), and the two effects cancel in his model. `deep_building.apply_rai_roof_absorptance` implements the reflectance half and is deliberately not called: copying one of a matched pair is less faithful than copying neither. PRODUCTION STAYS AT 0.93 -- user decision 2026-07-28, taken with the measurement above on the table.",
+      "resolvable": "Yes - Rai's pending answer on the material layer composition of his cluster constructions."
+    },
+    {
+      "item": "window distribution",
+      "rai": "91.96 m2 opening, 13.42 % north / 26.14 % south, 14.6 % on the ground storey",
+      "ours": "89.78 m2 opening, 11.58 % north / 27.03 % south, 20.0 % on the ground storey",
+      "effect": "Totals agree to -2.4 %; we spread a uniform WWR over every storey while he gives the ground storey proportionally less glass. Second order against the roof.",
+      "resolvable": false
+    }
+  ],
+  "shared_layers": [
+    "apply_real_occupancy",
+    "apply_rai_ground_regime",
+    "glaze_ground_floor",
+    "apply_window_frames",
+    "add_dhw_loop",
+    "add_pthp_hvac"
+  ],
+  "expected_metrics": {
+    "residential_area_m2": 954.8,
+    "gross_wall_area_m2": 465.0,
+    "wall_u_with_film": 1.409,
+    "ground_slab_u_with_film": 0.501,
+    "roof_u_with_film": 2.496,
+    "people_gain_gj": 73.53,
+    "hvac_sensible_heating_gj": 26.527,
+    "hvac_sensible_cooling_gj": -68.403
+  },
+  "expected_results": {
+    "space_heating_kwh": 2336.1,
+    "cooling_kwh": 4175.0,
+    "dhw_kwh": 10019.4,
+    "total_site_kwh": 51250.0,
+    "space_heating_kwh_m2": 2.45,
+    "space_heating_gas_kwh_m2": 0.0,
+    "space_heating_elec_kwh_m2": 2.45,
+    "cooling_kwh_m2": 4.37,
+    "fans_kwh_m2": 0.57,
+    "pumps_kwh_m2": 0.34,
+    "dhw_kwh_m2": 10.49,
+    "hvac_kwh_m2": 7.72,
+    "lighting_kwh_m2": 19.0,
+    "equipment_kwh_m2": 16.45,
+    "site_elec_kwh_m2": 43.18,
+    "site_gas_kwh_m2": 10.49,
+    "total_site_kwh_m2": 53.68,
+    "total_conditioned_area_m2": 1193.5,
+    "total_site_kwh_m2_conditioned": 42.94,
+    "space_heating_kwh_m2_conditioned": 1.96,
+    "cooling_kwh_m2_conditioned": 3.5,
+    "dhw_share_pct": 19.6,
+    "area_basis": "residential_only (primary) + total_conditioned (secondary)"
+  },
+  "rai_reference": {
+    "residential_area_m2": 954.8,
+    "gross_wall_area_m2": 465.0,
+    "wall_u_with_film": 1.409,
+    "roof_u_with_film": 2.495,
+    "ground_slab_u_with_film": 0.501,
+    "lighting_gj": 65.32,
+    "equipment_gj": 56.56,
+    "pumps_gj": 1.16,
+    "dhw_gj": 36.08,
+    "people_gain_gj": 73.07,
+    "hvac_sensible_heating_gj": 27.3,
+    "hvac_sensible_cooling_gj": -65.03,
+    "total_site_kwh_m2": 54.5
+  },
+  "tolerances": {
+    "geometry_pct": 0.5,
+    "envelope_u_pct": 1.0,
+    "internal_gain_pct": 1.0,
+    "hvac_sensible_load_pct": 5.0,
+    "hvac_cooling_delivered_pct": 8.0,
+    "total_site_pct": 3.0
+  },
+  "gates": [
+    {
+      "gate": "residential_area_m2",
+      "ours": 954.8,
+      "rai": 954.8,
+      "tolerance_pct": 0.5,
+      "delta_pct": 0.0,
+      "passed": true
+    },
+    {
+      "gate": "gross_wall_area_m2",
+      "ours": 465.0,
+      "rai": 465.0,
+      "tolerance_pct": 0.5,
+      "delta_pct": 0.0,
+      "passed": true
+    },
+    {
+      "gate": "wall_u_with_film",
+      "ours": 1.409,
+      "rai": 1.409,
+      "tolerance_pct": 1.0,
+      "delta_pct": 0.0,
+      "passed": true
+    },
+    {
+      "gate": "roof_u_with_film",
+      "ours": 2.496,
+      "rai": 2.495,
+      "tolerance_pct": 1.0,
+      "delta_pct": 0.04,
+      "passed": true
+    },
+    {
+      "gate": "ground_slab_u_with_film",
+      "ours": 0.501,
+      "rai": 0.501,
+      "tolerance_pct": 1.0,
+      "delta_pct": 0.0,
+      "passed": true
+    },
+    {
+      "gate": "people_gain_gj",
+      "ours": 73.53,
+      "rai": 73.07,
+      "tolerance_pct": 1.0,
+      "delta_pct": 0.63,
+      "passed": true
+    },
+    {
+      "gate": "lighting_gj",
+      "ours": 65.308,
+      "rai": 65.32,
+      "tolerance_pct": 1.0,
+      "delta_pct": -0.02,
+      "passed": true
+    },
+    {
+      "gate": "equipment_gj",
+      "ours": 56.543,
+      "rai": 56.56,
+      "tolerance_pct": 1.0,
+      "delta_pct": -0.03,
+      "passed": true
+    },
+    {
+      "gate": "dhw_gj",
+      "ours": 36.057,
+      "rai": 36.08,
+      "tolerance_pct": 1.0,
+      "delta_pct": -0.06,
+      "passed": true
+    },
+    {
+      "gate": "pumps_gj",
+      "ours": 1.169,
+      "rai": 1.16,
+      "tolerance_pct": 1.0,
+      "delta_pct": 0.75,
+      "passed": true
+    },
+    {
+      "gate": "hvac_sensible_heating_gj",
+      "ours": 26.527,
+      "rai": 27.3,
+      "tolerance_pct": 5.0,
+      "delta_pct": -2.83,
+      "passed": true
+    },
+    {
+      "gate": "hvac_sensible_cooling_gj",
+      "ours": -68.403,
+      "rai": -65.03,
+      "tolerance_pct": 8.0,
+      "delta_pct": 5.19,
+      "passed": true
+    },
+    {
+      "gate": "total_site_kwh_m2",
+      "ours": 53.68,
+      "rai": 54.5,
+      "tolerance_pct": 3.0,
+      "delta_pct": -1.5,
+      "passed": true
+    }
+  ],
+  "verification_passed": true,
+  "note": "Regenerate: python src/verified_model.py --verify  (then --relock if the sources changed). A failing gate means the engine drifted away from Rai's model - investigate before editing this file."
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "adapter_sha256": "39fe02e1db2133f13bd858a3706920f00d87f7fce7a73f161db82fb27a7f915e",
+  "runner": "src/neighborhood_pipeline.py",
+  "runner_sha256": "edde4b6d3d501400b67abb83d604fea04ac6080d7d4d78b2a84fffba65befc8e",
+  "stock_policy": "src/stock_input_policy.py",
+  "stock_policy_sha256": "44f36cda1946b92f34bc9dde6a0eb7881ac0a86846ac1a6a0dde3c8835520794",
+  "required_functions": [
+    "load_stock",
+    "select_representatives",
+    "run_representative",
+    "scale_to_stock",
+    "validate"
+  ],
+  "expected": {
+    "buildings": 959,
+    "clusters": 18,
+    "qa_passed_clusters": 18,
+    "heating_gwh_yr": 21.04,
+    "cooling_gwh_yr": 25.58,
+    "s1_co2_t_yr": 11199.67,
+    "s2_co2_t_yr": 6176.87
+  },
+  "smoke_status": "passed",
+  "verified_at": "2026-07-22T10:23:30.294617+00:00",
+  "verification_run_id": "08329e12d94d4c879344ad5a901212fb"
+}

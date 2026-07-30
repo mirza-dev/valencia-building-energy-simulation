@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "adapter_sha256": "d8082bbc396741ac33065f0b10b11e0087c4a30b35a6d00ac97d1fe3b4d985c9",
+  "runner": "src/city_pipeline.py",
+  "runner_sha256": "f462745fc45e7bf37c09ad1000f70bf5ebffe6179940123647bce7a711a95676",
+  "stock_policy": "src/stock_input_policy.py",
+  "stock_policy_sha256": "44f36cda1946b92f34bc9dde6a0eb7881ac0a86846ac1a6a0dde3c8835520794",
+  "required_functions": [
+    "load_stock_city",
+    "district_breakdown",
+    "validate_city"
+  ],
+  "expected": {
+    "buildings": 26452,
+    "clusters": 21,
+    "districts": 19,
+    "qa_passed_clusters": 21,
+    "heating_gwh_yr": 596.4053,
+    "cooling_gwh_yr": 712.0166,
+    "s1_co2_t_yr": 315189.6,
+    "s2_co2_t_yr": 173332.83,
+    "hvac_consumption_gwh_yr": 709.304,
+    "total_site_gwh_yr": 1992.8707,
+    "hvac_co2_t_yr": 198604.11,
+    "total_site_co2_t_yr": 623526.64,
+    "absolute_tolerance_gwh": 0.1,
+    "absolute_tolerance_co2_t": 20.0
+  },
+  "acceptance": {
+    "validated_at": "2026-07-14T19:44:00+03:00",
+    "representative_simulations": 21,
+    "annual_energyplus_runs": 42,
+    "artifact_sha256": {
+      "clusters_results.csv": "ee4adf2451b1d37e070f34254b9de36ac47765006636f999ab48bb29960a938a",
+      "results_buildings.gpkg": "3f344790a3f3b9bfcbd2cdaf66578ee96c839c097685c25bcab3fb87a58151fd",
+      "results.json": "5178d80f7f7487f986455e99b271ff6f6148dfa6b0cc33b34490b532f076a9c6"
+    }
+  },
+  "smoke_status": "passed",
+  "verified_at": "2026-07-22T10:41:04.581020+00:00",
+  "verification_run_id": "dabc49a49276491295c26b7cca1c9b7c"
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "status": "LOCKED_REFERENCE_FOR_FUTURE_PART_B_CONTRACT",
+  "model_builder": "src/model_builder.py",
+  "model_canonical_fingerprint": "ca6912657601c44d7994c3d8f5379f38c5a6261f027e372697a44b8996c96bb3",
+  "weather_snapshot_hash": "b52a8a7e4b08f167f473e69af907d759d0608e15f6f132019a0034d09d559bea",
+  "runtime": {
+    "openstudio": "3.11.0",
+    "energyplus": "25.2.0"
+  },
+  "expected": {
+    "heating_kwh_m2_conditioned_residential": 11.21,
+    "cooling_kwh_m2_conditioned_residential": 16.60,
+    "qa_all_pass": true
+  },
+  "comparison": {
+    "absolute_tolerance_kwh_m2": 0.02,
+    "raw_energy_values_must_be_retained": true
+  },
+  "activation_rule": "Part B remains hidden until its declared callable and smoke fixture pass."
+}

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "adapter_sha256": "1b40c4e18856e115728b0811aea750289fad9261efa30dc94076ce40ff386f74",
+  "runner": "src/lhs_study.py",
+  "runner_sha256": "495f1367a2ef00f73470a0502d3a64e4781179dbc21bed122504d291a98d00fd",
+  "builder": "src/model_builder.py",
+  "builder_sha256": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
+  "simulation_runner": "src/run_simulation.py",
+  "simulation_runner_sha256": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
+  "required_functions": [
+    "sample_matrix",
+    "run_study",
+    "make_histograms",
+    "make_tornado",
+    "summarize"
+  ],
+  "expected": {
+    "n": 50,
+    "seed": 42,
+    "qa_all_pass": true,
+    "statistics": {
+      "heating_kwh_m2": {
+        "mean": 16.8796,
+        "median": 16.835,
+        "p5": 12.622,
+        "p95": 22.7285
+      },
+      "cooling_kwh_m2": {
+        "mean": 14.7046,
+        "median": 14.665,
+        "p5": 13.757,
+        "p95": 15.631
+      },
+      "co2_kg_m2": {
+        "mean": 3.6264,
+        "median": 3.345,
+        "p5": 2.104,
+        "p95": 5.883
+      }
+    },
+    "top_drivers": {
+      "heating_kwh_m2": [
+        {
+          "variable": "infiltration_ach",
+          "rho": 0.8463108360383211
+        },
+        {
+          "variable": "wall_u",
+          "rho": 0.3371509521008314
+        },
+        {
+          "variable": "thermal_bridge_du",
+          "rho": 0.3068501045327322
+        }
+      ],
+      "cooling_kwh_m2": [
+        {
+          "variable": "shade_setpoint",
+          "rho": 0.7163232996590866
+        },
+        {
+          "variable": "wall_u",
+          "rho": 0.5513134540149045
+        },
+        {
+          "variable": "roof_u",
+          "rho": 0.2492916498076105
+        }
+      ],
+      "co2_kg_m2": [
+        {
+          "variable": "emission_factor",
+          "rho": 0.6180220415236719
+        },
+        {
+          "variable": "cop",
+          "rho": -0.5722106174666725
+        },
+        {
+          "variable": "infiltration_ach",
+          "rho": 0.3994813802203129
+        }
+      ]
+    }
+  },
+  "acceptance": {
+    "validated_at": "2026-07-22T14:44:41+03:00",
+    "samples_completed": 50,
+    "qa_checks_passed": 8,
+    "artifact_sha256": {
+      "runs.csv": "31561c0e8636153c7897ea64022af5941fcef0f3088877a9cc95b1f37eea8e97",
+      "histograms.png": "88552191fecc2e0757f83528e9e5f1137ba61ce1c57c555e2fb71418632a6330",
+      "tornado.png": "405aa5dbd56cffdfea0fa5417437e9e3c02446bc9c1726bb02cef6c46f4920a8"
+    },
+    "source_rehash": {
+      "reason": "run_energyplus gained an optional epw_path argument so a scenario weather file reaches EnergyPlus itself",
+      "why_it_was_needed": "EnergyPlus's --weather overrides the model, so mb.set_weather_file() alone changed nothing: measured 2026-07-30, an EPW with every hour +5 K and the city renamed gave a byte-identical result while eplusout.eio named VALENCIA and the OSM named TESTCITY",
+      "physics_unchanged": "epw_path defaults to None -> mb.EPW_FILE, i.e. the previous behaviour; pilot regression 11.21 / 16.60 kWh/m2 QA ALL PASSED, verified_model --verify 13/13 with every gate bit-identical to the previous golden",
+      "workbench_unaffected": "simulation_adapter.py sets runner.mb.EPW_FILE around the call; with epw_path unset the fallback is still mb.EPW_FILE, so Part B/G behave exactly as before",
+      "no_result_invalidated": "the project has only ever held one EPW (ESP_Valencia.082840_IWEC.epw), so no recorded run was ever produced through the broken --epw path",
+      "previous_runner_sha256": "2ffd20ccfd3961ed0962bc3c08914abb3b71b79460f2460ad30e63866732ef8e",
+      "rehashed_at": "2026-07-30T10:53:27+03:00"
+    }
+  },
+  "absolute_tolerance": 0.02,
+  "smoke_status": "passed"
+}

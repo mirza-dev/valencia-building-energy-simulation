@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<measure>
+  <schema_version>3.1</schema_version>
+  <name>set_building_north_axis</name>
+  <uid>2735980c-94a0-4f42-b37e-e14bf8517763</uid>
+  <version_id>6732c4ed-2f55-41a9-83ae-c467f76e1e37</version_id>
+  <version_modified>2026-07-20T00:00:00Z</version_modified>
+  <xml_checksum>003E651A</xml_checksum>
+  <class_name>SetBuildingNorthAxis</class_name>
+  <display_name>Set Building North Axis</display_name>
+  <description>Set the OpenStudio Building north-axis angle without rebuilding the model.</description>
+  <modeler_description>Built-in Workbench Phase 3 measure for terminal-free, provenance-recorded ModelMeasure execution.</modeler_description>
+  <arguments>
+    <argument>
+      <name>north_axis_deg</name>
+      <display_name>North axis</display_name>
+      <description>Clockwise rotation from true north.</description>
+      <type>Double</type>
+      <units>deg</units>
+      <required>true</required>
+      <model_dependent>false</model_dependent>
+      <default_value>0</default_value>
+    </argument>
+  </arguments>
+  <outputs />
+  <provenances />
+  <tags><tag>Whole Building.Model Geometry</tag></tags>
+  <attributes>
+    <attribute><name>Measure Type</name><value>ModelMeasure</value><datatype>string</datatype></attribute>
+    <attribute><name>Measure Language</name><value>Ruby</value><datatype>string</datatype></attribute>
+  </attributes>
+  <files>
+    <file><filename>measure.rb</filename><filetype>rb</filetype><usage_type>script</usage_type><checksum>3CCB4385</checksum></file>
+  </files>
+</measure>
