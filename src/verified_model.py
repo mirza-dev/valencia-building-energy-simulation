@@ -107,6 +107,10 @@ LOCKED_PARAMETERS: dict[str, object] = {
     # sizing and site
     "HEATING_SIZING_FACTOR": 1.25,
     "COOLING_SIZING_FACTOR": 1.15,
+    # Not physics, but it decides whether a result is trusted at all, so it is
+    # locked like one: a silent drop back to EnergyPlus's 25-day default would
+    # start failing the heavy-masonry clusters again without saying why.
+    "MAXIMUM_WARMUP_DAYS": 60,
     "GROUND_TEMPERATURE_C": 18.0,
     "SITE_BAROMETRIC_PRESSURE_PA": 100582.0,
     # template objects the layers bind to
@@ -298,7 +302,7 @@ LOCKED_SOURCE_HASHES: dict[str, str] = {
     "model_builder.py": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
     "run_simulation.py": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
     "model_config.py": "b2edcb2b7407ebcf21de12679a00d27c1723dc1bea549f710bedb54ee9efdba2",
-    "deep_building.py": "dbbfbbd9fc56d87d161c24bd25e0a9ceb208de53bf119183f08dd5db0d424987",
+    "deep_building.py": "b7b585dbf6d8acde69604600428d9a385d4ed00865ceac5cef689bc11200b62b",
 }
 
 

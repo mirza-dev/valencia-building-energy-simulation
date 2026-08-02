@@ -1,0 +1,197 @@
+{
+  "buildings_ok": 958,
+  "buildings_failed": 1,
+  "buildings_failed_qa": 0,
+  "buildings_excluded": 53,
+  "coverage": {
+    "buildings_in_scope": 1012,
+    "buildings_with_result": 958,
+    "buildings_without_result": 54,
+    "building_coverage_pct": 94.66,
+    "note": "totals are summed over buildings_with_result only. The area-weighted intensity is a ratio and is unaffected; an absolute GWh figure under-reports by the missing share.",
+    "footprint_coverage_pct": 86.33
+  },
+  "qa_failed": 0,
+  "unexplained_severes": 0,
+  "implausible_occupancy": 15,
+  "totals": {
+    "heating_gwh": 3.81261,
+    "cooling_gwh": 5.09322,
+    "dhw_gwh": 19.17906,
+    "total_site_gwh": 118.75471,
+    "residential_area_m2": 2636907.7,
+    "area_weighted_total_site_kwh_m2": 45.036,
+    "area_basis": "geometric_residential_storeys",
+    "area_basis_note": "every kWh/m2 is per geometric residential storey area, matching Rai's own 954.80 m2 basis; tipo15_residential_area_m2 is the cadastral net area, reported for reference only",
+    "tipo15_residential_area_m2": 1979926.2,
+    "tipo15_vs_geometric_pct": 33.18,
+    "carbon_total_site_t_yr": 37792.8
+  },
+  "by_cluster": [
+    {
+      "cluster": "BlocPluriP04",
+      "buildings": 460,
+      "residential_area_m2": 1208575.2,
+      "total_site_gwh": 57.38901,
+      "area_weighted_kwh_m2": 47.485,
+      "rai_consume_kwh_m2": 47,
+      "vs_rai_pct": 1.03
+    },
+    {
+      "cluster": "BlocPluriP05",
+      "buildings": 206,
+      "residential_area_m2": 964376.3,
+      "total_site_gwh": 41.20173,
+      "area_weighted_kwh_m2": 42.724,
+      "rai_consume_kwh_m2": 47,
+      "vs_rai_pct": -9.1
+    },
+    {
+      "cluster": "BlocPluriP06",
+      "buildings": 27,
+      "residential_area_m2": 287980.2,
+      "total_site_gwh": 10.40281,
+      "area_weighted_kwh_m2": 36.123,
+      "rai_consume_kwh_m2": 45,
+      "vs_rai_pct": -19.73
+    },
+    {
+      "cluster": "BlocPluriP03",
+      "buildings": 83,
+      "residential_area_m2": 107521.9,
+      "total_site_gwh": 5.47632,
+      "area_weighted_kwh_m2": 50.932,
+      "rai_consume_kwh_m2": 52,
+      "vs_rai_pct": -2.05
+    },
+    {
+      "cluster": "VivUniP02",
+      "buildings": 55,
+      "residential_area_m2": 9219.5,
+      "total_site_gwh": 0.82837,
+      "area_weighted_kwh_m2": 89.85
+    },
+    {
+      "cluster": "VivUniP05",
+      "buildings": 23,
+      "residential_area_m2": 14115.4,
+      "total_site_gwh": 0.71657,
+      "area_weighted_kwh_m2": 50.765
+    },
+    {
+      "cluster": "EdiPluriP02",
+      "buildings": 24,
+      "residential_area_m2": 6078.2,
+      "total_site_gwh": 0.49694,
+      "area_weighted_kwh_m2": 81.757,
+      "rai_consume_kwh_m2": 0,
+      "vs_rai_pct": null
+    },
+    {
+      "cluster": "EdiPluriP05",
+      "buildings": 9,
+      "residential_area_m2": 7200.0,
+      "total_site_gwh": 0.45145,
+      "area_weighted_kwh_m2": 62.701,
+      "rai_consume_kwh_m2": 46,
+      "vs_rai_pct": 36.31
+    },
+    {
+      "cluster": "EdiPluriP06",
+      "buildings": 5,
+      "residential_area_m2": 9852.6,
+      "total_site_gwh": 0.44378,
+      "area_weighted_kwh_m2": 45.042,
+      "rai_consume_kwh_m2": 46,
+      "vs_rai_pct": -2.08
+    },
+    {
+      "cluster": "EdiPluriP03",
+      "buildings": 23,
+      "residential_area_m2": 6586.8,
+      "total_site_gwh": 0.44187,
+      "area_weighted_kwh_m2": 67.085,
+      "rai_consume_kwh_m2": 52,
+      "vs_rai_pct": 29.01
+    },
+    {
+      "cluster": "VivUniP03",
+      "buildings": 22,
+      "residential_area_m2": 3736.9,
+      "total_site_gwh": 0.34486,
+      "area_weighted_kwh_m2": 92.284
+    },
+    {
+      "cluster": "BlocPluriP07",
+      "buildings": 1,
+      "residential_area_m2": 5435.8,
+      "total_site_gwh": 0.18862,
+      "area_weighted_kwh_m2": 34.7,
+      "rai_consume_kwh_m2": 45,
+      "vs_rai_pct": -22.89
+    },
+    {
+      "cluster": "VivUniP04",
+      "buildings": 6,
+      "residential_area_m2": 1828.0,
+      "total_site_gwh": 0.10555,
+      "area_weighted_kwh_m2": 57.739
+    },
+    {
+      "cluster": "EdiPluriP04",
+      "buildings": 6,
+      "residential_area_m2": 1557.2,
+      "total_site_gwh": 0.0931,
+      "area_weighted_kwh_m2": 59.787,
+      "rai_consume_kwh_m2": 52,
+      "vs_rai_pct": 14.97
+    },
+    {
+      "cluster": "EdiPluriP01",
+      "buildings": 3,
+      "residential_area_m2": 753.3,
+      "total_site_gwh": 0.06019,
+      "area_weighted_kwh_m2": 79.901,
+      "rai_consume_kwh_m2": 54,
+      "vs_rai_pct": 47.96
+    },
+    {
+      "cluster": "VivUniP06",
+      "buildings": 3,
+      "residential_area_m2": 980.9,
+      "total_site_gwh": 0.04857,
+      "area_weighted_kwh_m2": 49.516
+    },
+    {
+      "cluster": "BlocPluriP02",
+      "buildings": 1,
+      "residential_area_m2": 875.0,
+      "total_site_gwh": 0.04591,
+      "area_weighted_kwh_m2": 52.47,
+      "rai_consume_kwh_m2": 52,
+      "vs_rai_pct": 0.9
+    },
+    {
+      "cluster": "VivUniP01",
+      "buildings": 1,
+      "residential_area_m2": 234.5,
+      "total_site_gwh": 0.01906,
+      "area_weighted_kwh_m2": 81.27
+    }
+  ],
+  "by_district": [
+    {
+      "nombre": "BENICALAP",
+      "buildings": 958,
+      "residential_area_m2": 2636907.7,
+      "total_site_gwh": 118.75471,
+      "area_weighted_kwh_m2": 45.036
+    }
+  ],
+  "seconds_per_building": {
+    "median": 68.0,
+    "mean": 89.7,
+    "max": 1071.1
+  },
+  "elapsed_minutes": 239.75
+}

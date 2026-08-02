@@ -79,6 +79,21 @@ PTHP_FAN_MOTOR_EFFICIENCY = 0.90
 
 HEATING_SIZING_FACTOR = 1.25              # derived from Rai's calculated vs design load
 COOLING_SIZING_FACTOR = 1.15
+
+# EnergyPlus warms the model up until the zone loads and temperatures settle,
+# then starts the annual run from that state.  Its default ceiling is 25 days.
+#
+# Connecting the TABULA cluster envelopes (2026-07-30) gave the pre-1940 clusters
+# solid masonry - `Muro macizo ladrillo`, high thermal mass - and 12 of 959
+# Benicalap buildings stopped converging inside 25 days, every one of them a
+# `CheckWarmupConvergence` Severe.  Heavy mass simply needs longer to settle.
+#
+# Raising the ceiling is a simulation-control setting, not a physics change, and
+# it cannot move a result that already converged: EnergyPlus stops warming up the
+# moment the tolerances are met, so only runs that were hitting the ceiling see
+# any difference.  Loosening the convergence tolerances instead would have
+# accepted a less settled state, which is the opposite of what is wanted.
+MAXIMUM_WARMUP_DAYS = 60
 GROUND_TEMPERATURE_C = 18.0               # Rai: Site:GroundTemperature:BuildingSurface, flat all year
 WATER_MAINS_TEMPERATURE_C = 10.0          # Rai: FixedDefault
 
@@ -736,6 +751,7 @@ def add_pthp_hvac(osm, heating_cop: float | None = None,
     control.setDoZoneSizingCalculation(True)
     control.setRunSimulationforSizingPeriods(False)
     control.setRunSimulationforWeatherFileRunPeriods(True)
+    control.setMaximumNumberofWarmupDays(MAXIMUM_WARMUP_DAYS)
 
     return {
         "hvac_system": "ZoneHVAC:PackagedTerminalHeatPump",

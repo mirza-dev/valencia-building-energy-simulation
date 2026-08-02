@@ -149,8 +149,18 @@ own output.
 
 ## Results
 
-[`docs/results/`](docs/results/) holds the verification report and the
-district-scale outputs.
+The Benicalap district of Valencia, every modellable building simulated
+individually: **958 buildings, 118.75 GWh, 45.04 kWh/m²**. The largest typology
+cluster — 460 buildings, 40 % of the district's floor area — lands at **+1.0 %**
+of the reference city model's published figure for that typology.
+
+Coverage is stated rather than implied: 94.66 % of buildings in scope, but
+**86.33 %** of the footprint, because the geometry gates fall hardest on large
+complex buildings. The total is therefore the energy of the modellable district,
+not of the district. The intensity is a ratio and is unaffected.
+
+[`docs/results/`](docs/results/) holds the verification report, the district
+output, and what each fix was worth.
 
 ---
 
@@ -182,9 +192,9 @@ need a real building.
 
 ## Status
 
-The engine is verified and frozen. District-scale results are being regenerated
-after the cluster envelope fix described above. The full 24,976-building run is
-waiting on a pending question to the supervisors about their U-value table.
+The engine is verified and frozen, and the district-scale results above were
+produced with it. The full 24,976-building city run is waiting on a pending
+question to the supervisors — the same one the EdiPluri deviation points at.
 
 ## Licence
 

@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "LOCKED_VERIFIED_MODEL",
   "profile_id": "valencia-deep-v1",
-  "profile_fingerprint": "796183a04c68a6450fcdd759b3f1857476bfe4d8ca45d6648fb009985a308ccd",
+  "profile_fingerprint": "c67a09927b1358f9e6c61578e422e6b0ecf238b44db8b598275a0953e9b554f1",
   "locked_source_hashes": {
     "model_builder.py": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
     "run_simulation.py": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
     "model_config.py": "b2edcb2b7407ebcf21de12679a00d27c1723dc1bea549f710bedb54ee9efdba2",
-    "deep_building.py": "dbbfbbd9fc56d87d161c24bd25e0a9ceb208de53bf119183f08dd5db0d424987"
+    "deep_building.py": "b7b585dbf6d8acde69604600428d9a385d4ed00865ceac5cef689bc11200b62b"
   },
   "verified_on": "2026-07-27",
   "verified_against": "Rai EdiPluriP04 (informe_openstudio + eplustbl)",
