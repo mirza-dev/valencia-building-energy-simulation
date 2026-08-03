@@ -315,3 +315,38 @@ def test_record_survives_being_written_to_a_ledger(minimal_template, tmp_path):
 def test_a_missing_template_file_is_refused(tmp_path):
     with pytest.raises(tc.TemplateError, match="template not found"):
         tc.validate_template(tmp_path / "nope.osm")
+
+
+# ---------------------------------------------------------------------------
+# Library-only gate (review finding, 2026-08-03)
+#
+# The builder re-processes EVERY Space in the loaded model as one of its own
+# storeys (it sorts osm.getSpaces() by z and types them), so a template that
+# arrives with geometry or systems would have them silently absorbed into the
+# building.  The contract now refuses such a template outright.
+# ---------------------------------------------------------------------------
+def test_a_template_smuggling_a_space_is_refused(minimal_template):
+    model = _build_minimal_model()
+    space = openstudio.model.Space(model)
+    space.setName("pre-existing space")
+    with pytest.raises(tc.TemplateError, match="library-only"):
+        tc.validate_template(minimal_template(model))
+
+
+def test_a_template_smuggling_systems_is_refused_with_counts(minimal_template):
+    model = _build_minimal_model()
+    openstudio.model.ThermalZone(model)
+    openstudio.model.PlantLoop(model)
+    openstudio.model.DesignDay(model)
+    with pytest.raises(tc.TemplateError) as excinfo:
+        tc.validate_template(minimal_template(model))
+    message = str(excinfo.value)
+    # every kind is named with its count so the author knows what to strip
+    assert "ThermalZone x1" in message
+    assert "PlantLoop x1" in message
+    assert "DesignDay x1" in message
+
+
+def test_a_clean_library_template_still_passes(minimal_template):
+    report = tc.validate_template(minimal_template(_build_minimal_model()))
+    assert not [item for item in report["missing"] if item["required"]]

@@ -370,9 +370,25 @@ def load_climate(bundle_path: str | Path) -> ClimateSet:
             f"climate '{name}': the .ddy design days contradict the EPW's own "
             f"DESIGN CONDITIONS header, so one of the two files has been edited.\n  "
             + "\n  ".join(issues))
-    cross_check = ("epw_design_conditions"
-                   if header["design_conditions"] else
-                   "skipped: this EPW has no DESIGN CONDITIONS header line")
+    if header["design_conditions"]:
+        cross_check = "epw_design_conditions"
+    elif spec.get("allow_unverified_design_days") is True:
+        # The bundle author has DECLARED that this EPW cannot carry the
+        # cross-check (a morphed future-climate file, typically) and accepts
+        # running on design days verified only against the .ddy itself.  The
+        # declaration is recorded in the fingerprinted identity below.
+        cross_check = "unverified_by_declaration"
+    else:
+        # Without the declaration this used to be a silent skip: an EPW with
+        # its DESIGN CONDITIONS header stripped sailed through as if fully
+        # verified (review finding, 2026-08-03).
+        raise ClimateError(
+            f"climate '{name}': {epw_path.name} has no DESIGN CONDITIONS header, "
+            f"so the .ddy design days cannot be cross-checked against the EPW. "
+            f"If this is intentional (e.g. a morphed future-climate file), state "
+            f'"allow_unverified_design_days": true in the bundle - the run will '
+            f"then record its design days as unverified instead of pretending "
+            f"they were checked.")
 
     pressures = {design_days["heating"]["pressure"], design_days["cooling"]["pressure"]}
     if len(pressures) != 1:
@@ -390,6 +406,7 @@ def load_climate(bundle_path: str | Path) -> ClimateSet:
         "ground_temperature_c": float(spec["ground_temperature_c"]),
         "water_mains_temperature_c": float(spec["water_mains_temperature_c"]),
         "design_days": design_days,
+        "design_day_cross_check": cross_check,
     }
     fingerprint = hashlib.sha256(
         json.dumps(identity, sort_keys=True, default=str).encode("utf-8")).hexdigest()

@@ -121,7 +121,7 @@ LEDGER_METRICS = (
     "n_floors_total", "n_floors_residential", "n_party_surfaces",
     "n_shading_surfaces", "n_windows", "window_area_m2",
     "padron_occupants", "occupants_applied", "occupants_source",
-    "occupancy_plausibility",
+    "occupancy_plausibility", "ground_use", "ground_use_source",
     "zero_policy", "wall_construction", "roof_construction",
     "warnings", "severes", "severes_benign_shading_ems", "severes_unexplained",
     "fatals", "qa_all_passed",
@@ -213,7 +213,9 @@ def file_sha256(path: Path) -> str:
 # Without this the cache happily serves a file built by older code: on
 # 2026-07-30 the Tipo15 area column was added and the very next run silently
 # reused a GeoPackage that did not have it.
-PREPARED_STOCK_SCHEMA = 2
+# v3 (2026-08-03): ground_use / ground_use_source columns - the ground-floor
+# policy now actually reaches the engine.
+PREPARED_STOCK_SCHEMA = 3
 
 # Bump when the meaning of a ledger row changes, so an older ledger can never be
 # resumed into by newer code that would write incompatible rows beside it.
@@ -526,13 +528,18 @@ def coverage_block(rows: list[dict], ok: list[dict],
     """How much of the scope the totals actually stand for.
 
     A total is summed over the buildings that produced a result, so it is not
-    the district's energy - it is the energy of the modellable part of it.  In
-    Benicalap that gap is 55 buildings out of 1 012, but 14 % of the footprint,
-    because the geometry gates fall hardest on the large, complex buildings.
+    the district's energy - it is the energy of the modellable part of it.
 
-    The area-weighted intensity is unaffected (it is a ratio over whatever ran),
-    which is why the comparison against Rai stays sound while an absolute GWh
-    figure needs this block beside it.
+    The area-weighted intensity is NOT neutral either, and this block used to
+    claim it was.  The excluded buildings are not a random sample: the geometry
+    gates fall hardest on large, complex buildings, and footprint correlates
+    with EUI among the buildings that DID run (Spearman -0.552 on the Benicalap
+    v3 ledger; large quartile 42.6 kWh/m2 against small quartile 57.4).
+    Dropping large low-EUI buildings therefore biases the modellable subset's
+    intensity UPWARD relative to the full stock.  So the intensity is the EUI
+    of the modellable subset, stated as such - not an unbiased estimate of the
+    whole district's.  With the 20 000 m2 ceiling the missing share is small
+    (~1.6 % of footprint city-wide) but the direction is known and recorded.
     """
     in_scope = {str(r.get("refparcela")) for r in rows if r.get("refparcela")}
     produced = {str(r["refparcela"]) for r in ok}
@@ -544,9 +551,13 @@ def coverage_block(rows: list[dict], ok: list[dict],
         "buildings_without_result": len(missing),
         "building_coverage_pct": (round(100.0 * len(produced) / len(in_scope), 2)
                                   if in_scope else 0.0),
-        "note": ("totals are summed over buildings_with_result only. The "
-                 "area-weighted intensity is a ratio and is unaffected; an "
-                 "absolute GWh figure under-reports by the missing share."),
+        "note": ("totals are summed over buildings_with_result only, so an "
+                 "absolute GWh figure under-reports by the missing share. The "
+                 "area-weighted intensity is the EUI of the modellable subset, "
+                 "not an unbiased estimate of the whole scope: exclusions "
+                 "concentrate in large buildings and footprint anti-correlates "
+                 "with EUI (Spearman -0.552, Benicalap v3), so the subset's "
+                 "intensity is biased upward relative to the full stock."),
     }
 
     if stock is None or not in_scope or "refparcela" not in stock.columns:
@@ -612,6 +623,29 @@ def zoning_block(frame: pd.DataFrame) -> dict:
     return block
 
 
+def provenance_block(rows: list[dict], ledger_paths: list[Path]) -> dict:
+    """What produced these numbers, carried INSIDE the published result.
+
+    The per-row identity was always in the ledger, but the aggregate JSON -
+    the one file an outside reader actually opens - carried none of it, and a
+    result assembled from more than one ledger (Benicalap v3 plus its warmup
+    re-run) had no record of its parents or of the merge rule (review finding,
+    2026-08-03).
+    """
+    identity: dict = {}
+    for key in IDENTITY_FIELDS:
+        values = sorted({str(r[key]) for r in rows if r.get(key) is not None})
+        identity[key] = values[0] if len(values) == 1 else values
+    return {
+        "identity": identity,
+        "source_ledgers": [{"path": str(p), "sha256": file_sha256(Path(p)),
+                            "rows": sum(1 for _ in open(p, encoding="utf-8"))}
+                           for p in ledger_paths if Path(p).exists()],
+        "merge_rule": ("latest_per_reference: when a refparcela appears more "
+                       "than once, the last row in ledger order wins"),
+    }
+
+
 def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
     """Roll the ledger up to cluster / district / city totals.
 
@@ -623,6 +657,10 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
     # that failed their own cross-check against EnergyPlus.
     ok = [r for r in rows if r.get("status") == "ok"]
     if not ok:
+        # The empty report carries the FULL schema at zero.  It used to omit
+        # qa_failed/unexplained_severes, so a run in which every building
+        # failed died in _print_report with KeyError instead of reporting the
+        # failure it was built to report (review finding, 2026-08-03).
         return {"buildings_ok": 0,
                 "buildings_failed": sum(1 for r in rows
                                         if r.get("status") == "failed"),
@@ -632,7 +670,13 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
                                           if r.get("status") == "excluded"),
                 "coverage": coverage_block(rows, ok, stock),
                 "zoning": zoning_block(pd.DataFrame(ok)),
-                "totals": {}}
+                "qa_failed": 0,
+                "unexplained_severes": 0,
+                "implausible_occupancy": 0,
+                "totals": {},
+                "by_cluster": [],
+                "by_district": [],
+                "seconds_per_building": {}}
 
     frame = pd.DataFrame(ok)
     if stock is not None:
@@ -1010,9 +1054,16 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
                         try:
                             row = future.result()
                         except Exception as exc:   # noqa: BLE001 - worker died
+                            # Stamped like every other row: an unstamped crash
+                            # row made the whole ledger unresumable, because
+                            # assert_ledger_matches_inputs rightly refuses rows
+                            # whose producing run cannot be established - one
+                            # dead worker cost the remaining days of a stock run
+                            # (review finding, 2026-08-03).
                             row = {"refparcela": ref, "status": "failed",
                                    "reason": f"worker_{type(exc).__name__}",
-                                   "message": str(exc)[:400]}
+                                   "message": str(exc)[:400],
+                                   **{key: fingerprints[key] for key in IDENTITY_FIELDS}}
                         watchdog.finished(ref)
                         ledger.append(row)
                         done_count += 1
@@ -1029,6 +1080,7 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
     report = aggregate(rows, stock)
     report["elapsed_minutes"] = round((time.time() - started) / 60, 2)
     report["ledger"] = str(ledger_path)
+    report["provenance"] = provenance_block(rows, [ledger_path])
     (out_dir / "aggregate.json").write_text(
         json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     return report
@@ -1113,7 +1165,8 @@ def main(argv: list[str] | None = None) -> int:
         # module the long-lived process had loaded; re-aggregating has to make
         # the file on disk agree with the ledger, not just print to the screen.
         (args.aggregate.parent / "aggregate.json").write_text(
-            json.dumps({**report, "ledger": str(args.aggregate)},
+            json.dumps({**report, "ledger": str(args.aggregate),
+                        "provenance": provenance_block(rows, [args.aggregate])},
                        indent=2, ensure_ascii=False), encoding="utf-8")
         _print_report(report)
         return 0

@@ -12,7 +12,8 @@ Four layers are added on top of a normally built model:
    ventilation object.
 2. Rai's ground-floor regime: the ground space becomes a conditioned
    ``Terciario`` zone that stays outside the reported floor-area basis.
-3. A domestic hot water plant loop (CTE DB-HE4 demand, 97 % boiler).
+3. A domestic hot water plant loop (Rai-aligned 28 l/person/day at 50 C,
+   ~80 % of the CTE DB-HE4 60 C energy reference; 97 % boiler).
 4. Rai's packaged terminal heat pump instead of the gas-burner PTAC.
 
 Reference for every constant below: Rai's own EdiPluriP04 model, extracted from
@@ -310,6 +311,68 @@ def apply_rai_ground_regime(osm, *, thermostat: bool = False) -> dict:
     }
 
 
+def apply_residential_ground(osm) -> dict:
+    """Make the ground storey a dwelling floor instead of Rai's Terciario.
+
+    For 9,829 Valencia buildings (37.2 %, measured 2026-08-03) Tipo15 records a
+    dwelling at ground level - "B0"/"OD" planta codes - and for a detached
+    VivUni the ground floor IS the house.  Typing those grounds as a commercial
+    Terciario buffer misstates both the physics and the area basis.
+
+    The geometry is untouched: `altura_max` counts the numbered storeys and
+    excludes the bajo in both groups (measured, mode +0), so the frozen builder
+    keeps producing ground + altura_max levels either way.  This layer only
+    re-types the ground space:
+
+      * residential space type -> occupancy, hygienic ventilation, internal
+        gains and the PTHP COP split all follow from the space type, so
+        `apply_real_occupancy` and `add_pthp_hvac` MUST run after this
+      * kept IN the floor-area basis (it is dwelling area; Tipo15's own net
+        area for these buildings includes it)
+      * dwelling thermostat, like every other residential storey
+      * the ground slab keeps the template default - period-appropriate, same
+        reasoning as the interzone-slab decision (2026-07-27); Rai's insulated
+        `Solera` belongs to his Terciario regime, not to a 1970s dwelling
+    """
+    buffer_type = _by_name(osm.getSpaceTypes(), GROUND_BUFFER_SPACE_TYPE)
+    if buffer_type is None:
+        raise RuntimeError(
+            f"'{GROUND_BUFFER_SPACE_TYPE}' not in the model - build with "
+            "ground_unconditioned=True before applying the residential ground")
+    ground_spaces = list(buffer_type.spaces())
+    if not ground_spaces:
+        raise RuntimeError("no ground buffer space found in the model")
+
+    residential = _require(osm.getSpaceTypes(), RESIDENTIAL_SPACE_TYPE, "Space type")
+    sch_heat = _require(osm.getScheduleRulesets(), THERMOSTAT_HEATING_SCHEDULE, "Schedule")
+    sch_cool = _require(osm.getScheduleRulesets(), THERMOSTAT_COOLING_SCHEDULE, "Schedule")
+    thermostat = openstudio.model.ThermostatSetpointDualSetpoint(osm)
+    thermostat.setName("Termostat Vivienda planta baja")
+    thermostat.setHeatingSetpointTemperatureSchedule(sch_heat)
+    thermostat.setCoolingSetpointTemperatureSchedule(sch_cool)
+
+    converted = 0
+    for space in ground_spaces:
+        space.setSpaceType(residential)
+        space.setPartofTotalFloorArea(True)
+        zone_opt = space.thermalZone()
+        if zone_opt.isNull():
+            raise RuntimeError(f"ground space '{space.nameString()}' has no thermal zone")
+        zone = zone_opt.get()
+        ideal = openstudio.model.ZoneHVACIdealLoadsAirSystem(osm)
+        ideal.setName(f"Ideal Loads {zone.nameString()} (residential ground)")
+        ideal.addToThermalZone(zone)
+        zone.setThermostatSetpointDualSetpoint(thermostat)
+        converted += 1
+
+    return {
+        "ground_spaces_converted": converted,
+        "ground_space_type": RESIDENTIAL_SPACE_TYPE,
+        "ground_thermostat": True,
+        "in_floor_area_basis": True,
+    }
+
+
 def glaze_ground_floor(osm, config=None) -> dict:
     """Glaze the ground floor with the same WWR as the residential storeys.
 
@@ -324,11 +387,17 @@ def glaze_ground_floor(osm, config=None) -> dict:
     Returns the counters so the caller can record what was added.
     """
     cfg = config or mb.DEFAULT_BUILD_CONFIG
-    ground_type = (_by_name(osm.getSpaceTypes(), GROUND_TERCIARIO_SPACE_TYPE)
-                   or _by_name(osm.getSpaceTypes(), GROUND_BUFFER_SPACE_TYPE))
-    if ground_type is None:
-        raise RuntimeError("no ground space type in the model")
-    ground_spaces = list(ground_type.spaces())
+    # Take whichever candidate type actually CARRIES the ground space: in the
+    # Rai flow the re-typing runs first so it sits on Terciario, in the
+    # residential flow glazing runs first so it is still on the buffer.  Both
+    # types exist in the template, so "first non-null" would find an empty one.
+    ground_spaces: list = []
+    for name in (GROUND_TERCIARIO_SPACE_TYPE, GROUND_BUFFER_SPACE_TYPE):
+        space_type = _by_name(osm.getSpaceTypes(), name)
+        if space_type is not None:
+            ground_spaces = list(space_type.spaces())
+            if ground_spaces:
+                break
     if not ground_spaces:
         raise RuntimeError("no ground space found to glaze")
 
@@ -540,7 +609,11 @@ def apply_window_frames(osm, frame_name: str = WINDOW_FRAME_NAME) -> dict:
 # ---------------------------------------------------------------------------
 def add_dhw_loop(osm, occupants: float, litres_per_person_day: float | None = None,
                  climate=None) -> dict:
-    """Add Rai's DHW plant loop, sized from the real head count (CTE DB-HE4).
+    """Add Rai's DHW plant loop, sized from the real head count.
+
+    The demand is Rai-aligned: 28 l/person/day delivered at the 50 C loop
+    setpoint, which is ~80 % of the CTE DB-HE4 energy reference stated at
+    60 C - a measured decision, not a CTE equivalence (see the constant).
 
     Structure copied from Rai's EdiPluriP04: PlantLoop + Boiler:HotWater +
     Pump:ConstantSpeed + SetpointManager:Scheduled, with one WaterUse:Equipment
@@ -906,7 +979,12 @@ def _severe_blocks(text: str) -> list[str]:
                 blocks.append("\n".join(current))
             current = [line]
         elif current is not None:
-            if stripped.startswith("~~~"):
+            # EnergyPlus writes continuations as "   **   ~~~   ** detail...",
+            # so after stripping they start with "**", not with "~~~".  The old
+            # startswith("~~~") never matched, every block silently collapsed
+            # to its first line, and the `any` marker rule hid it - the switch
+            # to requiring BOTH markers in the block exposed it (2026-08-03).
+            if stripped.startswith("**") and "~~~" in stripped:
                 current.append(line)
             else:
                 blocks.append("\n".join(current))
@@ -934,8 +1012,13 @@ def scan_err_deep(run_dir: Path) -> dict:
     severe_blocks = _severe_blocks(text)
     n_severe = len(severe_blocks)
     n_fatal = text.count(_FATAL_PATTERN)
+    # A block is benign only when it carries BOTH markers - the documented
+    # message always does (the shading line plus its EMS continuation).  With
+    # `any`, an unrelated Severe that merely mentioned "EMS Actuator cannot be
+    # set" - a message EnergyPlus emits for other actuators too - would have
+    # been silently excused (review finding, 2026-08-03).
     benign = sum(1 for block in severe_blocks
-                 if any(marker in block for marker in _BENIGN_SEVERE_MARKERS))
+                 if all(marker in block for marker in _BENIGN_SEVERE_MARKERS))
     unexplained = n_severe - benign
 
     # The authoritative totals live on the LAST summary line (Warmup and Sizing
@@ -1103,12 +1186,18 @@ def config_for_building(row, base=None):
 def build_deep_model(row, party_geom, occupants: float, *, config=None,
                      neighbors=None, litres_per_person_day: float | None = None,
                      glaze_ground: bool = True, window_frames: bool = True,
-                     climate=None):
+                     climate=None, ground_use: str | None = None):
     """Build the geometry/envelope with the frozen builder, then add the layers.
 
     `climate` is a `climate.ClimateSet`.  Left unset, every climate-dependent
     value stays at the verified Valencia one and the weather file the frozen
     builder embedded is kept - that is, the historical behaviour, byte for byte.
+
+    `ground_use` decides what the ground storey IS: "terciario" (Rai's regime -
+    conditioned commercial buffer, out of the area basis) or "residential" (a
+    dwelling floor, in the basis).  Left unset it is read from the row - a
+    prepared stock carries the policy-resolved `ground_use` column - and falls
+    back to "terciario", the historical behaviour byte for byte.
     """
     # The cluster envelope is resolved here, on top of whatever template/weather
     # config the caller supplied, so a `--template` or `--climate` override never
@@ -1116,8 +1205,16 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
     build_config = config_for_building(row, base=config)
     if not build_config.geometry.ground_unconditioned:
         raise ValueError(
-            "the Rai ground regime is applied post-build and needs the ground "
+            "the ground regime is applied post-build and needs the ground "
             "space to exist: build with ground_unconditioned=True")
+
+    if ground_use is None:
+        candidate = row.get("ground_use") if hasattr(row, "get") else None
+        ground_use = candidate if isinstance(candidate, str) and candidate else "terciario"
+    if ground_use not in ("terciario", "residential"):
+        raise ValueError(f"unknown ground_use {ground_use!r}: "
+                         "expected 'terciario' or 'residential'")
+    ground_is_residential = ground_use == "residential"
 
     # The frame grows outwards from the sub-surface polygon, so the WWR handed
     # to the frozen builder has to be shrunk first - otherwise the finished
@@ -1138,15 +1235,35 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
     footprint_m2 = float(stats["footprint_m2"])
     n_res = int(stats["n_floors_residential"])
 
+    if ground_is_residential:
+        # The bajo is dwelling area, so it enters the basis BEFORE the density
+        # cap and the occupancy density are computed from it.
+        res_area_m2 = round(footprint_m2 * (n_res + 1), 1)
+        stats["res_area_m2"] = res_area_m2
+
     # A padron head count that cannot fit the recorded floor area is capped
     # before it reaches the model, so DHW and occupant gains stay physical.
     padron_occupants = occupants
     occupants = cap_occupants_to_density_floor(occupants, res_area_m2)
 
-    layers = {
-        "occupancy": apply_real_occupancy(osm, occupants, res_area_m2),
-        "ground": apply_rai_ground_regime(osm),
-    }
+    if ground_is_residential:
+        # Order matters: glazing looks the ground space up through its buffer
+        # space type, and occupancy/PTHP resolve through the residential space
+        # type - so glaze first, re-type second, occupancy third.
+        layers = {}
+        if glaze_ground:
+            layers["ground_glazing"] = glaze_ground_floor(osm, config=build_config)
+            stats["window_area_m2"] = round(
+                stats["window_area_m2"] + layers["ground_glazing"]["ground_glass_area_m2"], 1)
+            stats["n_windows"] += layers["ground_glazing"]["ground_windows"]
+        layers["ground"] = apply_residential_ground(osm)
+        layers["occupancy"] = apply_real_occupancy(osm, occupants, res_area_m2)
+    else:
+        layers = {
+            "occupancy": apply_real_occupancy(osm, occupants, res_area_m2),
+            "ground": apply_rai_ground_regime(osm),
+        }
+    stats["ground_use"] = ground_use
     plausibility = occupancy_plausibility(
         occupants, res_area_m2, row.get("num_vivend"), capped_from=padron_occupants)
     layers["occupancy"]["plausibility"] = plausibility
@@ -1157,7 +1274,7 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
     # ledger used to carry only the padron figure, so a capped building looked
     # as if it had been simulated with its full registered head count.
     stats["occupants_applied"] = round(occupants, 1)
-    if glaze_ground:
+    if glaze_ground and not ground_is_residential:
         layers["ground_glazing"] = glaze_ground_floor(osm, config=build_config)
         stats["window_area_m2"] = round(
             stats["window_area_m2"] + layers["ground_glazing"]["ground_glass_area_m2"], 1)
@@ -1298,6 +1415,10 @@ def simulate_deep_building(refparcela: str, out_dir: Path, *,
     tipo15 = row.get("tipo15_res_area_m2")
     stats["tipo15_res_area_m2"] = (round(float(tipo15), 1)
                                    if tipo15 is not None and float(tipo15) > 0 else None)
+    # Which rule decided the ground use (tipo15 / family_fallback / forced) -
+    # stamped by the stock policy into the prepared file; absent on raw cadastre.
+    source = row.get("ground_use_source")
+    stats["ground_use_source"] = source if isinstance(source, str) and source else None
     # Not `area_basis`: `read_end_uses_split` already returns a field of that
     # name and merges after stats, so it would silently shadow this one.
     stats["res_area_source"] = "geometry: footprint x residential storeys"
@@ -1376,7 +1497,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out-dir", type=Path, default=Path("out/deep"))
     parser.add_argument("--litres-per-person-day", type=float,
                         default=DHW_LITRES_PER_PERSON_DAY,
-                        help="CTE DB-HE4 DHW demand (default 28 l/person/day)")
+                        help="Rai-aligned DHW demand at 50 C, ~80 %% of the CTE 60 C "
+                             "energy reference (default 28 l/person/day)")
     parser.add_argument("--gis", type=Path, help="cadastre shapefile override")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--quiet", action="store_true")

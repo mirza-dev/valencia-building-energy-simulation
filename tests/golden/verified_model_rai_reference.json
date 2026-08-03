@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "LOCKED_VERIFIED_MODEL",
   "profile_id": "valencia-deep-v1",
-  "profile_fingerprint": "691bc1879ed5d7f4c53a140b43800e04ab71e85c2aba8622b906f163d883cd6e",
+  "profile_fingerprint": "c519f408d5bf022de7c3b547e3752aa21bfa3e91cca2d8cf13590fed27f2708e",
   "locked_source_hashes": {
     "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
     "run_simulation.py": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
     "model_config.py": "786d1565951b9f21741e2762cd66dc7fd361c2c58e884be3d5ef05d1899e2271",
-    "deep_building.py": "51d7149061f5ed96f073a23a1e9c218b93b327886abf4d6803ac407792de19cf"
+    "deep_building.py": "2802cf2ab97241662a22532119e40be0122795a9782f243246f006ddbfe3c6f9"
   },
   "verified_on": "2026-07-27",
   "verified_against": "Rai EdiPluriP04 (informe_openstudio + eplustbl)",
@@ -66,7 +66,7 @@
     {
       "item": "domestic hot water",
       "replica": "Rai's fixed 150 l/day per storey",
-      "production": "CTE DB-HE4, 28 l/person/day on the real head count",
+      "production": "Rai-aligned 28 l/person/day at 50 C on the real head count - ~80 % of the CTE DB-HE4 60 C energy reference, not a CTE equivalence",
       "why": "Documented Spanish standard, follows the real occupancy, and lands within 5 % of Rai's per-m2 intensity.",
       "applied_by": "deep_building.add_dhw_loop",
       "in_production": true

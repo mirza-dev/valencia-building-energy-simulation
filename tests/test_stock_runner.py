@@ -903,3 +903,49 @@ def test_zoning_block_survives_an_empty_and_a_legacy_ledger():
 
 def test_large_footprint_flag_is_carried_into_the_ledger():
     assert "large_footprint_single_zone" in sr.LEDGER_METRICS
+
+
+# ---------------------------------------------------------------------------
+# Review findings, 2026-08-03
+# ---------------------------------------------------------------------------
+def test_aggregate_reports_instead_of_crashing_when_nothing_succeeded():
+    """aggregate([]) and an all-failed ledger used to KeyError in _print_report."""
+    for rows in ([], [{"refparcela": "A", "status": "failed", "reason": "X"}]):
+        report = sr.aggregate(rows)
+        sr._print_report(report)          # must not raise
+        assert report["buildings_ok"] == 0
+        assert report["qa_failed"] == 0
+        assert report["unexplained_severes"] == 0
+        assert report["totals"] == {}
+        assert report["by_cluster"] == []
+
+
+def test_worker_crash_row_is_stamped_and_the_ledger_stays_resumable():
+    """A dead worker's row must carry the same identity as every other row.
+
+    Unstamped, assert_ledger_matches_inputs rightly refused the whole ledger -
+    one crash cost the remaining days of a stock run.
+    """
+    fingerprints = {key: f"value-{key}" for key in sr.IDENTITY_FIELDS}
+    ok_row = {"refparcela": "A", "status": "ok", **fingerprints}
+    crash_row = {"refparcela": "B", "status": "failed",
+                 "reason": "worker_BrokenProcessPool", **fingerprints}
+    # both rows present: resume must accept the ledger
+    sr.assert_ledger_matches_inputs([ok_row, crash_row], fingerprints)
+    # and an unstamped crash row must still be refused - the guard is the point
+    with pytest.raises(sr.InputMismatch, match="predate run identity"):
+        sr.assert_ledger_matches_inputs(
+            [ok_row, {"refparcela": "C", "status": "failed"}], fingerprints)
+
+
+def test_provenance_block_names_its_ledgers_and_the_merge_rule(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    fingerprints = {key: f"value-{key}" for key in sr.IDENTITY_FIELDS}
+    rows = [{"refparcela": "A", "status": "ok", **fingerprints}]
+    ledger.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    block = sr.provenance_block(rows, [ledger])
+    assert block["identity"]["run_identity"] == "value-run_identity"
+    assert block["source_ledgers"][0]["sha256"] == sr.file_sha256(ledger)
+    assert block["source_ledgers"][0]["rows"] == 1
+    assert "latest_per_reference" in block["merge_rule"]

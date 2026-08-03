@@ -4,7 +4,7 @@
   "runner": "src/neighborhood_pipeline.py",
   "runner_sha256": "edde4b6d3d501400b67abb83d604fea04ac6080d7d4d78b2a84fffba65befc8e",
   "stock_policy": "src/stock_input_policy.py",
-  "stock_policy_sha256": "44f36cda1946b92f34bc9dde6a0eb7881ac0a86846ac1a6a0dde3c8835520794",
+  "stock_policy_sha256": "f8f90581e3ff5986990479f724ffe41a90efbd7bd207953bb2020b45022adeca",
   "required_functions": [
     "load_stock",
     "select_representatives",
@@ -23,5 +23,25 @@
   },
   "smoke_status": "passed",
   "verified_at": "2026-07-22T10:23:30.294617+00:00",
-  "verification_run_id": "08329e12d94d4c879344ad5a901212fb"
+  "verification_run_id": "08329e12d94d4c879344ad5a901212fb",
+  "acceptance": {
+    "source_rehash_history": [
+      {
+        "reason": "stock_input_policy gained GROUND_PLANTA_TOKENS and resolve_ground_use(): the ground-floor policy now actually reaches the engine as ground_use/ground_use_source columns on the prepared stock",
+        "why_it_was_needed": "ground_floor_mode entered every run fingerprint but no stock-chain code ever consumed it - four modes produced four identities and one physics (review finding, 2026-08-03). The legacy per-representative token set also missed this dataset's two most common ground codes: B0 (8,756 records) and OD (7,901), so only 680 of the real 9,829 ground-dwelling buildings were recognisable",
+        "physics_unchanged_for_this_capability": "ground_rule_for_representative - the function Part C/D actually call - is byte-for-byte untouched, deliberately, so historical representative decisions stay reproducible; the additions are new code paths the representative pipeline never enters. Scientific expected values in this fixture are untouched",
+        "engine_verification": "verified_model --verify 13/13 PASS with every gate bit-identical (954.800 / 1.409 / 73.530 / 26.527 / -68.403 / 53.680 kWh/m2)",
+        "previous_stock_policy_sha256_prefix": "44f36cda1946b92f",
+        "rehashed_at": "2026-08-03"
+      }
+    ],
+    "source_rehash": {
+      "reason": "stock_input_policy gained GROUND_PLANTA_TOKENS and resolve_ground_use(): the ground-floor policy now actually reaches the engine as ground_use/ground_use_source columns on the prepared stock",
+      "why_it_was_needed": "ground_floor_mode entered every run fingerprint but no stock-chain code ever consumed it - four modes produced four identities and one physics (review finding, 2026-08-03). The legacy per-representative token set also missed this dataset's two most common ground codes: B0 (8,756 records) and OD (7,901), so only 680 of the real 9,829 ground-dwelling buildings were recognisable",
+      "physics_unchanged_for_this_capability": "ground_rule_for_representative - the function Part C/D actually call - is byte-for-byte untouched, deliberately, so historical representative decisions stay reproducible; the additions are new code paths the representative pipeline never enters. Scientific expected values in this fixture are untouched",
+      "engine_verification": "verified_model --verify 13/13 PASS with every gate bit-identical (954.800 / 1.409 / 73.530 / 26.527 / -68.403 / 53.680 kWh/m2)",
+      "previous_stock_policy_sha256_prefix": "44f36cda1946b92f",
+      "rehashed_at": "2026-08-03"
+    }
+  }
 }

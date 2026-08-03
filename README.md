@@ -158,7 +158,10 @@ of the reference city model's published figure for that typology.
 Coverage is stated rather than implied: 94.66 % of buildings in scope, but
 **86.33 %** of the footprint, because the geometry gates fall hardest on large
 complex buildings. The total is therefore the energy of the modellable district,
-not of the district. The intensity is a ratio and is unaffected.
+not of the district. Nor is the intensity neutral: footprint anti-correlates
+with EUI among the buildings that did run (Spearman −0.55), so excluding the
+large ones biases the modellable subset's kWh/m² upward. It is the EUI of the
+modellable subset, stated as such.
 
 That gap turned out to be one threshold. The chain refused any footprint over
 5,000 m², which across the city excluded 123 buildings holding **11.55 % of

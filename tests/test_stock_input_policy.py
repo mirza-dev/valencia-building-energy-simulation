@@ -319,3 +319,63 @@ def test_queued_job_keeps_resolved_policy_after_project_default_changes(tmp_path
             "SELECT revision FROM workflow_input_policies WHERE workflow='city' ORDER BY revision"
         ).fetchall()
     assert [row[0] for row in revisions] == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# Ground use resolution (review finding ③, 2026-08-03)
+#
+# ground_floor_mode entered the run fingerprint but never reached the engine:
+# four modes, four identities, one physics.  resolve_ground_use is the
+# stock-scale resolver the deep chain now consumes, with the corrected token
+# set (the legacy per-representative set missed "B0" - 8,756 records - and
+# "OD" - 7,901, this dataset's two most common ground codes).
+# ---------------------------------------------------------------------------
+def _ground_stock() -> pd.DataFrame:
+    return pd.DataFrame({
+        "refparcela": ["GROUND_B0", "UPPER_ONLY", "WHOLE_HOUSE", "NOT_IN_TIPO15"],
+        "family": ["BlocPluri", "BlocPluri", "VivUni", "VivUni"],
+    })
+
+
+def _ground_tipo15(tmp_path: Path) -> Path:
+    path = tmp_path / "tipo15_ground.csv"
+    pd.DataFrame({
+        "31_pc":      ["GROUND_B0", "GROUND_B0", "UPPER_ONLY", "WHOLE_HOUSE"],
+        "252_planta": ["B0",        "1",         "1",          "OD"],
+        "442_sup_Residencial": [80.0, 80.0, 90.0, 120.0],
+    }).to_csv(path, sep=";", encoding="latin-1", index=False)
+    return path
+
+
+def test_resolve_ground_use_reads_tipo15_with_the_corrected_tokens(tmp_path):
+    from stock_input_policy import resolve_ground_use
+    stock = _ground_stock()
+    use, source = resolve_ground_use(stock, _ground_tipo15(tmp_path),
+                                     "tipo15_family_fallback")
+    resolved = dict(zip(stock["refparcela"], zip(use, source)))
+    # "B0" and "OD" are ground codes the legacy set missed
+    assert resolved["GROUND_B0"] == ("residential", "tipo15")
+    assert resolved["WHOLE_HOUSE"] == ("residential", "tipo15")
+    assert resolved["UPPER_ONLY"] == ("terciario", "tipo15")
+    # absent from Tipo15 -> family default (VivUni lives on its own ground)
+    assert resolved["NOT_IN_TIPO15"] == ("residential", "family_fallback")
+
+
+def test_resolve_ground_use_forced_modes_apply_to_everything(tmp_path):
+    from stock_input_policy import resolve_ground_use
+    stock = _ground_stock()
+    tipo15 = _ground_tipo15(tmp_path)
+    for mode, expected in (("force_unconditioned", "terciario"),
+                           ("force_conditioned", "residential")):
+        use, source = resolve_ground_use(stock, tipo15, mode)
+        assert set(use) == {expected}
+        assert set(source) == {"forced"}
+
+
+def test_prepare_stock_carries_the_ground_columns(tmp_path):
+    gis_path, tipo15_path = _synthetic_inputs(tmp_path)
+    stock, _, report = prepare_stock(gis_path, tipo15_path, _policy())
+    assert set(stock["ground_use"]) <= {"residential", "terciario"}
+    assert "ground_use_source" in stock.columns
+    assert report["ground_residential_buildings"] + \
+        report["ground_terciario_buildings"] == len(stock)

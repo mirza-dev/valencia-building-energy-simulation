@@ -255,19 +255,30 @@ def test_standard_pressure_matches_the_international_standard_atmosphere():
     assert cl._standard_pressure_pa(62.0) == pytest.approx(100582.0, rel=0.02)
 
 
-def test_epw_without_design_conditions_records_a_skipped_cross_check(bundle):
+def test_epw_without_design_conditions_needs_an_explicit_declaration(bundle):
     """A morphed future-climate EPW may carry no DESIGN CONDITIONS line.
 
-    That is allowed - but it has to be visible in the run record, not silent.
+    It used to sail through with a note nothing acted on, so an EPW with the
+    header stripped ran as if fully verified (review finding, 2026-08-03).
+    Now the bundle author must declare it, and the declaration is recorded.
     """
     lines = bundle.epw.read_text(encoding="latin-1").splitlines(keepends=True)
     kept = [line for line in lines
             if not line.upper().startswith("DESIGN CONDITIONS")]
     bundle.epw.write_text("".join(kept), encoding="latin-1")
 
-    climate = cl.load_climate(bundle.path)
-    assert climate.cross_check.startswith("skipped")
-    assert "DESIGN CONDITIONS" in climate.cross_check
+    with pytest.raises(cl.ClimateError, match="allow_unverified_design_days"):
+        cl.load_climate(bundle.path)
+
+    climate = cl.load_climate(bundle(allow_unverified_design_days=True))
+    assert climate.cross_check == "unverified_by_declaration"
+
+
+def test_the_declaration_does_not_weaken_a_verifiable_epw(bundle):
+    """With DESIGN CONDITIONS present the cross-check still runs and still
+    fails on contradiction - the flag only covers the header's absence."""
+    climate = cl.load_climate(bundle(allow_unverified_design_days=True))
+    assert climate.cross_check == "epw_design_conditions"
 
 
 def test_record_carries_everything_needed_to_reproduce_a_run(bundle):

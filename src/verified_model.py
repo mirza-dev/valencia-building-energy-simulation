@@ -122,8 +122,16 @@ LOCKED_PARAMETERS: dict[str, object] = {
 
 # Modelling choices that are not single constants.
 LOCKED_BEHAVIOUR: dict[str, object] = {
-    "ground_floor_regime": "conditioned_terciario_without_thermostat",
-    "ground_floor_in_area_basis": False,
+    # Since 2026-08-03 the ground regime is policy-resolved per building
+    # (ground_use column: Tipo15 ground-dwelling evidence with a family
+    # fallback).  "terciario" grounds keep exactly this verified regime; the
+    # verification replica and the pilot both resolve to it, so the 13 gates
+    # are unaffected.  "residential" grounds are a documented departure: the
+    # bajo holds dwellings, so it is typed residential and enters the basis.
+    "ground_floor_regime": ("policy_resolved: terciario -> conditioned Terciario "
+                            "without thermostat (verified against Rai); "
+                            "residential -> dwelling floor in the area basis"),
+    "ground_floor_in_area_basis": "terciario: no (Rai basis); residential: yes (it is dwelling area)",
     "ground_floor_glazed": True,
     "occupancy_source": "cadastre.pob_total, area weighted over residential storeys",
     "occupancy_schedule": "Ocupacion Vivienda CTE (unchanged)",
@@ -214,7 +222,9 @@ REPLICA_VS_PRODUCTION_DELTAS = [
     {
         "item": "domestic hot water",
         "replica": "Rai's fixed 150 l/day per storey",
-        "production": "CTE DB-HE4, 28 l/person/day on the real head count",
+        "production": ("Rai-aligned 28 l/person/day at 50 C on the real head "
+                       "count - ~80 % of the CTE DB-HE4 60 C energy reference, "
+                       "not a CTE equivalence"),
         "why": ("Documented Spanish standard, follows the real occupancy, and "
                 "lands within 5 % of Rai's per-m2 intensity."),
         "applied_by": "deep_building.add_dhw_loop",
@@ -302,7 +312,7 @@ LOCKED_SOURCE_HASHES: dict[str, str] = {
     "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
     "run_simulation.py": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
     "model_config.py": "786d1565951b9f21741e2762cd66dc7fd361c2c58e884be3d5ef05d1899e2271",
-    "deep_building.py": "51d7149061f5ed96f073a23a1e9c218b93b327886abf4d6803ac407792de19cf",
+    "deep_building.py": "2802cf2ab97241662a22532119e40be0122795a9782f243246f006ddbfe3c6f9",
 }
 
 

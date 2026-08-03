@@ -256,7 +256,33 @@ def validate_template(path: str | Path,
     path = Path(path)
     if not path.exists():
         raise TemplateError(f"template not found: {path}")
-    report = check_roles(load_model(path), aliases)
+    model = load_model(path)
+
+    # Library-only gate: the template supplies constructions, schedules and
+    # space types - never geometry or systems.  The builder re-processes EVERY
+    # Space in the model as one of its own storeys (model_builder sorts
+    # osm.getSpaces() by z and types them), so a template that arrives with a
+    # Space would have it renamed, zoned and counted as a floor of the
+    # building; pre-existing loops and design days would ride along silently.
+    # The default PlantillaOS_v2 carries none of these (measured 2026-08-03).
+    contraband = {
+        "Space": len(model.getSpaces()),
+        "Surface": len(model.getSurfaces()),
+        "ThermalZone": len(model.getThermalZones()),
+        "AirLoopHVAC": len(model.getAirLoopHVACs()),
+        "PlantLoop": len(model.getPlantLoops()),
+        "DesignDay": len(model.getDesignDays()),
+    }
+    found = {kind: count for kind, count in contraband.items() if count}
+    if found:
+        listed = ", ".join(f"{kind} x{count}" for kind, count in sorted(found.items()))
+        raise TemplateError(
+            f"{path.name} is not a library-only template: it already contains "
+            f"{listed}. The pipeline builds all geometry and systems itself, and "
+            f"pre-existing ones would be silently absorbed into the building. "
+            f"Strip them from the template before using it.")
+
+    report = check_roles(model, aliases)
 
     blocking = [item for item in report["missing"] if item["required"]]
     problems: list[str] = []

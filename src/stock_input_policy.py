@@ -180,6 +180,84 @@ def _tipo15_area_map(tipo15_path: Path) -> pd.Series:
     return values.groupby(ledger["31_pc"]).sum(min_count=1)
 
 
+# Planta codes that mean "this dwelling sits at ground level".  The legacy set
+# in `ground_rule_for_representative` ({0, 00, BJ, B, BX}) was measured against
+# the full Tipo15 ledger on 2026-08-03 and misses this dataset's two most
+# common ground codes: "B0" (bajo written with a zero - 8,756 records, mostly
+# BlocPluri/EdiPluri) and "OD" (one record for the whole building - 7,901
+# records, 4,846 of them VivUni detached houses, which by definition occupy
+# their own ground floor).  "BO" (letter O) adds 660; "BJ", the token the
+# legacy set did carry, appears 7 times.  With the corrected set, 9,829 of
+# 26,445 buildings (37.2 %) have a dwelling at ground level - against 680
+# under the legacy set.  The legacy function is left untouched so historical
+# Part C representative decisions stay reproducible.
+GROUND_PLANTA_TOKENS = {"0", "00", "B", "BJ", "BX", "B0", "BO", "OD"}
+
+# Mirrors neighborhood_pipeline.GROUND_UNCONDITIONED_BY_FAMILY (importing it
+# would be a cycle: nbp imports this module).  True = the ground floor is a
+# non-residential (terciario) storey; False = the family's buildings hold
+# their dwellings from the ground up.
+GROUND_TERCIARIO_BY_FAMILY = {"VivUni": False, "EdiPluri": True, "BlocPluri": True}
+
+
+def _tipo15_ground_map(tipo15_path: Path) -> pd.Series:
+    """True per refparcela when Tipo15 records a dwelling at ground level."""
+    ledger = pd.read_csv(
+        tipo15_path, sep=";", encoding="latin-1",
+        usecols=["31_pc", "252_planta"], dtype=str,
+    )
+    planta = ledger["252_planta"].fillna("").str.strip().str.upper()
+    return planta.isin(GROUND_PLANTA_TOKENS).groupby(ledger["31_pc"]).any()
+
+
+def resolve_ground_use(stock: gpd.GeoDataFrame, tipo15_path: Path,
+                       mode: GroundFloorMode) -> tuple[pd.Series, pd.Series]:
+    """Resolve the ground-floor use for every building in one Tipo15 pass.
+
+    Returns two aligned Series: `ground_use` ("residential" | "terciario") and
+    `ground_use_source` ("tipo15" | "family_fallback" | "forced").  This is the
+    stock-scale successor of the per-representative `ground_rule_for_representative`
+    (which reads the whole CSV per call and carries the incomplete legacy token
+    set); the deep chain consumes THIS resolution.
+
+    Geometry note, measured 2026-08-03: `altura_max` counts the NUMBERED
+    storeys and excludes the bajo in both groups (altura - max numbered planta
+    has mode +0 for 72 % / 77 % of buildings with and without ground
+    dwellings), so ground use never changes the storey count - the frozen
+    builder keeps building ground + altura_max levels, and only the ground
+    storey's use differs.
+    """
+    if mode == "force_unconditioned":
+        use = pd.Series("terciario", index=stock.index)
+        return use, pd.Series("forced", index=stock.index)
+    if mode == "force_conditioned":
+        use = pd.Series("residential", index=stock.index)
+        return use, pd.Series("forced", index=stock.index)
+
+    family_terciario = stock["family"].map(GROUND_TERCIARIO_BY_FAMILY)
+    if family_terciario.isna().any():
+        raise StockPolicyError(
+            "unknown_family_ground_default",
+            f"No ground-floor family default for: "
+            f"{sorted(stock.loc[family_terciario.isna(), 'family'].unique())}")
+    family_use = family_terciario.map({True: "terciario", False: "residential"})
+
+    if mode == "family_default":
+        return family_use, pd.Series("family_default", index=stock.index)
+
+    # tipo15_family_fallback
+    has_ground = stock["refparcela"].map(_tipo15_ground_map(tipo15_path))
+    use = pd.Series(
+        ["residential" if hg is True else "terciario" if hg is False else fam
+         for hg, fam in zip(has_ground, family_use)],
+        index=stock.index)
+    source = pd.Series(
+        ["tipo15" if hg is not None and not pd.isna(hg) else "family_fallback"
+         for hg in has_ground],
+        index=stock.index)
+    return use, source
+
+
 def _apply_scope(
     frame: gpd.GeoDataFrame, policy: StockInputPolicy, *, boundary_path: Path | None,
     district: str | None, reference: str | None,
@@ -350,6 +428,15 @@ def prepare_stock(
         raise StockPolicyError("invalid_residential_area", "No positive residential area can be resolved for every retained building")
     stock["res_area_m2"] = residential.astype(float)
 
+    # Ground-floor use, resolved here so the whole stock costs one Tipo15 pass
+    # instead of one CSV read per building.  Until 2026-08-03 this policy field
+    # entered the run fingerprint but never reached the engine - four modes,
+    # four identities, one physics.
+    ground_use, ground_use_source = resolve_ground_use(
+        stock, tipo15_path, resolved.ground_floor_mode)
+    stock["ground_use"] = ground_use
+    stock["ground_use_source"] = ground_use_source
+
     report = {
         "scope": scope_label,
         "source_buildings": int(len(raw)),
@@ -365,6 +452,9 @@ def prepare_stock(
         "residential_area_proxy_buildings": int(stock["res_area_proxy"].sum()),
         "duplicate_parcel_rows": int(stock["dup_refparcela"].sum()),
         "duplicate_parcel_apportioned_rows": int(apportioned_rows),
+        "ground_residential_buildings": int(ground_use.eq("residential").sum()),
+        "ground_terciario_buildings": int(ground_use.eq("terciario").sum()),
+        "ground_use_from_tipo15": int(ground_use_source.eq("tipo15").sum()),
         "residential_area_m2": float(stock["res_area_m2"].sum()),
         **resolution,
     }
@@ -378,6 +468,14 @@ def ground_rule_for_representative(
     reference: str, family: str, tipo15_path: Path, mode: GroundFloorMode,
     family_defaults: dict[str, bool],
 ) -> tuple[bool, str]:
+    """Legacy per-representative rule - kept byte-for-byte for reproducibility.
+
+    Its token set below misses this dataset's two most common ground codes
+    ("B0", 8,756 records; "OD", 7,901 - measured 2026-08-03), so it recognises
+    only a fraction of the ground dwellings.  It is NOT fixed here because the
+    accepted Part C representative runs were produced with it; the stock-scale
+    `resolve_ground_use` above carries the corrected `GROUND_PLANTA_TOKENS`.
+    """
     if mode == "force_unconditioned":
         return True, "forced_unconditioned"
     if mode == "force_conditioned":

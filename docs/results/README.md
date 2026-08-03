@@ -108,8 +108,13 @@ statement from its authors.
 **Coverage is stated, not implied.** 958 of 1,012 buildings in scope, which is
 94.66 % of buildings but **86.33 %** of the footprint — the geometry gates fall
 hardest on large, complex buildings. So the 118.75 GWh figure is the energy of
-the modellable district, not of the district. The intensity is a ratio and is
-unaffected, which is why the comparison above still holds.
+the modellable district, not of the district. The intensity is not neutral to
+that gap either: footprint anti-correlates with EUI among the buildings that
+did run (Spearman −0.55; large quartile 42.6 kWh/m² against small quartile
+57.4), so excluding the large buildings biases the subset's intensity upward.
+45.04 kWh/m² is the EUI of the modellable subset, stated as such — the
+per-cluster comparison above still holds because both sides of it are computed
+over the same buildings.
 
 The 53 exclusions and the 1 failure are all in the ledger with reasons. The
 failure is a cadastral polygon with a degenerate surface: EnergyPlus refuses it,

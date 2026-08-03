@@ -172,7 +172,9 @@ def test_rai_ground_regime_conditions_the_ground_but_keeps_it_out_of_the_area(pi
 
 
 @pytest.mark.integration
-def test_dhw_follows_cte_he4_and_is_metered_separately(pilot_model):
+def test_dhw_is_rai_aligned_28l_at_50c_and_metered_separately(pilot_model):
+    """28 l/person/day delivered at 50 C - Rai-aligned, ~80 % of the CTE 60 C
+    energy reference, deliberately NOT a CTE equivalence (see the constant)."""
     osm, stats = pilot_model
     dhw = stats["deep_layers"]["dhw"]
 
@@ -383,3 +385,95 @@ def test_pilot_records_its_zoning_and_is_not_flagged(pilot_model):
     assert zoning["footprint_m2"] == pytest.approx(stats["footprint_m2"], abs=0.1)
     assert zoning["footprint_m2"] < db.LARGE_FOOTPRINT_SINGLE_ZONE_M2
     assert zoning["large_footprint_single_zone"] is False
+
+
+def test_scan_err_deep_needs_both_markers_in_the_same_block(tmp_path):
+    """An unrelated Severe carrying only ONE of the two markers is not excused.
+
+    EnergyPlus emits "EMS Actuator cannot be set" for other actuators too; with
+    `any` those rode through as benign (review finding, 2026-08-03).  The
+    documented PTHP+persiana message always carries both markers in one block.
+    """
+    body = ("   ** Severe  ** Some other problem entirely\n"
+            "   **   ~~~   ** ...'Availability' EMS Actuator cannot be set here\n"
+            "   ************* EnergyPlus Completed Successfully-- 0 Warning; 1 Severe Errors;\n")
+    with pytest.raises(RuntimeError, match="unexplained Severe"):
+        db.scan_err_deep(_write_err(tmp_path, body))
+
+    body = ("   ** Severe  ** Missing shade or blind layer in window construction\n"
+            "   ************* EnergyPlus Completed Successfully-- 0 Warning; 1 Severe Errors;\n")
+    with pytest.raises(RuntimeError, match="unexplained Severe"):
+        db.scan_err_deep(_write_err(tmp_path, body))
+
+
+# ---------------------------------------------------------------------------
+# Ground use (review finding ③, 2026-08-03: policy now reaches the engine)
+# ---------------------------------------------------------------------------
+def test_unknown_ground_use_is_refused():
+    with pytest.raises(ValueError, match="unknown ground_use"):
+        row = db.load_building_row(PILOT)
+        db.build_deep_model(row, None, 10.0, ground_use="atrium")
+
+
+@pytest.mark.integration
+def test_pilot_defaults_to_the_terciario_ground(pilot_model):
+    """The raw cadastre has no ground_use column -> historical Rai regime."""
+    _, stats = pilot_model
+    assert stats["ground_use"] == "terciario"
+    assert stats["res_area_m2"] == pytest.approx(2809.9, abs=0.1)
+    ground = stats["deep_layers"]["ground"]
+    assert ground["in_floor_area_basis"] is False
+
+
+@pytest.fixture(scope="module")
+def residential_ground_model():
+    """A real Benicalap block with a Tipo15 ground dwelling (B0 planta)."""
+    ref = "4149124YJ2745A"
+    row = db.load_building_row(ref).copy()
+    row["ground_use"] = "residential"
+    row["ground_use_source"] = "tipo15"
+    geometry = mb.clean_polygon(row.geometry)
+    neighbors = mb.load_neighbors(geometry, ref, mb.NEIGHBORS_SHP)
+    party = mb.find_party_walls(geometry, ref, mb.NEIGHBORS_SHP, neighbors=neighbors)
+    return db.build_deep_model(row, party, 20.0, neighbors=neighbors)
+
+
+@pytest.mark.integration
+def test_residential_ground_is_a_dwelling_floor_in_the_basis(residential_ground_model):
+    osm, stats = residential_ground_model
+    assert stats["ground_use"] == "residential"
+    # the bajo enters the area basis: fp x (n_res + 1), not fp x n_res
+    expected = round(stats["footprint_m2"] * (stats["n_floors_residential"] + 1), 1)
+    assert stats["res_area_m2"] == pytest.approx(expected, abs=0.1)
+
+    spaces = sorted(osm.getSpaces(),
+                    key=lambda s: min(v.z() for srf in s.surfaces() for v in srf.vertices()))
+    ground = spaces[0]
+    assert ground.spaceType().get().nameString() == db.RESIDENTIAL_SPACE_TYPE
+    assert ground.partofTotalFloorArea() is True
+    zone = ground.thermalZone().get()
+    assert not zone.thermostatSetpointDualSetpoint().isNull()
+
+
+@pytest.mark.integration
+def test_residential_ground_gets_the_residential_pthp(residential_ground_model):
+    """Space-type-driven COP split: the dwelling bajo gets 4.07, not 3.0."""
+    osm, _ = residential_ground_model
+    spaces = sorted(osm.getSpaces(),
+                    key=lambda s: min(v.z() for srf in s.surfaces() for v in srf.vertices()))
+    ground_zone = spaces[0].thermalZone().get().nameString()
+    for pthp in osm.getZoneHVACPackagedTerminalHeatPumps():
+        zone = pthp.thermalZone()
+        if zone.is_initialized() and zone.get().nameString() == ground_zone:
+            coil = pthp.heatingCoil().to_CoilHeatingDXSingleSpeed().get()
+            assert coil.ratedCOP() == pytest.approx(db.PTHP_HEATING_COP)
+            return
+    raise AssertionError("no PTHP found on the ground zone")
+
+
+@pytest.mark.integration
+def test_residential_ground_is_still_glazed(residential_ground_model):
+    _, stats = residential_ground_model
+    glazing = stats["deep_layers"]["ground_glazing"]
+    assert glazing["ground_windows"] > 0
+    assert glazing["ground_glass_area_m2"] > 0
