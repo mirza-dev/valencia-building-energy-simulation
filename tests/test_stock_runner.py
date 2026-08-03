@@ -949,3 +949,35 @@ def test_provenance_block_names_its_ledgers_and_the_merge_rule(tmp_path):
     assert block["source_ledgers"][0]["sha256"] == sr.file_sha256(ledger)
     assert block["source_ledgers"][0]["rows"] == 1
     assert "latest_per_reference" in block["merge_rule"]
+
+
+def test_the_prepared_file_itself_carries_the_ground_columns(tmp_path, monkeypatch):
+    """The FILE the workers read, not the frame the policy returned.
+
+    prepare_stock resolved ground_use correctly while the written GeoPackage
+    silently dropped it through the column allowlist, so the first v5 launch
+    ran with terciario everywhere (2026-08-03).  The codebase's own rule -
+    verify from the engine's output, not from what you wrote into it - applies
+    to data artifacts too.
+    """
+    import geopandas as gpd_mod
+    import pandas as pd
+    from shapely.geometry import box
+    import stock_input_policy as sip_mod
+
+    gis = tmp_path / "stock.gpkg"
+    gpd_mod.GeoDataFrame({
+        "refparcela": ["AAA"], "nombre": ["ONE"], "altura_max": [2],
+        "cluster": ["BlocPluriP04"], "Shape_Area": [100.0],
+    }, geometry=[box(0, 0, 10, 10)], crs="EPSG:25830").to_file(gis, driver="GPKG")
+    tipo15 = tmp_path / "tipo15.csv"
+    pd.DataFrame({"31_pc": ["AAA"], "442_sup_Residencial": [150.0],
+                  "252_planta": ["B0"]}).to_csv(
+        tipo15, sep=";", encoding="latin-1", index=False)
+
+    out, _, _ = sr.prepare_stock_file(
+        gis, tipo15, sip_mod.StockInputPolicy(), tmp_path / "var")
+    written = gpd_mod.read_file(out)
+    assert "ground_use" in written.columns
+    assert "ground_use_source" in written.columns
+    assert written.loc[0, "ground_use"] == "residential"      # B0 is a ground code

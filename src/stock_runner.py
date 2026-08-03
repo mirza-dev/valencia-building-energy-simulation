@@ -276,10 +276,17 @@ def prepare_stock_file(gis_path: Path, tipo15_path: Path,
     out = prepared_stock_path(source_fingerprint, var_dir)
     if force or not out.exists():
         out.parent.mkdir(parents=True, exist_ok=True)
+        # This allowlist IS the contract between the policy and the engine: a
+        # column the policy resolves but this list omits never reaches a
+        # worker.  That is exactly how ground_use went missing on first wiring
+        # (2026-08-03) - prepare_stock carried it, the file did not, and the
+        # run silently fell back to terciario everywhere.  Caught by checking
+        # the written file, and pinned by a test on the FILE, not the frame.
         columns = [c for c in ("refparcela", "altura_max", "cluster", "family",
                                "period", "nombre", "pob_total", "num_vivend",
                                "footprint_area_m2", "imputed_floors",
                                "res_area_proxy", "dup_refparcela",
+                               "ground_use", "ground_use_source",
                                "res_area_m2", "geometry")
                    if c in stock.columns]
         prepared = stock[columns].copy()
