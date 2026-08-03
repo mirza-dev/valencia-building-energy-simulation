@@ -2,7 +2,7 @@
   "schema_version": 1,
   "adapter_sha256": "549ab7179f147978e4cd6d656e807d0015bcc81a20855a15287926bb9746ae68",
   "builder": "src/model_builder.py",
-  "builder_sha256": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
+  "builder_sha256": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
   "required_functions": [
     "apply_comfort_offsets",
     "set_weather_file"
@@ -25,7 +25,27 @@
     "simulation_manifest_sha256": "6abab0dfa80e2f534c5724b562a6fa7c5065655b84aa101a97a04b1a34929ca0",
     "warning_count": 11,
     "severe_count": 0,
-    "fatal_count": 0
+    "fatal_count": 0,
+    "source_rehash_history": [
+      {
+        "reason": "model_builder.FOOTPRINT_RANGE is now derived from DEFAULT_BUILD_CONFIG.geometry instead of restating a literal (50.0, 5000.0)",
+        "why_it_was_needed": "the footprint ceiling was raised from 5 000 to 20 000 m2 on 2026-08-03. At 5 000 the gate excluded 123 Valencia buildings carrying 11.55 % of the city's floor area, so a city total silently stood for 87.5 % of the stock; the new ceiling brings area coverage to 98.38 %. The constant was dead code - the real gate in prepare_footprint() reads the config - so leaving it would have parked a wrong (50, 5000) two lines above the working gate",
+        "physics_unchanged": "verified_model --verify 13/13 PASS with every gate bit-identical to the previous golden: residential area 954.800, wall U 1.409, people 73.530, heating 26.527, cooling -68.403, total site 53.680 kWh/m2. Rai's replica is 954.8 m2, far from either ceiling, so no gate could move",
+        "workbench_unaffected": "the ceiling is a BuildConfig field the UI already exposes and validates (ConfigPanel footprint_max_m2); no adapter, scenario or LHS code path changed, and the frontend suite passes 51/51",
+        "no_result_invalidated": "no committed run is rewritten. Past runs stay on the profile they were produced under; the new ceiling only changes which buildings a FUTURE run admits",
+        "previous_builder_sha256": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
+        "rehashed_at": "2026-08-03"
+      }
+    ],
+    "source_rehash": {
+      "reason": "model_builder.FOOTPRINT_RANGE is now derived from DEFAULT_BUILD_CONFIG.geometry instead of restating a literal (50.0, 5000.0)",
+      "why_it_was_needed": "the footprint ceiling was raised from 5 000 to 20 000 m2 on 2026-08-03. At 5 000 the gate excluded 123 Valencia buildings carrying 11.55 % of the city's floor area, so a city total silently stood for 87.5 % of the stock; the new ceiling brings area coverage to 98.38 %. The constant was dead code - the real gate in prepare_footprint() reads the config - so leaving it would have parked a wrong (50, 5000) two lines above the working gate",
+      "physics_unchanged": "verified_model --verify 13/13 PASS with every gate bit-identical to the previous golden: residential area 954.800, wall U 1.409, people 73.530, heating 26.527, cooling -68.403, total site 53.680 kWh/m2. Rai's replica is 954.8 m2, far from either ceiling, so no gate could move",
+      "workbench_unaffected": "the ceiling is a BuildConfig field the UI already exposes and validates (ConfigPanel footprint_max_m2); no adapter, scenario or LHS code path changed, and the frontend suite passes 51/51",
+      "no_result_invalidated": "no committed run is rewritten. Past runs stay on the profile they were produced under; the new ceiling only changes which buildings a FUTURE run admits",
+      "previous_builder_sha256": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
+      "rehashed_at": "2026-08-03"
+    }
   },
   "smoke_status": "passed"
 }

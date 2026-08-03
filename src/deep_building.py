@@ -97,6 +97,18 @@ MAXIMUM_WARMUP_DAYS = 60
 GROUND_TEMPERATURE_C = 18.0               # Rai: Site:GroundTemperature:BuildingSurface, flat all year
 WATER_MAINS_TEMPERATURE_C = 10.0          # Rai: FixedDefault
 
+# The chain gives every storey ONE well-mixed thermal zone.  On a deep plan that
+# stops being defensible: the core is driven by internal gains rather than by
+# the envelope, and a single zone averages the two together.  This is the
+# footprint above which the result is flagged - not refused, flagged, so a total
+# can say how much of itself rests on the weaker assumption.
+#
+# 5 000 m2 is the ceiling that stood until 2026-08-03, kept here as the
+# threshold it always implicitly was.  Raising the ceiling to 20 000 admitted
+# 119 Valencia buildings carrying 11.00 % of the city's floor area; dropping
+# them was the worse error, but blending them in silently would be too.
+LARGE_FOOTPRINT_SINGLE_ZONE_M2 = 5000.0
+
 # Site barometric pressure from the official ASHRAE design-condition file for
 # Valencia 082840 (elevation 62 m).  OpenStudio's DesignDay default is 31 000 Pa
 # -- roughly 9 000 m of altitude -- so this MUST be set explicitly, or the sizing
@@ -1170,6 +1182,19 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
         layers["weather"] = mb.set_weather_file(osm, climate.epw_path)
         layers["weather"]["climate"] = climate.name
         layers["weather"]["climate_fingerprint"] = climate.fingerprint
+    # One well-mixed zone per storey is the chain's standing assumption; on a
+    # deep plan it is a weaker one.  Recorded per building so an aggregate can
+    # state how much of a total rests on it instead of hiding the mix.
+    single_zone_caveat = footprint_m2 > LARGE_FOOTPRINT_SINGLE_ZONE_M2
+    stats["large_footprint_single_zone"] = single_zone_caveat
+    layers["zoning"] = {
+        "scheme": "one_well_mixed_zone_per_storey",
+        "footprint_m2": round(footprint_m2, 1),
+        "single_zone_threshold_m2": LARGE_FOOTPRINT_SINGLE_ZONE_M2,
+        "large_footprint_single_zone": single_zone_caveat,
+        "note": ("no core/perimeter split: above the threshold the zone averages "
+                 "an internally-driven core with an envelope-driven perimeter"),
+    }
     stats["deep_layers"] = layers
     stats["total_conditioned_area_m2"] = round(footprint_m2 * (n_res + 1), 1)
     return osm, stats

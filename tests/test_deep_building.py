@@ -351,3 +351,35 @@ def test_capped_verdict_keeps_the_original_padron_value_visible():
 def test_uncapped_dense_record_is_still_flagged_plainly():
     verdict = db.occupancy_plausibility(26.0, 148.2, 2)
     assert verdict["status"] == "implausible_dense"
+
+
+# ---------------------------------------------------------------------------
+# Single-zone caveat
+#
+# The chain gives every storey one well-mixed zone.  Raising the footprint
+# ceiling from 5 000 to 20 000 m2 on 2026-08-03 admitted 119 Valencia buildings
+# carrying 11.00 % of the city's floor area - the right call, since dropping
+# them was the larger error, but the weaker assumption they run under has to be
+# recorded rather than blended into a total.
+# ---------------------------------------------------------------------------
+def test_single_zone_threshold_is_the_ceiling_that_used_to_exclude():
+    """The threshold is deliberately the OLD ceiling, not a fresh guess."""
+    assert db.LARGE_FOOTPRINT_SINGLE_ZONE_M2 == 5000.0
+    # and it is a flag, not a gate: the config still admits far beyond it
+    assert mb.DEFAULT_BUILD_CONFIG.geometry.footprint_max_m2 == 20000.0
+    assert db.LARGE_FOOTPRINT_SINGLE_ZONE_M2 < \
+        mb.DEFAULT_BUILD_CONFIG.geometry.footprint_max_m2
+
+
+@pytest.mark.integration
+def test_pilot_records_its_zoning_and_is_not_flagged(pilot_model):
+    """562 m2 over 5 storeys is a normal block - flagged False, but stated."""
+    _, stats = pilot_model
+    assert stats["large_footprint_single_zone"] is False
+
+    zoning = stats["deep_layers"]["zoning"]
+    assert zoning["scheme"] == "one_well_mixed_zone_per_storey"
+    assert zoning["single_zone_threshold_m2"] == db.LARGE_FOOTPRINT_SINGLE_ZONE_M2
+    assert zoning["footprint_m2"] == pytest.approx(stats["footprint_m2"], abs=0.1)
+    assert zoning["footprint_m2"] < db.LARGE_FOOTPRINT_SINGLE_ZONE_M2
+    assert zoning["large_footprint_single_zone"] is False

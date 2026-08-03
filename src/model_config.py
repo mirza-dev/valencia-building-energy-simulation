@@ -39,7 +39,16 @@ class GeometryConfig(StrictModel):
     simplify_tolerance_m: float = Field(0.3, ge=0.0, le=5.0)
     max_area_delta_fraction: float = Field(0.01, ge=0.0, le=0.25)
     footprint_min_m2: float = Field(50.0, gt=0.0)
-    footprint_max_m2: float = Field(5000.0, gt=0.0)
+    # Not an engine limit - a modelling-validity guard.  The chain gives each
+    # storey one well-mixed thermal zone, which stops being defensible on a very
+    # deep plan where the core is driven by internal gains rather than by the
+    # envelope.  The ceiling sat at 5 000 m2 until 2026-08-03, which excluded 123
+    # Valencia buildings carrying 11.55 % of the city's floor area - too much to
+    # drop from a city total over a threshold nothing had measured.  20 000 m2
+    # recovers 11.00 of those 11.55 points and leaves 4 outliers (the largest is
+    # 32 172 m2 over 2 storeys, which is not a dwelling at all).  Buildings above
+    # LARGE_FOOTPRINT_SINGLE_ZONE_M2 are flagged, never silently blended in.
+    footprint_max_m2: float = Field(20000.0, gt=0.0)
     party_wall_tolerance_m: float = Field(0.3, ge=0.0, le=5.0)
     min_shared_edge_m: float = Field(1.0, ge=0.0)
     party_overlap_ratio: float = Field(0.5, ge=0.0, le=1.0)

@@ -56,6 +56,7 @@ import geopandas as gpd
 import pandas as pd
 
 import climate as cl
+import deep_building as db
 import model_builder as mb
 import stock_input_policy as sip
 import template_contract as tpl
@@ -116,7 +117,7 @@ LEDGER_METRICS = (
     "hvac_co2_kg_m2", "total_site_co2_kg_m2", "hvac_co2_t_yr", "total_site_co2_t_yr",
     "total_site_kwh", "space_heating_kwh", "cooling_kwh", "dhw_kwh",
     "res_area_m2", "tipo15_res_area_m2", "res_area_source",
-    "total_conditioned_area_m2", "footprint_m2",
+    "total_conditioned_area_m2", "footprint_m2", "large_footprint_single_zone",
     "n_floors_total", "n_floors_residential", "n_party_surfaces",
     "n_shading_surfaces", "n_windows", "window_area_m2",
     "padron_occupants", "occupants_applied", "occupants_source",
@@ -572,6 +573,45 @@ def coverage_block(rows: list[dict], ok: list[dict],
     return block
 
 
+def zoning_block(frame: pd.DataFrame) -> dict:
+    """How much of a total rests on the weaker single-zone assumption.
+
+    Every storey gets one well-mixed thermal zone.  On a deep plan that averages
+    an internally-driven core with an envelope-driven perimeter, so the result is
+    softer than for a normal block - and those buildings are exactly the large
+    ones, which carry area out of all proportion to their count.
+
+    Until 2026-08-03 the chain simply refused them at 5 000 m2, which dropped
+    11.55 % of Valencia's floor area over a threshold nothing had measured.  They
+    are now simulated and counted here instead, so a city total can say what
+    share of itself stands on the weaker assumption rather than implying none of
+    it does.
+    """
+    block = {"threshold_m2": db.LARGE_FOOTPRINT_SINGLE_ZONE_M2,
+             "scheme": "one_well_mixed_zone_per_storey"}
+    if "large_footprint_single_zone" not in frame or frame.empty:
+        return block
+
+    flagged = frame["large_footprint_single_zone"].fillna(False).astype(bool)
+    area = frame["res_area_m2"]
+    energy = frame["total_site_kwh_m2"] * area
+    total_area = float(area.sum())
+    total_energy = float(energy.sum())
+
+    block.update({
+        "buildings": int(flagged.sum()),
+        "buildings_pct": round(100.0 * float(flagged.sum()) / len(frame), 2),
+        "residential_area_pct": (round(100.0 * float(area[flagged].sum()) / total_area, 2)
+                                 if total_area else 0.0),
+        "total_site_pct": (round(100.0 * float(energy[flagged].sum()) / total_energy, 2)
+                           if total_energy else 0.0),
+        "note": ("buildings above the threshold have no core/perimeter split; "
+                 "they are included in every total above and this is the share "
+                 "they account for"),
+    })
+    return block
+
+
 def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
     """Roll the ledger up to cluster / district / city totals.
 
@@ -591,6 +631,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
                 "buildings_excluded": sum(1 for r in rows
                                           if r.get("status") == "excluded"),
                 "coverage": coverage_block(rows, ok, stock),
+                "zoning": zoning_block(pd.DataFrame(ok)),
                 "totals": {}}
 
     frame = pd.DataFrame(ok)
@@ -653,6 +694,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
                                    if r.get("status") == "failed_qa"),
         "buildings_excluded": sum(1 for r in rows if r.get("status") == "excluded"),
         "coverage": coverage_block(rows, ok, stock),
+        "zoning": zoning_block(frame),
         "qa_failed": int((~frame["qa_all_passed"].astype(bool)).sum())
         if "qa_all_passed" in frame else 0,
         "unexplained_severes": int(frame.get("severes_unexplained",

@@ -845,3 +845,61 @@ def test_runner_reproduces_the_single_building_path(tmp_path):
     # the two area bases travel side by side and are never conflated
     assert row["res_area_m2"] == pytest.approx(2809.9, abs=0.1)
     assert row["tipo15_res_area_m2"] == pytest.approx(2910.0, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# Footprint ceiling and the single-zone caveat
+#
+# The ceiling was raised from 5 000 to 20 000 m2 on 2026-08-03.  At 5 000 the
+# gate excluded 123 Valencia buildings carrying 11.55 % of the city's floor
+# area, so a "city total" quietly stood for 87.5 % of the stock.  Raising it
+# admits them; these tests keep the admission honest.
+# ---------------------------------------------------------------------------
+def test_footprint_range_constant_cannot_go_stale():
+    """`mb.FOOTPRINT_RANGE` is derived, never restated.
+
+    It sat at a literal (50.0, 5000.0) while the real gate in prepare_footprint
+    read the config, so raising the ceiling would have left a wrong pair in the
+    frozen builder for the next reader to believe.
+    """
+    geometry = mb.DEFAULT_BUILD_CONFIG.geometry
+    assert mb.FOOTPRINT_RANGE == (geometry.footprint_min_m2,
+                                  geometry.footprint_max_m2)
+    assert sr.footprint_limits() == mb.FOOTPRINT_RANGE
+
+
+def test_footprint_ceiling_admits_large_blocks():
+    """A 17 272 m2 Benicalap block is inside the gate; a 32 172 m2 hall is not."""
+    low, high = sr.footprint_limits()
+    assert low == 50.0 and high == 20000.0
+    assert low < 17272.0 < high            # 3748901YJ2734H, 15 storeys
+    assert 32172.0 > high                  # 2405201YJ2820E, 2 storeys - not a dwelling
+
+
+def test_zoning_block_reports_the_share_resting_on_one_zone():
+    """The caveat is a share of area and energy, not just a building count."""
+    rows = [_ok_row("small", "BlocPluriP04", 100.0, 50.0,
+                    large_footprint_single_zone=False),
+            _ok_row("large", "BlocPluriP06", 900.0, 50.0,
+                    large_footprint_single_zone=True)]
+    zoning = sr.aggregate(rows)["zoning"]
+
+    assert zoning["threshold_m2"] == db.LARGE_FOOTPRINT_SINGLE_ZONE_M2
+    assert zoning["buildings"] == 1
+    assert zoning["buildings_pct"] == pytest.approx(50.0)
+    # one building in two, but nine tenths of the area and of the energy: the
+    # count alone would badly understate what rests on the weaker assumption
+    assert zoning["residential_area_pct"] == pytest.approx(90.0)
+    assert zoning["total_site_pct"] == pytest.approx(90.0)
+
+
+def test_zoning_block_survives_an_empty_and_a_legacy_ledger():
+    """Older ledgers have no flag; the block degrades instead of raising."""
+    assert sr.aggregate([])["zoning"]["threshold_m2"] == \
+        db.LARGE_FOOTPRINT_SINGLE_ZONE_M2
+    legacy = sr.aggregate([_ok_row("A", "BlocPluriP04", 100.0, 50.0)])["zoning"]
+    assert "buildings" not in legacy          # nothing invented from absence
+
+
+def test_large_footprint_flag_is_carried_into_the_ledger():
+    assert "large_footprint_single_zone" in sr.LEDGER_METRICS

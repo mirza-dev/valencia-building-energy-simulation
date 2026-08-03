@@ -52,7 +52,11 @@ DEFAULT_PARAMS = DEFAULT_BUILD_CONFIG.to_legacy_params()
 
 PARTY_WALL_TOL = 0.3 
 
-FOOTPRINT_RANGE = (50.0, 5000.0)
+# Derived, never restated: this constant sat at a literal (50.0, 5000.0) while
+# the gate in prepare_footprint() read the config, so raising the ceiling would
+# have left a stale pair here for the next reader to believe.
+FOOTPRINT_RANGE = (DEFAULT_BUILD_CONFIG.geometry.footprint_min_m2,
+                   DEFAULT_BUILD_CONFIG.geometry.footprint_max_m2)
 
 
 OUTPUT_VARIABLES = dict(CONFIG_OUTPUT_VARIABLES)

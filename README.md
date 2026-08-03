@@ -103,6 +103,7 @@ Swappable inputs, each validated before a run starts:
 | **Climate bundle** | EPW and `.ddy` must describe the same station; design days must agree with the EPW's own header; barometric pressure must match the elevation |
 | **Template contract** | All 24 objects the chain binds to by name must exist with the right type. Missing ones are reported together, never defaulted |
 | **Geometry screening** | The engine's own gate is called, not a restatement of it. Every excluded building is recorded with a reason |
+| **Zoning caveat** | Every storey is one well-mixed zone. Above 5,000 m² of footprint that is the weaker assumption, so those buildings are flagged and a total states what share of itself rests on them |
 | **Severe rule** | One unclassified EnergyPlus Severe invalidates the run |
 | **QA cross-check** | EnergyPlus's own tables are compared against what the model claims |
 | **Run identity** | Profile, climate, template, policy, source data and schema hashed together. A ledger written under one identity cannot be resumed under another |
@@ -159,6 +160,16 @@ Coverage is stated rather than implied: 94.66 % of buildings in scope, but
 complex buildings. The total is therefore the energy of the modellable district,
 not of the district. The intensity is a ratio and is unaffected.
 
+That gap turned out to be one threshold. The chain refused any footprint over
+5,000 m², which across the city excluded 123 buildings holding **11.55 % of
+Valencia's floor area** — a modelling-validity guard, since each storey is given
+one well-mixed thermal zone, but one nothing had ever measured. Raising it to
+20,000 m² brings city area coverage from 87.50 % to **98.38 %** and leaves four
+outliers out (the largest is 32,172 m² over two storeys, not a dwelling). The
+admitted buildings are flagged, not blended: an aggregate reports what share of
+itself rests on the single-zone approximation. The district figures above predate
+that change and are being re-run.
+
 The clusters that *do* deviate deviate systematically, and that turned out to be
 the most interesting result. Sorted by median storey count, the deviation from
 the reference value runs +54 % at one storey through zero at four to five, to
@@ -183,7 +194,7 @@ OpenStudio's Python bindings are unstable on 3.14.
 ```bash
 python3.13 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/          # 340 tests
+.venv/bin/python -m pytest tests/          # 347 tests
 ```
 
 **The input data is not in this repository.** It belongs to the UPV research
@@ -204,7 +215,9 @@ need a real building.
 ## Status
 
 The engine is verified and frozen, and the district-scale results above were
-produced with it. The full 24,976-building city run is next.
+produced with it. The footprint ceiling was then raised (see Results), taking the
+runnable stock to **25,102 buildings and 98.38 % of the city's floor area**; the
+district is being re-run on it before the full city run.
 
 ## Licence
 

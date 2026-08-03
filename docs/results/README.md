@@ -115,6 +115,41 @@ The 53 exclusions and the 1 failure are all in the ledger with reasons. The
 failure is a cadastral polygon with a degenerate surface: EnergyPlus refuses it,
 and so does this pipeline.
 
+### The footprint ceiling, and why it moved
+
+Reading those exclusions by reason rather than by count showed the gap was almost
+entirely one threshold. City-wide, the engine's geometry gate refused 1,468
+buildings, but they were not equivalent: the 853 rejected for simplification loss
+carried **0.71 %** of the floor area, while the 123 over the 5,000 m² footprint
+ceiling carried **11.55 %**.
+
+The ceiling is not an engine limit. It guards a modelling assumption — the chain
+gives every storey one well-mixed thermal zone, which weakens on a deep plan
+where the core is driven by internal gains rather than by the envelope. The guard
+is reasonable; sitting at a value nobody had measured was not.
+
+Raised to 20,000 m² on 2026-08-03:
+
+| Ceiling | Buildings above it | Floor area lost |
+|---:|---:|---:|
+| 5,000 | 123 | 11.55 % |
+| 10,000 | 27 | 3.72 % |
+| **20,000** | **4** | **0.55 %** |
+
+Runnable stock goes from 24,984 to **25,102 buildings**, and area coverage from
+87.50 % to **98.38 %**. The four still excluded are genuine outliers — the
+largest is 32,172 m² over two storeys, which is not a dwelling.
+
+Admitting them without saying so would trade one silent error for another, so
+every building above 5,000 m² is flagged in the ledger and `aggregate()` reports
+a `zoning` block: how many such buildings a total contains, and what share of its
+area and energy they account for. In Benicalap that is 9 buildings — under 1 % of
+the count, but **19 % of the district's floor area**, one of them 17,272 m² over
+15 storeys.
+
+The verification is unaffected and was re-run to prove it: Rai's building is
+954.8 m², far from either ceiling, and all 13 gates came back bit-identical.
+
 ## What the fixes were worth
 
 | | one shared envelope | per-cluster envelope | + warmup fix |
