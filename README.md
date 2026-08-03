@@ -159,6 +159,17 @@ Coverage is stated rather than implied: 94.66 % of buildings in scope, but
 complex buildings. The total is therefore the energy of the modellable district,
 not of the district. The intensity is a ratio and is unaffected.
 
+The clusters that *do* deviate deviate systematically, and that turned out to be
+the most interesting result. Sorted by median storey count, the deviation from
+the reference value runs +54 % at one storey through zero at four to five, to
+−23 % at six — correlation **−0.80**. Envelope quality does not explain it: two
+clusters with the *same* wall U of 2.56 W/m²K sit 53 percentage points apart, at
+one storey and three. What separates them is surface-to-volume.
+
+That is the error the representative-model method carries within a cluster —
+one model standing in for buildings of very different shape — measured by
+simulating them individually. It is the thing this pipeline was built to find.
+
 [`docs/results/`](docs/results/) holds the verification report, the district
 output, and what each fix was worth.
 
@@ -193,8 +204,7 @@ need a real building.
 ## Status
 
 The engine is verified and frozen, and the district-scale results above were
-produced with it. The full 24,976-building city run is waiting on a pending
-question to the supervisors — the same one the EdiPluri deviation points at.
+produced with it. The full 24,976-building city run is next.
 
 ## Licence
 

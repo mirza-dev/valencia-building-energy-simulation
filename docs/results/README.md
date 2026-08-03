@@ -60,13 +60,50 @@ EdiPluriP01      3             79.90          ref 54   +48.0 %
 
 Two things in that table are worth stating rather than smoothing over.
 
-**The EdiPluri deviation did not close.** Before the envelope fix, these clusters
-also ran +27…+50 % high, and the obvious reading was that the shared envelope was
-to blame. It was not: with each cluster now carrying its own period envelope, the
-deviation is still there. That makes it evidence about the *cluster labelling*
-rather than about the physics — the reference model's `EdiPluriP04` is a five
-storey building, while no building in the cadastre's EdiPluriP04 cluster has more
-than two. That question is with the supervisors.
+### The deviation is the representative method's own error, and it is measurable
+
+The clusters do not deviate at random. Sorted by the median storey count of the
+buildings in them, the deviation from the reference constant is monotonic:
+
+| Median storeys | Clusters | Deviation |
+|---:|---|---:|
+| 1 | EdiPluriP01 | **+54.1 %** |
+| 2 | EdiPluriP03, P05 | +33 … +38 % |
+| 3–5 | BlocPluriP02, P03, P04, P05 | −3 … +3 % |
+| 6 | BlocPluriP06, P07 | −15 … −23 % |
+
+Correlation between storey count and deviation across the 11 clusters that have
+a reference value: **−0.80**.
+
+Envelope quality is not the explanation, and a natural experiment in the data
+rules it out. Two clusters share the same wall U of 2.56 W/m²K:
+
+```
+BlocPluriP02   wall U 2.56   3 storeys    +0.9 %
+EdiPluriP01    wall U 2.56   1 storey    +54.1 %
+```
+
+Same envelope, 53 percentage points apart. A second pair at U ≈ 0.5 points the
+same way: 6 storeys −15.4 %, 2 storeys −2.5 %.
+
+What separates them is surface-to-volume. A single-storey building has far more
+envelope per square metre of floor than a five-storey block, so a reference value
+computed from a multi-storey representative under-predicts a low-rise cluster and
+over-predicts a high-rise one. The deviation crosses zero at four to five
+storeys — which is where the reference models sit. The supervisor has since
+confirmed that the reference model behind one of these clusters was a five-storey
+test box with no counterpart in the cadastre at all.
+
+So this is not an error in the per-building results. It is the size and sign of
+the error the representative-model method carries *within* a cluster, made
+visible by simulating the buildings individually. That is precisely what the
+per-building approach was built to find.
+
+Honest limits: eleven clusters; the representative geometry is confirmed for one
+of them and inferred for the rest; and that the reference column holds
+representative-model output at all is an inference from its structure — thirteen
+distinct values across 26,452 buildings, one constant per cluster — not a
+statement from its authors.
 
 **Coverage is stated, not implied.** 958 of 1,012 buildings in scope, which is
 94.66 % of buildings but **86.33 %** of the footprint — the geometry gates fall
