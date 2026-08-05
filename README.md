@@ -151,38 +151,45 @@ own output.
 ## Results
 
 The Benicalap district of Valencia, every modellable building simulated
-individually: **958 buildings, 118.75 GWh, 45.04 kWh/m²**. The largest typology
-cluster — 460 buildings, 40 % of the district's floor area — lands at **+1.0 %**
-of the reference city model's published figure for that typology.
+individually: **967 buildings, 137.44 GWh**, at **58.73 kWh/m²** of the floor the
+model conditions — or **63.69 kWh/m²** per square metre of cadastral dwelling
+area, which is the basis the reference city model's constants are defined on.
+Against those constants, district-wide, we are **1.37× the reference**.
 
-Coverage is stated rather than implied: 94.66 % of buildings in scope, but
-**86.33 %** of the footprint, because the geometry gates fall hardest on large
-complex buildings. The total is therefore the energy of the modellable district,
-not of the district. Nor is the intensity neutral: footprint anti-correlates
-with EUI among the buildings that did run (Spearman −0.55), so excluding the
-large ones biases the modellable subset's kWh/m² upward. It is the EUI of the
-modellable subset, stated as such.
+Coverage is stated rather than implied: **95.6 %** of buildings in scope and
+**98.1 %** of the footprint. The total is therefore the energy of the modellable
+district, not of the district. Nor is the intensity neutral: footprint
+anti-correlates with EUI among the buildings that did run, so excluding the large
+ones biases the modellable subset's kWh/m² upward. It is the EUI of the
+modellable subset, stated as such. Nine buildings above the single-zone threshold
+carry 9.2 % of the area and 15.0 % of the energy on a coarser zoning assumption;
+that share is reported, not buried.
 
-That gap turned out to be one threshold. The chain refused any footprint over
-5,000 m², which across the city excluded 123 buildings holding **11.55 % of
-Valencia's floor area** — a modelling-validity guard, since each storey is given
-one well-mixed thermal zone, but one nothing had ever measured. Raising it to
-20,000 m² brings city area coverage from 87.50 % to **98.38 %** and leaves four
-outliers out (the largest is 32,172 m² over two storeys, not a dwelling). The
-admitted buildings are flagged, not blended: an aggregate reports what share of
-itself rests on the single-zone approximation. The district figures above predate
-that change and are being re-run.
+Two corrections behind those numbers are worth naming, because both were errors
+of ours that the published figures had been hiding.
 
-The clusters that *do* deviate deviate systematically, and that turned out to be
-the most interesting result. Sorted by median storey count, the deviation from
-the reference value runs +54 % at one storey through zero at four to five, to
-−23 % at six — correlation **−0.80**. Envelope quality does not explain it: two
-clusters with the *same* wall U of 2.56 W/m²K sit 53 percentage points apart, at
-one storey and three. What separates them is surface-to-volume.
+**The floor area.** `altura_max` records the highest storey holding a dwelling;
+the chain treated every storey below it as housing. Among the district's
+mid-rise blocks, 85 buildings turned out to have the same storey count and the
+same dwelling size as their neighbours but **0.37 dwellings per 100 m² of
+modelled floor instead of 0.98** — the rest of the floor is commercial. That was
+24.6 % of the area being simulated as dwellings. Those storeys are now
+conditioned tertiary space and leave the residential basis. Floor area fell
+31.7 %; energy fell **2.8 %**, because the storeys stay conditioned. What it
+fixed was the denominator: modelled residential area now sits within 8.4 % of
+the cadastral dwelling area, against 58.9 % before.
 
-That is the error the representative-model method carries within a cluster —
-one model standing in for buildings of very different shape — measured by
-simulating them individually. It is the thing this pipeline was built to find.
+**A retracted finding.** This page used to report that deviation from the
+reference was monotonic in storey count (**−0.80**) and that this measured the
+representative-model method's own surface-to-volume error. The author's thesis
+documents the reference geometries — three models at 2, 2 and 6 storeys, not the
+"four to five" the claim assumed. Tested properly, deviation correlates
+**−0.03** with the gap between a cluster's storeys and its reference model's.
+The original −0.80 reproduces, then falls to −0.22 (n.s.) once the ground-floor
+area basis is fixed and the seven VivUni clusters missing from our reference
+table are restored. The pattern was substantially ours. The remaining +26 % to
++102 % per-cluster gap has no established cause yet; the envelope is the leading
+candidate.
 
 [`docs/results/`](docs/results/) holds the verification report, the district
 output, and what each fix was worth.

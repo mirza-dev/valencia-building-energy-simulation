@@ -742,11 +742,52 @@ def test_aggregate_totals_are_area_weighted():
     assert report["totals"]["area_weighted_total_site_kwh_m2"] == pytest.approx(55.0)
 
 
-def test_aggregate_compares_clusters_against_rai():
-    rows = [_ok_row("A", "BlocPluriP04", 1000.0, 47.0)]
+def test_aggregate_uses_the_thesis_reference_not_the_shapefile_rounding():
+    """Ilustración 31 (thesis p. 95) carries two decimals; the shapefile rounds.
+
+    Two shapefile values are also wrong - EdiPluriP02 is 0 there while the
+    thesis's own demand table gives that cluster 15.0 GWh/yr over 1,404
+    buildings - so the thesis is the source of record (2026-08-04).
+    """
+    assert sr.RAI_CLUSTER_CONSUME["BlocPluriP04"] == pytest.approx(46.55)
+    assert sr.RAI_CLUSTER_CONSUME["EdiPluriP02"] == pytest.approx(52.02)
+    assert sr.RAI_CLUSTER_CONSUME_SHAPEFILE["EdiPluriP02"] == 0
+    # the 7 VivUni clusters - 5,262 buildings - used to be missing entirely
+    assert len(sr.RAI_CLUSTER_CONSUME) == 21
+    assert sr.RAI_CLUSTER_CONSUME["VivUniP01"] == pytest.approx(62.57)
+
+
+def test_aggregate_compares_against_rai_on_the_cadastral_basis():
+    """Rai's constants are per m2 of cadastral dwelling area, not per m2 of the
+    geometric storey area we condition, so the comparison runs on his basis."""
+    # 1000 m2 geometric at 46.55 kWh/m2 = 46 550 kWh, over 1000 m2 cadastral
+    rows = [_ok_row("A", "BlocPluriP04", 1000.0, 46.55,
+                    tipo15_res_area_m2=1000.0)]
     block = sr.aggregate(rows)["by_cluster"][0]
-    assert block["rai_consume_kwh_m2"] == 47
+    assert block["rai_consume_kwh_m2"] == pytest.approx(46.55)
+    assert block["cadastral_kwh_m2"] == pytest.approx(46.55)
     assert block["vs_rai_pct"] == pytest.approx(0.0)
+    assert block["vs_rai_energy_ratio"] == pytest.approx(1.0)
+
+
+def test_aggregate_deviation_follows_the_cadastral_area_not_the_geometric_one():
+    # same energy, cadastral area half the geometric one -> the intensity Rai's
+    # constant must be read against doubles
+    rows = [_ok_row("A", "BlocPluriP04", 1000.0, 46.55,
+                    tipo15_res_area_m2=500.0)]
+    block = sr.aggregate(rows)["by_cluster"][0]
+    assert block["area_weighted_kwh_m2"] == pytest.approx(46.55)   # geometric
+    assert block["cadastral_kwh_m2"] == pytest.approx(93.10)       # Rai's basis
+    assert block["vs_rai_pct"] == pytest.approx(100.0)
+    assert block["vs_rai_energy_ratio"] == pytest.approx(2.0)
+
+
+def test_aggregate_reports_no_deviation_without_a_cadastral_area():
+    """Silence beats a number on the wrong basis: no Tipo15 area, no vs-Rai."""
+    rows = [_ok_row("A", "BlocPluriP04", 1000.0, 46.55)]
+    block = sr.aggregate(rows)["by_cluster"][0]
+    assert block["vs_rai_pct"] is None
+    assert block["vs_rai_energy_ratio"] is None
 
 
 def test_aggregate_counts_every_status():

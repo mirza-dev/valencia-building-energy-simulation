@@ -3,7 +3,7 @@
   "smoke_status": "passed",
   "adapter_sha256": "c14bb64f6ff7aceb95854d16ce3d83514c18ce3843766efc50ded87b0fbbcc76",
   "runner": "src/run_simulation.py",
-  "runner_sha256": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
+  "runner_sha256": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
   "weather_path": "data/weather/ESP_Valencia.082840_IWEC.epw",
   "weather_snapshot_hash": "b52a8a7e4b08f167f473e69af907d759d0608e15f6f132019a0034d09d559bea",
   "energyplus": {
@@ -39,6 +39,26 @@
       "no_result_invalidated": "the project has only ever held one EPW (ESP_Valencia.082840_IWEC.epw), so no recorded run was ever produced through the broken --epw path",
       "previous_runner_sha256": "2ffd20ccfd3961ed0962bc3c08914abb3b71b79460f2460ad30e63866732ef8e",
       "rehashed_at": "2026-07-30T10:53:27+03:00"
-    }
+    },
+    "source_rehash_history": [
+      {
+        "reason": "run_energyplus gained an optional epw_path argument so a scenario weather file reaches EnergyPlus itself",
+        "why_it_was_needed": "EnergyPlus's --weather overrides the model, so mb.set_weather_file() alone changed nothing: measured 2026-07-30, an EPW with every hour +5 K and the city renamed gave a byte-identical result while eplusout.eio named VALENCIA and the OSM named TESTCITY",
+        "physics_unchanged": "epw_path defaults to None -> mb.EPW_FILE, i.e. the previous behaviour; pilot regression 11.21 / 16.60 kWh/m2 QA ALL PASSED, verified_model --verify 13/13 with every gate bit-identical to the previous golden",
+        "workbench_unaffected": "simulation_adapter.py sets runner.mb.EPW_FILE around the call; with epw_path unset the fallback is still mb.EPW_FILE, so Part B/G behave exactly as before",
+        "no_result_invalidated": "the project has only ever held one EPW (ESP_Valencia.082840_IWEC.epw), so no recorded run was ever produced through the broken --epw path",
+        "previous_runner_sha256": "2ffd20ccfd3961ed0962bc3c08914abb3b71b79460f2460ad30e63866732ef8e",
+        "rehashed_at": "2026-07-30T10:53:27+03:00"
+      },
+      {
+        "rehashed_at": "2026-08-04",
+        "from": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
+        "to": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
+        "reason": "run_simulation.EPLUS_DIR is now resolved per platform (env override -> install matching the OpenStudio SDK in use -> newest install -> the macOS path developed against) instead of a hardcoded /Applications literal.",
+        "why_it_was_needed": "The literal meant the chain could only ever run on the machine it was written on. Rai and Javier install the Workbench on their own computers, on Windows and macOS.",
+        "physics_unchanged_evidence": "resolve_eplus_dir() returns the identical string on this machine; verified_model --verify 13/13 byte-identical (total_site 53.680 kWh/m2, wall U 1.409, DHW 36.057 GJ); frozen pilot run_simulation.py 11.21/16.60 QA ALL PASSED with 11 warnings.",
+        "field": "runner_sha256"
+      }
+    ]
   }
 }

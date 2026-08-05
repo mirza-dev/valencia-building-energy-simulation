@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Literal
 
@@ -370,6 +371,93 @@ def apply_residential_ground(osm) -> dict:
         "ground_space_type": RESIDENTIAL_SPACE_TYPE,
         "ground_thermostat": True,
         "in_floor_area_basis": True,
+    }
+
+
+def residential_storeys_from_cadastre(cadastral_area_m2, footprint_m2,
+                                      built_storeys: int) -> int:
+    """How many storeys the recorded dwelling area can actually fill.
+
+    `altura_max` is the highest planta that HOLDS a dwelling, not a statement
+    that every storey below it is housing.  Measured on Benicalap v5: 85
+    BlocPluri buildings carry 36.2 % of the district's floor area at 0.37
+    dwellings per 100 m2 against 0.98 in the rest - same median storey count
+    (5), same dwelling size (104 vs 96 m2 of cadastral area per dwelling), far
+    fewer dwellings.  The cadastre is not under-reporting; that floor area is
+    commercial or office.  The frozen builder types all of it as housing, so it
+    receives dwelling occupancy, schedules, thermostat and DHW.  Across the
+    district 842,462 m2 - 24.6 % of the modelled floor area - is affected.
+
+    The rule is the fewest whole storeys whose gross floor plate can contain the
+    cadastral dwelling area.  `ceil` is deliberate: a gross footprint storey is
+    larger than the net `sfc` recorded inside it, so rounding down would strip
+    housing from buildings that are entirely residential.  The tolerance this
+    implies scales with height on its own - a 5-storey block must be 25 % over
+    before it loses a storey, an 8-storey one 14 % - which is the correct
+    geometry, and it is why no calibration constant appears here.
+
+    Without cadastral evidence the built storey count is returned unchanged, so
+    a building whose Tipo15 join failed is never silently shrunk.
+    """
+    try:
+        cadastral = float(cadastral_area_m2)
+        footprint = float(footprint_m2)
+    except (TypeError, ValueError):
+        return int(built_storeys)
+    if not (cadastral > 0 and footprint > 0):
+        return int(built_storeys)
+    needed = math.ceil(cadastral / footprint)
+    return max(1, min(int(built_storeys), needed))
+
+
+def apply_mixed_use_storeys(osm, keep_residential: int) -> dict:
+    """Re-type the lowest excess dwelling storeys to Rai's conditioned Terciario.
+
+    Commercial floor sits at the bottom of a Spanish mixed-use block, so the
+    conversion runs upward from the lowest dwelling storey.  The converted
+    storeys get exactly the regime the ground floor already gets under
+    `apply_rai_ground_regime` - conditioned Terciario, no dwelling thermostat,
+    OUT of the floor-area basis - because that treatment was decided against
+    Rai's own model (2026-07-27) and this is the same kind of space.
+
+    Must run BEFORE `apply_real_occupancy` and `add_pthp_hvac`: both resolve
+    through the residential space type, so a storey converted afterwards would
+    keep dwelling occupants and a dwelling-COP heat pump.
+    """
+    residential = _residential_space_type(osm)
+    spaces = sorted(residential.spaces(),
+                    key=lambda s: min(v.z() for srf in s.surfaces()
+                                      for v in srf.vertices()))
+    excess = len(spaces) - int(keep_residential)
+    if excess <= 0:
+        return {"storeys_converted": 0, "residential_storeys": len(spaces),
+                "space_type": None, "in_floor_area_basis": True}
+
+    terciario = _require(osm.getSpaceTypes(), GROUND_TERCIARIO_SPACE_TYPE, "Space type")
+    dsoa = terciario.designSpecificationOutdoorAir()
+    converted = []
+    for space in spaces[:excess]:
+        space.setSpaceType(terciario)
+        space.setPartofTotalFloorArea(False)
+        zone_opt = space.thermalZone()
+        if zone_opt.isNull():
+            raise RuntimeError(f"space '{space.nameString()}' has no thermal zone")
+        zone = zone_opt.get()
+        # Passive commercial floor, like Rai's ground: it carries its internal
+        # gains but no dwelling setpoint.
+        zone.resetThermostatSetpointDualSetpoint()
+        for equip in zone.equipment():
+            ideal = equip.to_ZoneHVACIdealLoadsAirSystem()
+            if not ideal.isNull() and not dsoa.isNull():
+                ideal.get().setDesignSpecificationOutdoorAirObject(dsoa.get())
+        converted.append(space.nameString())
+
+    return {
+        "storeys_converted": len(converted),
+        "residential_storeys": len(spaces) - len(converted),
+        "space_type": GROUND_TERCIARIO_SPACE_TYPE,
+        "converted_spaces": converted,
+        "in_floor_area_basis": False,
     }
 
 
@@ -1241,6 +1329,31 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
         res_area_m2 = round(footprint_m2 * (n_res + 1), 1)
         stats["res_area_m2"] = res_area_m2
 
+    # `altura_max` says where the highest dwelling is, not that everything below
+    # it is housing.  Storeys the recorded dwelling area cannot fill are
+    # commercial floor and must not be simulated as dwellings - the area basis
+    # follows the conversion, so this has to settle before the density cap.
+    built_res_storeys = n_res + (1 if ground_is_residential else 0)
+    cadastral_area = row.get("tipo15_res_area_m2")
+    try:
+        has_cadastral = float(cadastral_area) > 0
+    except (TypeError, ValueError):
+        has_cadastral = False
+    keep_res_storeys = residential_storeys_from_cadastre(
+        cadastral_area, footprint_m2, built_res_storeys)
+    if keep_res_storeys < built_res_storeys:
+        res_area_m2 = round(footprint_m2 * keep_res_storeys, 1)
+        stats["res_area_m2"] = res_area_m2
+    # `n_floors_residential` keeps the builder's meaning - residential storeys
+    # ABOVE the bajo - because the ledger, the tests and every past run are on
+    # that definition.  The count actually simulated as housing travels in its
+    # own field.  "unchecked" and "0 converted" are different outcomes and must
+    # not look alike: the single-building CLI reads the raw GIS row, which
+    # carries no Tipo15 area, so no mixed-use check is possible there.
+    stats["residential_storeys_effective"] = keep_res_storeys
+    stats["mixed_use_storeys_converted"] = built_res_storeys - keep_res_storeys
+    stats["mixed_use_basis"] = "cadastral_tipo15" if has_cadastral else "unchecked_no_tipo15"
+
     # A padron head count that cannot fit the recorded floor area is capped
     # before it reaches the model, so DHW and occupant gains stay physical.
     padron_occupants = occupants
@@ -1257,12 +1370,15 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
                 stats["window_area_m2"] + layers["ground_glazing"]["ground_glass_area_m2"], 1)
             stats["n_windows"] += layers["ground_glazing"]["ground_windows"]
         layers["ground"] = apply_residential_ground(osm)
+        layers["mixed_use"] = apply_mixed_use_storeys(osm, keep_res_storeys)
         layers["occupancy"] = apply_real_occupancy(osm, occupants, res_area_m2)
     else:
-        layers = {
-            "occupancy": apply_real_occupancy(osm, occupants, res_area_m2),
-            "ground": apply_rai_ground_regime(osm),
-        }
+        # Mixed-use re-typing first: occupancy and the PTHP COP split both
+        # resolve through the residential space type, so a storey converted
+        # after them would keep dwelling occupants and a dwelling heat pump.
+        layers = {"mixed_use": apply_mixed_use_storeys(osm, keep_res_storeys)}
+        layers["occupancy"] = apply_real_occupancy(osm, occupants, res_area_m2)
+        layers["ground"] = apply_rai_ground_regime(osm)
     stats["ground_use"] = ground_use
     plausibility = occupancy_plausibility(
         occupants, res_area_m2, row.get("num_vivend"), capped_from=padron_occupants)

@@ -18,7 +18,7 @@ ft = openstudio.energyplus.ForwardTranslator()
 w = ft.translateModel(m)
 print("ForwardTranslator .idf nesne sayisi:", len(w.objects()))
 
-sys.path.insert(0, "/Applications/OpenStudio-3.11.0/EnergyPlus")
+sys.path.insert(0, __import__("run_simulation").resolve_eplus_dir())
 from pyenergyplus.api import EnergyPlusAPI
 print("pyenergyplus API :", EnergyPlusAPI().api_version())
 

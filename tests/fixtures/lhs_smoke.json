@@ -6,7 +6,7 @@
   "builder": "src/model_builder.py",
   "builder_sha256": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
   "simulation_runner": "src/run_simulation.py",
-  "simulation_runner_sha256": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
+  "simulation_runner_sha256": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
   "required_functions": [
     "sample_matrix",
     "run_study",
@@ -119,6 +119,15 @@
         "no_result_invalidated": "no committed run is rewritten. Past runs stay on the profile they were produced under; the new ceiling only changes which buildings a FUTURE run admits",
         "previous_builder_sha256": "70b1ade3011e4d84d48d2ca27d10474106b0227cab142b40c3248d95c712c439",
         "rehashed_at": "2026-08-03"
+      },
+      {
+        "rehashed_at": "2026-08-04",
+        "from": "2e032cc305305005bcaeeceaa39ab337bdc993cc36ec93fc5b979c0c179fec14",
+        "to": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
+        "reason": "run_simulation.EPLUS_DIR is now resolved per platform (env override -> install matching the OpenStudio SDK in use -> newest install -> the macOS path developed against) instead of a hardcoded /Applications literal.",
+        "why_it_was_needed": "The literal meant the chain could only ever run on the machine it was written on. Rai and Javier install the Workbench on their own computers, on Windows and macOS.",
+        "physics_unchanged_evidence": "resolve_eplus_dir() returns the identical string on this machine; verified_model --verify 13/13 byte-identical (total_site 53.680 kWh/m2, wall U 1.409, DHW 36.057 GJ); frozen pilot run_simulation.py 11.21/16.60 QA ALL PASSED with 11 warnings.",
+        "field": "simulation_runner_sha256"
       }
     ]
   },

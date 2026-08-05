@@ -43,80 +43,125 @@ climate, template, data policy, source-data hash and runner schema.
 ## `benicalap_district.json`
 
 Every modellable building in the Benicalap district of Valencia, simulated
-individually: **958 buildings, 118.75 GWh site energy, 45.04 kWh/m²**.
+individually: **967 buildings, 137.44 GWh site energy**, at **58.73 kWh/m²** of
+the floor area the model conditions.
 
-The area-weighted intensity is what can be compared against the reference city
-model, and the largest cluster — 460 buildings, 40 % of the district's floor area
-— lands at **+1.0 %** of the published figure for that typology.
+**Which square metres.** That intensity is per *geometric residential storey
+area* — footprint × the storeys simulated as housing. The reference city model's
+per-cluster constants are per *cadastral dwelling area* (its own code sums
+`442_sfc` over the dwelling records of each parcel), and the two are not the same
+quantity. On the cadastral basis the same energy is **63.69 kWh/m²**. Every
+comparison below is on the cadastral basis, because that is the basis the
+reference is defined on.
 
 ```
-BlocPluriP04   460 buildings   47.48 kWh/m²   ref 47   +1.0 %
-BlocPluriP03    83             50.93          ref 52   −2.0 %
-BlocPluriP05   206             42.72          ref 47   −9.1 %
-BlocPluriP06    27             36.12          ref 45   −19.7 %
-EdiPluriP03     23             67.08          ref 52   +29.0 %
-EdiPluriP01      3             79.90          ref 54   +48.0 %
+                 n     geo   cadastral    ref    Δ vs ref   energy
+BlocPluriP04   460   55.40      59.45   46.55     +27.7 %    1.28×
+BlocPluriP05   209   56.54      58.66   46.59     +25.9 %    1.26×
+BlocPluriP03    83   58.04      68.06   51.71     +31.6 %    1.32×
+VivUniP02       55   65.94      94.28   55.82     +68.9 %    1.69×
+BlocPluriP06    33   75.81      91.08   45.00    +102.4 %    2.02×
+EdiPluriP02     24   61.95      78.19   52.02     +50.3 %    1.50×
 ```
+
+`energy` is the ratio of our kWh to the kWh the reference method would assign to
+exactly these buildings (`constant × cadastral area`). It is basis-free, and it
+is the honest headline: **district-wide we are 1.37× the reference**.
+
+An earlier version of this page reported the largest cluster at **+1.0 %** of the
+reference. That number was real but it was an intensity coincidence, not an
+energy agreement: it divided our energy by a floor area 59 % larger than the
+cadastral area the reference constant is meant to multiply. Correcting the floor
+area (see below) and putting the comparison on the reference's own basis moves
+that cluster to +27.7 %. The gap was always there; the denominator hid it.
 
 Two things in that table are worth stating rather than smoothing over.
 
-### The deviation is the representative method's own error, and it is measurable
+### A retracted claim: the deviation was mostly ours, not the method's
 
-The clusters do not deviate at random. Sorted by the median storey count of the
-buildings in them, the deviation from the reference constant is monotonic:
+An earlier version of this page reported that deviation from the reference was
+monotonic in storey count (Spearman **−0.80** across 11 clusters) and attributed
+it to the representative-model method's surface-to-volume error — a reference
+computed from a multi-storey box under-predicting a low-rise cluster. **That
+attribution does not survive contact with the reference's own documentation.**
 
-| Median storeys | Clusters | Deviation |
-|---:|---|---:|
-| 1 | EdiPluriP01 | **+54.1 %** |
-| 2 | EdiPluriP03, P05 | +33 … +38 % |
-| 3–5 | BlocPluriP02, P03, P04, P05 | −3 … +3 % |
-| 6 | BlocPluriP06, P07 | −15 … −23 % |
+The author's thesis, obtained 2026-08-04, states the reference geometry directly:
+there are **three** models, not one per cluster, and the seven periods of a
+typology share a geometry.
 
-Correlation between storey count and deviation across the 11 clusters that have
-a reference value: **−0.80**.
+| Typology | Reference model | Storeys |
+|---|---:|---:|
+| VivUni | 214 m² | **2** |
+| EdiPluri | 435 m² | **2** |
+| BlocPluri | 2 310 m² | **6** |
 
-Envelope quality is not the explanation, and a natural experiment in the data
-rules it out. Two clusters share the same wall U of 2.56 W/m²K:
+The page previously said the deviation "crosses zero at four to five storeys —
+which is where the reference models sit." They sit at 2, 2 and 6. If the
+surface-to-volume mechanism were real, the deviation would track the *gap*
+between a cluster's storey count and the storeys of the reference model for its
+typology. Measured across every configuration we could build:
 
-```
-BlocPluriP02   wall U 2.56   3 storeys    +0.9 %
-EdiPluriP01    wall U 2.56   1 storey    +54.1 %
-```
+| Run · reference · clusters | vs absolute storeys | vs **gap to reference** |
+|---|---:|---:|
+| old run · shapefile · no VivUni *(as published)* | −0.832 (p = 0.001) | −0.070 (p = 0.84) |
+| current run · shapefile · no VivUni | −0.648 (p = 0.031) | −0.154 (p = 0.65) |
+| **current run · thesis reference · all clusters** | **−0.224 (p = 0.37)** | **−0.032 (p = 0.90)** |
 
-Same envelope, 53 percentage points apart. A second pair at U ≈ 0.5 points the
-same way: 6 storeys −15.4 %, 2 storeys −2.5 %.
+The published −0.80 reproduces (−0.832), so the original measurement was sound.
+It does not survive two corrections to **our own** work:
 
-What separates them is surface-to-volume. A single-storey building has far more
-envelope per square metre of floor than a five-storey block, so a reference value
-computed from a multi-storey representative under-predicts a low-rise cluster and
-over-predicts a high-rise one. The deviation crosses zero at four to five
-storeys — which is where the reference models sit. The supervisor has since
-confirmed that the reference model behind one of these clusters was a five-storey
-test box with no counterpart in the cadastre at all.
+* **The ground floor.** 37 % of Valencia's buildings hold a dwelling at ground
+  level, and they are disproportionately the low-rise ones. Excluding that floor
+  from the area basis inflated exactly the low-rise clusters' intensity — which
+  is the pattern the −0.80 was measuring.
+* **Seven missing clusters.** The reference table omitted all VivUni clusters —
+  5 262 buildings, 20 % of the stock — not for any reason, but because they were
+  never entered. Restoring them halves what is left of the correlation.
 
-So this is not an error in the per-building results. It is the size and sign of
-the error the representative-model method carries *within* a cluster, made
-visible by simulating the buildings individually. That is precisely what the
-per-building approach was built to find.
+The claimed mechanism has a correlation of −0.03 with the quantity it predicts.
+What remains is a per-cluster deviation of +26 % to +102 % whose cause is **not
+established**; the envelope is now the leading candidate, since the reference's
+own wall constructions run 15–60 % lower in U than the ones derived here.
 
-Honest limits: eleven clusters; the representative geometry is confirmed for one
-of them and inferred for the rest; and that the reference column holds
-representative-model output at all is an inference from its structure — thirteen
-distinct values across 26,452 buildings, one constant per cluster — not a
-statement from its authors.
+Honest limits: eighteen clusters in this district; the reference constants are
+the thesis's own per-cluster figures (Ilustración 31), and two values in the
+published shapefile disagree with them and are not used.
 
-**Coverage is stated, not implied.** 958 of 1,012 buildings in scope, which is
-94.66 % of buildings but **86.33 %** of the footprint — the geometry gates fall
-hardest on large, complex buildings. So the 118.75 GWh figure is the energy of
-the modellable district, not of the district. The intensity is not neutral to
-that gap either: footprint anti-correlates with EUI among the buildings that
-did run (Spearman −0.55; large quartile 42.6 kWh/m² against small quartile
-57.4), so excluding the large buildings biases the subset's intensity upward.
-45.04 kWh/m² is the EUI of the modellable subset, stated as such — the
-per-cluster comparison above still holds because both sides of it are computed
-over the same buildings.
+### Not every storey under a dwelling is a dwelling
 
-The 53 exclusions and the 1 failure are all in the ledger with reasons. The
+`altura_max` records the highest floor that holds a dwelling. It does not say the
+floors beneath it are housing, and this pipeline used to assume it did — every
+storey was built as `Espacio Tipo Vivienda CTE`, with dwelling occupancy,
+schedules, thermostat and hot water.
+
+The cadastre disagrees, and the disagreement is structured. Among the district's
+BlocPluri buildings, 85 of them carry the same median storey count (5) and the
+same dwelling size (104 m² of cadastral area per dwelling, against 96 m² in the
+rest) — but **0.37 dwellings per 100 m² of modelled floor instead of 0.98**.
+Twenty-five dwellings at ~104 m² is ~2 600 m² of housing in a 6 373 m² building.
+The remaining floor is commercial or office, and the cadastre is not
+under-reporting it; it simply is not housing. Across the district that was
+**842 462 m², 24.6 % of the floor area being simulated as dwellings**.
+
+Storeys the recorded dwelling area cannot fill are now typed as conditioned
+tertiary space — the same regime the ground floor already gets — and leave the
+residential area basis. 449 buildings, 739 storeys. The effect is worth stating
+precisely, because it is not what one might expect: floor area fell 31.7 % but
+**energy fell only 2.8 %**. The storeys do not disappear; they stay conditioned
+and keep their gains. What the correction fixes is the *denominator*: modelled
+residential area now sits within **8.4 %** of the cadastral dwelling area,
+against 58.9 % before.
+
+**Coverage is stated, not implied.** 967 of 1 012 buildings in scope — 95.6 % of
+buildings and **98.1 %** of the footprint. So the 137.44 GWh figure is the energy
+of the modellable district, not of the district. The intensity is not neutral to
+that gap either: footprint anti-correlates with EUI among the buildings that did
+run, so excluding large buildings biases the subset's intensity upward. Nine
+buildings above the single-zone threshold carry 9.2 % of the area and 15.0 % of
+the energy on a coarser zoning assumption; that share is reported rather than
+buried.
+
+The 44 exclusions and the 1 failure are all in the ledger with reasons. The
 failure is a cadastral polygon with a degenerate surface: EnergyPlus refuses it,
 and so does this pipeline.
 

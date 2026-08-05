@@ -477,3 +477,40 @@ def test_residential_ground_is_still_glazed(residential_ground_model):
     glazing = stats["deep_layers"]["ground_glazing"]
     assert glazing["ground_windows"] > 0
     assert glazing["ground_glass_area_m2"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Mixed-use storeys: altura_max says where the top dwelling is, not that every
+# storey below it is housing (measured 2026-08-04, Benicalap v5).
+# ---------------------------------------------------------------------------
+def test_cadastral_storeys_leave_a_fully_residential_building_alone():
+    # Pilot: 2910 m2 of dwelling over a 562 m2 plate = 5.18 -> ceil 6, capped at
+    # the 5 storeys actually built.  The frozen deep baseline must not move.
+    assert db.residential_storeys_from_cadastre(2910.0, 562.0, 5) == 5
+
+
+def test_cadastral_storeys_convert_a_mixed_use_block():
+    # 4648906YJ2744H: 324 m2 of dwelling on a 190.5 m2 plate over 4 built
+    # residential storeys -> only 2 can be housing.
+    assert db.residential_storeys_from_cadastre(324.0, 190.5, 4) == 2
+
+
+def test_cadastral_storeys_tolerate_the_gross_to_net_gap():
+    # A purely residential block still shows ~11 % more gross plate area than
+    # the net `sfc` recorded inside it.  ceil() must not strip a storey for that.
+    assert db.residential_storeys_from_cadastre(1734.0, 385.0, 5) == 5
+
+
+@pytest.mark.parametrize("cadastral", [None, 0, -1, "", "abc"])
+def test_cadastral_storeys_never_shrink_without_evidence(cadastral):
+    # A failed Tipo15 join must leave the building as built, never silently
+    # smaller.  This is the single-building CLI path.
+    assert db.residential_storeys_from_cadastre(cadastral, 562.0, 5) == 5
+
+
+def test_cadastral_storeys_never_exceed_what_was_built():
+    assert db.residential_storeys_from_cadastre(99999.0, 562.0, 5) == 5
+
+
+def test_cadastral_storeys_keep_at_least_one_dwelling_storey():
+    assert db.residential_storeys_from_cadastre(10.0, 562.0, 5) == 1

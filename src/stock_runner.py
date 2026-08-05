@@ -118,7 +118,8 @@ LEDGER_METRICS = (
     "total_site_kwh", "space_heating_kwh", "cooling_kwh", "dhw_kwh",
     "res_area_m2", "tipo15_res_area_m2", "res_area_source",
     "total_conditioned_area_m2", "footprint_m2", "large_footprint_single_zone",
-    "n_floors_total", "n_floors_residential", "n_party_surfaces",
+    "n_floors_total", "n_floors_residential", "mixed_use_storeys_converted",
+    "mixed_use_basis", "residential_storeys_effective", "n_party_surfaces",
     "n_shading_surfaces", "n_windows", "window_area_m2",
     "padron_occupants", "occupants_applied", "occupants_source",
     "occupancy_plausibility", "ground_use", "ground_use_source",
@@ -503,14 +504,50 @@ def select_scope(stock: gpd.GeoDataFrame, scope: str, *,
 # ---------------------------------------------------------------------------
 # Aggregation
 # ---------------------------------------------------------------------------
-# Rai's own per-cluster consumption intensities, proven on 2026-07-28 to be a
-# single constant broadcast to every building of the cluster (13 distinct values
-# across the city).  They are the closest thing we have to a per-cluster anchor.
+# Rai's own per-cluster consumption intensities: one constant broadcast to every
+# building of the cluster (proven 2026-07-28 - 13 distinct values city-wide).
+#
+# SOURCE (2026-08-04): the doctoral thesis, Ilustración 31 (reviewed version
+# `2503 Tesis UPV Raimon Calabuig RW LReig.pdf`, printed p. 95).  That figure
+# gives all 21 clusters over 8 orientations plus a `Media` row; the `ConsumE`
+# column in `DatosRai_ciudadValencia.shp` is that `Media` rounded to integers.
+# Cross-checked: 19 of 21 clusters agree within rounding.
+#
+# Two shapefile values are NOT used, because they disagree with the thesis and
+# the thesis is self-consistent where they are not:
+#   * EdiPluriP02  shapefile 0     vs thesis 52.02 - the shapefile zero
+#     contradicts the thesis's own demand table for that cluster (15.0 GWh/yr,
+#     1,404 buildings, 5,589 residents), so it is a data error.  The "no
+#     residents -> zero consumption" rule (thesis p. 96) applies to EdiPluriP07.
+#   * BlocPluriP02 shapefile 52    vs thesis 47.81 - stale.
+#
+# The 7 VivUni clusters used to be missing here entirely, so 5,262 buildings
+# (19.9 % of the stock) were never compared against a reference at all.
+#
+# Basis: these are per m2 of cadastral dwelling area (thesis annex:
+# `area = df.groupby('31_pc')['442_sfc'].sum()`), which is what `vs_rai_pct`
+# divides by.
 RAI_CLUSTER_CONSUME = {
+    "BlocPluriP01": 47.81, "BlocPluriP02": 47.81, "BlocPluriP03": 51.71,
+    "BlocPluriP04": 46.55, "BlocPluriP05": 46.59, "BlocPluriP06": 45.00,
+    "BlocPluriP07": 45.00,
+    "EdiPluriP01": 54.36, "EdiPluriP02": 52.02, "EdiPluriP03": 52.04,
+    "EdiPluriP04": 51.51, "EdiPluriP05": 45.84, "EdiPluriP06": 45.81,
+    "EdiPluriP07": 45.81,
+    "VivUniP01": 62.57, "VivUniP02": 55.82, "VivUniP03": 54.56,
+    "VivUniP04": 50.79, "VivUniP05": 42.77, "VivUniP06": 38.00,
+    "VivUniP07": 38.00,
+}
+
+# What the shapefile column carries, kept as the historical record so the
+# difference above is auditable rather than asserted.
+RAI_CLUSTER_CONSUME_SHAPEFILE = {
     "BlocPluriP01": 48, "BlocPluriP02": 52, "BlocPluriP03": 52, "BlocPluriP04": 47,
     "BlocPluriP05": 47, "BlocPluriP06": 45, "BlocPluriP07": 45,
     "EdiPluriP01": 54, "EdiPluriP02": 0, "EdiPluriP03": 52, "EdiPluriP04": 52,
     "EdiPluriP05": 46, "EdiPluriP06": 46, "EdiPluriP07": 46,
+    "VivUniP01": 63, "VivUniP02": 56, "VivUniP03": 55, "VivUniP04": 51,
+    "VivUniP05": 43, "VivUniP06": 38, "VivUniP07": 38,
 }
 
 
@@ -705,15 +742,24 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
     # city-wide; it is reported, never divided by.
     totals["area_basis"] = "geometric_residential_storeys"
     totals["area_basis_note"] = (
-        "every kWh/m2 is per geometric residential storey area, matching Rai's "
-        "own 954.80 m2 basis; tipo15_residential_area_m2 is the cadastral net "
-        "area, reported for reference only")
+        "area_weighted_total_site_kwh_m2 is per geometric residential storey "
+        "area - the floor the model actually conditions.  Rai's ConsumE "
+        "constants are per CADASTRAL dwelling area (thesis annex: "
+        "groupby('31_pc')['442_sfc'].sum()), so every vs_rai_* figure is "
+        "computed on the cadastral basis instead, and reported separately.  The "
+        "earlier note here claimed the geometric basis matched 'Rai's own "
+        "954.80 m2'; that 954.80 came from his trial box, not from his city "
+        "method (corrected 2026-08-04).")
     if "tipo15_res_area_m2" in frame:
         tipo15 = pd.to_numeric(frame["tipo15_res_area_m2"], errors="coerce")
         if tipo15.notna().any():
             totals["tipo15_residential_area_m2"] = round(float(tipo15.sum()), 1)
             totals["tipo15_vs_geometric_pct"] = round(
                 float(area.sum() / tipo15.sum() - 1.0) * 100, 2)
+            # The same energy on the basis Rai's constants are defined on, so a
+            # reader never has to guess which denominator a kWh/m2 is on.
+            totals["cadastral_total_site_kwh_m2"] = round(
+                float((frame["total_site_kwh_m2"] * area).sum() / tipo15.sum()), 3)
     totals["carbon_total_site_t_yr"] = round(
         float((frame["total_site_co2_kg_m2"] * area).sum()) / 1000.0, 1)
 
@@ -725,16 +771,40 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
             group_area = group["res_area_m2"]
             intensity = float((group["total_site_kwh_m2"] * group_area).sum()
                               / group_area.sum())
+            energy_kwh = float((group["total_site_kwh_m2"] * group_area).sum())
             block = {key: name, "buildings": int(len(group)),
                      "residential_area_m2": round(float(group_area.sum()), 1),
-                     "total_site_gwh": round(
-                         float((group["total_site_kwh_m2"] * group_area).sum()) / 1e6, 5),
+                     "total_site_gwh": round(energy_kwh / 1e6, 5),
                      "area_weighted_kwh_m2": round(intensity, 3)}
+            # Rai's constants are per m2 of CADASTRAL dwelling area (thesis
+            # annex: `area = groupby('31_pc')['442_sfc'].sum()`), so comparing
+            # our geometric intensity against them compares two different
+            # quantities.  Measured 2026-08-04: on the geometric basis the
+            # district looked +1 % against the reference while its total energy
+            # was +41 % - an intensity coincidence produced by a larger
+            # denominator.  The comparison therefore runs on the cadastral
+            # basis, and the energy ratio is reported next to it because that
+            # one is basis-free.
             if key == "cluster" and name in RAI_CLUSTER_CONSUME:
                 rai = RAI_CLUSTER_CONSUME[name]
+                cadastral = pd.to_numeric(group.get("tipo15_res_area_m2"),
+                                          errors="coerce")
+                cad_sum = float(cadastral.sum()) if cadastral is not None else 0.0
                 block["rai_consume_kwh_m2"] = rai
-                block["vs_rai_pct"] = (round((intensity - rai) / rai * 100, 2)
-                                       if rai else None)
+                block["cadastral_area_m2"] = round(cad_sum, 1)
+                if cad_sum > 0:
+                    cad_intensity = energy_kwh / cad_sum
+                    block["cadastral_kwh_m2"] = round(cad_intensity, 3)
+                    block["vs_rai_pct"] = (round((cad_intensity - rai) / rai * 100, 2)
+                                           if rai else None)
+                    # basis-free: our kWh against the kWh Rai's own city method
+                    # would assign to exactly these buildings
+                    block["vs_rai_energy_ratio"] = (
+                        round(energy_kwh / (rai * cad_sum), 4) if rai else None)
+                else:
+                    block["cadastral_kwh_m2"] = None
+                    block["vs_rai_pct"] = None
+                    block["vs_rai_energy_ratio"] = None
             out.append(block)
         return sorted(out, key=lambda b: -b["total_site_gwh"])
 
@@ -1104,19 +1174,32 @@ def _print_report(report: dict) -> None:
         print(f"  heating {totals['heating_gwh']} GWh | cooling {totals['cooling_gwh']} "
               f"| DHW {totals['dhw_gwh']} | total site {totals['total_site_gwh']} GWh")
         print(f"  residential area {totals['residential_area_m2']:,.0f} m² | "
-              f"area-weighted {totals['area_weighted_total_site_kwh_m2']} kWh/m²")
+              f"area-weighted {totals['area_weighted_total_site_kwh_m2']} kWh/m² "
+              f"(geometric basis)")
+        if totals.get("cadastral_total_site_kwh_m2") is not None:
+            print(f"  cadastral area  {totals.get('tipo15_residential_area_m2', 0):,.0f} m² | "
+                  f"area-weighted {totals['cadastral_total_site_kwh_m2']} kWh/m² "
+                  f"(Rai's basis - what vs-Rai uses)")
     if report.get("seconds_per_building"):
         spb = report["seconds_per_building"]
         print(f"  per building: median {spb['median']}s | mean {spb['mean']}s | max {spb['max']}s")
     if report.get("by_cluster"):
-        print(f"  {'cluster':16s} {'n':>6s} {'kWh/m²':>9s} {'Rai':>6s} {'fark':>8s}")
+        # Two bases in one table would mislead, so both are named: `geo` is the
+        # floor the model conditions, `kadastro` is the basis Rai's constants
+        # are defined on and the only one `fark` may be read against.
+        print(f"  {'cluster':16s} {'n':>6s} {'geo':>8s} {'kadastro':>9s} "
+              f"{'Rai':>7s} {'fark':>8s} {'enerji':>7s}")
         for block in report["by_cluster"]:
             rai = block.get("rai_consume_kwh_m2")
             delta = block.get("vs_rai_pct")
+            cad = block.get("cadastral_kwh_m2")
+            ratio = block.get("vs_rai_energy_ratio")
             print(f"  {block['cluster']:16s} {block['buildings']:6d} "
-                  f"{block['area_weighted_kwh_m2']:9.2f} "
-                  f"{'' if rai is None else rai:>6} "
-                  f"{'' if delta is None else f'{delta:+.1f}%':>8}")
+                  f"{block['area_weighted_kwh_m2']:8.2f} "
+                  f"{'' if cad is None else f'{cad:.2f}':>9} "
+                  f"{'' if rai is None else f'{rai:.2f}':>7} "
+                  f"{'' if delta is None else f'{delta:+.1f}%':>8} "
+                  f"{'' if ratio is None else f'{ratio:.2f}x':>7}")
     print(f"  elapsed {report.get('elapsed_minutes')} min")
 
 

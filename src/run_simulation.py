@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import platform
 import re
 import shutil
@@ -45,7 +46,71 @@ logger = logging.getLogger("run_simulation")
 # input paths live in the builder (mb.BUILDINGS_GPKG, mb.EPW_FILE, ...).
 # =======================================================================
 
-EPLUS_DIR = "/Applications/OpenStudio-3.11.0/EnergyPlus"    # E+ 25.2.0 bundled with OpenStudio
+# EnergyPlus ships inside OpenStudio.  This used to be a macOS literal, which
+# meant the chain could only ever run on the machine it was written on - the
+# single thing blocking Windows and Linux (2026-08-04).
+EPLUS_DIR_DEFAULT = "/Applications/OpenStudio-3.11.0/EnergyPlus"   # E+ 25.2.0
+
+
+def _openstudio_install_roots() -> list[Path]:
+    """Where OpenStudio puts itself, per platform."""
+    system = platform.system()
+    if system == "Darwin":
+        bases = [Path("/Applications")]
+    elif system == "Windows":
+        bases = [Path("C:/"), Path("C:/Program Files"), Path("C:/Program Files (x86)")]
+    else:
+        bases = [Path("/usr/local"), Path("/opt"), Path.home()]
+    roots: list[Path] = []
+    for base in bases:
+        try:
+            roots.extend(p for p in base.glob("[Oo]pen[Ss]tudio-*") if p.is_dir())
+        except OSError:
+            continue          # unreadable drive or permission - just skip it
+    return roots
+
+
+def resolve_eplus_dir() -> str:
+    """Locate the EnergyPlus bundled with OpenStudio, on whichever platform this is.
+
+    Resolution order, and why:
+
+    1. ``VALENCIA_EPLUS_DIR`` - an explicit answer always wins, so an unusual
+       install never needs a code change.
+    2. The install whose version matches the ``openstudio`` Python module in use.
+       The SDK that writes the model and the engine that runs it should be the
+       same release; picking a mismatched pair is a silent way to get different
+       physics.
+    3. Any other OpenStudio install, newest first.
+    4. The macOS path this project was developed against, so a machine that has
+       always worked keeps returning the identical string and nothing shifts.
+    """
+    override = os.environ.get("VALENCIA_EPLUS_DIR")
+    if override:
+        return override
+
+    roots = _openstudio_install_roots()
+    try:
+        sdk_version = openstudio.openStudioVersion()
+    except Exception:                                    # pragma: no cover
+        sdk_version = None
+
+    if sdk_version:
+        for root in roots:
+            if root.name.lower().endswith(sdk_version.lower()):
+                bundled = root / "EnergyPlus"
+                if bundled.is_dir():
+                    return str(bundled)
+
+    for root in sorted(roots, key=lambda p: p.name, reverse=True):
+        bundled = root / "EnergyPlus"
+        if bundled.is_dir():
+            return str(bundled)
+
+    return EPLUS_DIR_DEFAULT
+
+
+EPLUS_DIR = resolve_eplus_dir()
 
 #QA thresholds (model <-> EnergyPlus cross-check tolerances):
 QA_AREA_TOL = 0.005    #conditioned floor area: model vs E+ <= 0.5 %

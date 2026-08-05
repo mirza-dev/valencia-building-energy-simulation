@@ -72,3 +72,58 @@ def test_test_runtime_requires_matching_header_for_mutations(monkeypatch):
     assert missing.status_code == 403
     assert wrong.status_code == 403
     assert accepted.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# EnergyPlus location.  The path used to be a macOS literal, which meant the
+# chain could only run on the machine it was written on (fixed 2026-08-04, so
+# Rai and Javier can install on Windows and Linux).
+# ---------------------------------------------------------------------------
+import platform as _platform
+from pathlib import Path as _Path
+
+import run_simulation as _sim
+
+
+def test_eplus_dir_is_resolved_not_hardcoded():
+    """The module-level constant must come from the resolver, and must point at
+    a real directory on the machine running the tests."""
+    assert _sim.EPLUS_DIR == _sim.resolve_eplus_dir()
+    assert _Path(_sim.EPLUS_DIR).is_dir(), (
+        f"no EnergyPlus at {_sim.EPLUS_DIR} - set VALENCIA_EPLUS_DIR")
+
+
+def test_eplus_dir_honours_an_explicit_override(monkeypatch, tmp_path):
+    """An unusual install must never need a code change."""
+    monkeypatch.setenv("VALENCIA_EPLUS_DIR", str(tmp_path))
+    assert _sim.resolve_eplus_dir() == str(tmp_path)
+
+
+def test_eplus_dir_falls_back_to_the_developed_against_path(monkeypatch):
+    """With nothing found, the macOS default is returned - a machine that has
+    always worked keeps returning the identical string."""
+    monkeypatch.delenv("VALENCIA_EPLUS_DIR", raising=False)
+    monkeypatch.setattr(_sim, "_openstudio_install_roots", lambda: [])
+    assert _sim.resolve_eplus_dir() == _sim.EPLUS_DIR_DEFAULT
+
+
+def test_eplus_dir_prefers_the_install_matching_the_sdk(monkeypatch, tmp_path):
+    """SDK and engine should be the same release; a mismatched pair is a silent
+    way to get different physics."""
+    older = tmp_path / "OpenStudio-3.10.0"
+    matching = tmp_path / f"OpenStudio-{__import__('openstudio').openStudioVersion()}"
+    for root in (older, matching):
+        (root / "EnergyPlus").mkdir(parents=True)
+    monkeypatch.delenv("VALENCIA_EPLUS_DIR", raising=False)
+    # deliberately list the non-matching one first
+    monkeypatch.setattr(_sim, "_openstudio_install_roots", lambda: [older, matching])
+    assert _sim.resolve_eplus_dir() == str(matching / "EnergyPlus")
+
+
+def test_openstudio_roots_search_is_platform_aware():
+    """Each platform looks where OpenStudio actually installs itself."""
+    roots = _sim._openstudio_install_roots()
+    assert isinstance(roots, list)
+    if _platform.system() == "Darwin":
+        # this machine has one; the point is the search finds it by pattern
+        assert any("OpenStudio" in p.name for p in roots)

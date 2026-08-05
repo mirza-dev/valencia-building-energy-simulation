@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import platform
 import shutil
 import tempfile
 import uuid
@@ -23,7 +24,11 @@ from workbench import service
 PROJECT = Path(__file__).resolve().parents[2]
 ADAPTER_PATH = Path(__file__).with_name("simulation_adapter.py")
 RUNNER_PATH = PROJECT / "src/run_simulation.py"
-ENERGYPLUS_EXECUTABLE = (Path(part_b.EPLUS_DIR) / "energyplus").resolve()
+# Windows names the binary energyplus.exe; everywhere else it has no suffix.
+ENERGYPLUS_EXECUTABLE = (
+    Path(part_b.EPLUS_DIR)
+    / ("energyplus.exe" if platform.system() == "Windows" else "energyplus")
+).resolve()
 TERMINAL_STATUSES = {"completed", "failed", "canceled"}
 
 
