@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import hashlib
+import io
 import json
 import tempfile
 from contextlib import asynccontextmanager
@@ -17,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 
 from model_config import BuildConfig, config_for_profile, flatten_config, profile_catalog
-from workbench import __version__, db, integrity, renderer_provenance, storage
+from workbench import __version__, db, integrity, renderer_provenance, stock_adapter, storage
 from workbench.capabilities import capability_status
 from workbench.capability_sync import revalidation_plan
 from workbench.environment import TEST_REQUEST_HEADER, runtime_environment
@@ -1461,6 +1463,180 @@ def code_trace(name: str):
         return code_symbol(name)
     except KeyError as exc:
         raise not_found(name) from exc
+
+
+# ---------------------------------------------------------------------------
+# Stock: the per-building pipeline.  Three surfaces - Files, Run, Outputs.
+#
+# These endpoints hold no physics and no thresholds; every number is asked of
+# `stock_adapter`, which in turn asks `stock_runner`.  A run is a subprocess, so
+# stopping it is a signal and its ledger is the durable record.
+# ---------------------------------------------------------------------------
+def _stock_bad_request(message: str) -> HTTPException:
+    return HTTPException(status_code=422, detail=message)
+
+
+@app.get("/api/stock/profile")
+def stock_profile():
+    """Which verified model this installation runs - shown in the header."""
+    inputs = stock_adapter.default_inputs()
+    return {"profile": stock_adapter.profile(),
+            "inputs": {"gis": str(inputs.gis), "tipo15": str(inputs.tipo15)},
+            "missing_inputs": inputs.missing(),
+            "entrypoints": stock_adapter.entrypoints_present()}
+
+
+@app.get("/api/stock/districts")
+def stock_districts():
+    try:
+        return {"districts": stock_adapter.district_options()}
+    except FileNotFoundError as exc:
+        raise _stock_bad_request(f"GIS dataset unavailable: {exc}") from exc
+
+
+@app.post("/api/stock/preflight")
+def stock_preflight(payload: dict):
+    scope = str(payload.get("scope") or "")
+    if scope not in ("all", "clusters", "district", "references"):
+        raise _stock_bad_request(f"unknown scope: {scope!r}")
+    references = payload.get("references") or None
+    if scope == "references" and not references:
+        raise _stock_bad_request("scope 'references' needs at least one refparcela")
+    if scope == "district" and not payload.get("district"):
+        raise _stock_bad_request("scope 'district' needs a district name")
+    try:
+        return stock_adapter.preflight(
+            scope,
+            district=payload.get("district"),
+            references=references,
+            keep=str(payload.get("keep") or "full"),
+            workers=int(payload.get("workers") or 6))
+    except (FileNotFoundError, ValueError) as exc:
+        raise _stock_bad_request(str(exc)) from exc
+
+
+@app.get("/api/stock/runs")
+def stock_runs():
+    runs = stock_adapter.list_runs()
+    for item in runs:
+        item["running"] = stock_adapter.active_process(item["run"]) is not None
+    return {"runs": runs}
+
+
+@app.post("/api/stock/runs")
+def stock_start(payload: dict):
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise _stock_bad_request("a run needs a name")
+    scope = str(payload.get("scope") or "")
+    if scope not in ("all", "clusters", "district", "references"):
+        raise _stock_bad_request(f"unknown scope: {scope!r}")
+    try:
+        if stock_adapter.active_process(name) is not None:
+            raise _stock_bad_request(f"run {name!r} is already going")
+        # The engine's own admission gate, not a second opinion invented here.
+        estimate = stock_adapter.preflight(
+            scope, district=payload.get("district"),
+            references=payload.get("references") or None,
+            keep=str(payload.get("keep") or "full"),
+            workers=int(payload.get("workers") or 6))
+        if not estimate.get("ok"):
+            raise _stock_bad_request(
+                f"inputs missing: {', '.join(estimate.get('missing_inputs', []))}")
+        capacity = storage.admission("stock_run",
+                                     requested_bytes=int(estimate["estimated_bytes"]))
+        if not capacity["allowed"]:
+            raise _stock_bad_request(
+                f"not enough protected disk for this run: {capacity['reason']}")
+        started = stock_adapter.start_run(
+            name, scope,
+            district=payload.get("district"),
+            references=payload.get("references") or None,
+            workers=int(payload.get("workers") or 6),
+            keep=str(payload.get("keep") or "full"),
+            resume=bool(payload.get("resume")))
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    return {"started": started, "estimate": estimate}
+
+
+@app.get("/api/stock/runs/{name}")
+def stock_run_detail(name: str):
+    try:
+        progress = stock_adapter.progress(name)
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    if not progress.get("started"):
+        raise not_found(name)
+    detail = {"progress": progress,
+              "running": stock_adapter.active_process(name) is not None}
+    try:
+        detail["summary"] = stock_adapter.summary(name)
+    except (FileNotFoundError, KeyError):
+        detail["summary"] = None          # still running, nothing to total yet
+    return detail
+
+
+@app.post("/api/stock/runs/{name}/stop")
+def stock_stop(name: str):
+    record = stock_adapter.active_process(name)
+    if record is None:
+        raise not_found(name)
+    stopped = stock_adapter.stop_run(int(record["pid"]))
+    # Worth saying plainly: nothing is lost, and the same name resumes.
+    return {"stopped": stopped, "resumable": True, "run": name}
+
+
+@app.get("/api/stock/runs/{name}/ledger.csv")
+def stock_ledger_csv(name: str):
+    try:
+        rows = stock_adapter.ledger_rows(name)
+    except (FileNotFoundError, ValueError) as exc:
+        raise not_found(name) from exc
+    if not rows:
+        raise not_found(name)
+    columns: list[str] = []
+    for row in rows:
+        for key in row:
+            if key not in columns:
+                columns.append(key)
+
+    def stream():
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        yield buffer.getvalue()
+        for row in rows:
+            buffer.seek(0)
+            buffer.truncate(0)
+            writer.writerow(row)
+            yield buffer.getvalue()
+
+    return StreamingResponse(
+        stream(), media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{name}_buildings.csv"'})
+
+
+@app.get("/api/stock/runs/{name}/buildings/{refparcela}/{filename}")
+def stock_building_artifact(name: str, refparcela: str, filename: str):
+    try:
+        path = stock_adapter.artifact_path(name, refparcela, filename)
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(f"{refparcela}/{filename}") from exc
+    media_type = stock_adapter.SERVABLE_ARTIFACTS[filename]
+    headers = {
+        "Content-Disposition": f'inline; filename="{filename}"',
+        "X-Content-Type-Options": "nosniff",
+    }
+    if media_type.startswith("text/html"):
+        # EnergyPlus tables are third-party HTML: render them, run nothing.
+        headers["Content-Security-Policy"] = (
+            "sandbox; default-src 'none'; style-src 'unsafe-inline'; "
+            "img-src data:; base-uri 'none'; form-action 'none'"
+        )
+    return FileResponse(path, media_type=media_type, headers=headers)
 
 
 DIST = PROJECT / "frontend/dist"
