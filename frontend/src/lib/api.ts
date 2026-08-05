@@ -47,6 +47,11 @@ import type {
   StockInputPolicy,
   StockPolicyPreflight,
   WorkflowInputContract,
+  ProductProfile,
+  ProductPreflight,
+  ProductRunListItem,
+  ProductRunDetail,
+  ProductLedgerPage,
 } from './types'
 import type { FeatureCollection } from 'geojson'
 
@@ -92,6 +97,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(String(payload ?? response.statusText), response.status)
   }
   return response.json() as Promise<T>
+}
+
+async function requestText(path: string): Promise<string> {
+  const response = await fetch(`${API_BASE}${path}`, { cache: 'no-store' })
+  if (!response.ok) throw new ApiError(response.statusText, response.status)
+  return response.text()
 }
 
 export const api = {
@@ -143,8 +154,51 @@ export const api = {
     }),
   projectSettings: () => request<ProjectSettings>('/api/project/settings'),
   updateProjectSettings: (settings: Partial<Pick<ProjectSettings,
-    'building_dataset_id' | 'neighbor_dataset_id' | 'template_dataset_id' | 'weather_dataset_id'>>) =>
+    'building_dataset_id' | 'neighbor_dataset_id' | 'tipo15_dataset_id' | 'template_dataset_id' | 'weather_dataset_id' | 'ddy_dataset_id'>>) =>
     request<ProjectSettings>('/api/project/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
+  stockProfile: () => request<ProductProfile>('/api/stock/profile'),
+  stockDistricts: () => request<{ districts: string[] }>('/api/stock/districts'),
+  stockPreflight: (payload: {
+    scope: 'all' | 'district' | 'references'; district?: string; references?: string[];
+    keep?: 'full' | 'summary'; workers?: number
+  }) => request<ProductPreflight>('/api/stock/preflight', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+  stockRuns: () => request<{ runs: ProductRunListItem[] }>('/api/stock/runs'),
+  stockRun: (name: string) => request<ProductRunDetail>(`/api/stock/runs/${encodeURIComponent(name)}`),
+  startStockRun: (payload: {
+    name: string; scope: 'all' | 'district' | 'references'; district?: string;
+    references?: string[]; keep?: 'full' | 'summary'; workers?: number; resume?: boolean
+  }) => request<{ started: { run: string; pid: number; started_at: number }; estimate: ProductPreflight }>('/api/stock/runs', {
+    method: 'POST', body: JSON.stringify(payload),
+  }),
+  stopStockRun: (name: string) => request<{ stopped: boolean; resumable: boolean; run: string }>(
+    `/api/stock/runs/${encodeURIComponent(name)}/stop`, { method: 'POST' },
+  ),
+  stockLedger: (name: string, query = '', status = '', offset = 0, limit = 100) => {
+    const params = new URLSearchParams({ q: query, status, offset: String(offset), limit: String(limit) })
+    return request<ProductLedgerPage>(`/api/stock/runs/${encodeURIComponent(name)}/ledger?${params}`)
+  },
+  stockLog: (name: string) => requestText(`/api/stock/runs/${encodeURIComponent(name)}/log`),
+  stockLedgerCsvUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/ledger.csv`),
+  stockArtifactUrl: (name: string, reference: string, filename: string) => absoluteApiUrl(
+    `/api/stock/runs/${encodeURIComponent(name)}/buildings/${encodeURIComponent(reference)}/${encodeURIComponent(filename)}`,
+  ),
+  stockExportPlan: (name: string, references?: string[]) => {
+    const params = new URLSearchParams()
+    references?.forEach((reference) => params.append('references', reference))
+    const query = params.size ? `?${params}` : ''
+    return request<{
+      run: string; scope: 'full' | 'selection'; references: number | null;
+      files: number; uncompressed_bytes: number; signed: boolean
+    }>(`/api/stock/runs/${encodeURIComponent(name)}/export-plan${query}`)
+  },
+  stockExportUrl: (name: string, references?: string[]) => {
+    const params = new URLSearchParams()
+    references?.forEach((reference) => params.append('references', reference))
+    const query = params.size ? `?${params}` : ''
+    return absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/export.zip${query}`)
+  },
   config: () => request<ConfigResponse>('/api/config/schema'),
   buildings: (bbox: string) =>
     request<BuildingCollection>(`/api/buildings?bbox=${encodeURIComponent(bbox)}&limit=2500`),

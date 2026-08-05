@@ -109,11 +109,14 @@ export interface GeometryResult {
 
 export interface DatasetRecord {
   id: string
-  kind: 'gis' | 'template' | 'weather' | 'companion'
+  kind: 'gis' | 'template' | 'weather' | 'companion' | 'tipo15' | 'ddy'
   name: string
   path: string
   sha256: string
+  snapshot_hash?: string | null
+  verification_status?: string
   read_only: number
+  created_at?: string
   metadata: {
     managed?: boolean
     normalized?: boolean
@@ -123,6 +126,15 @@ export interface DatasetRecord {
     geometry_types?: string[]
     field_mapping?: Record<string, string | null>
     inspection_error?: string
+    contract?: string
+    weather_site?: string
+    annual_rows?: number
+    winter_design_days?: number
+    summer_design_days?: number
+    chosen_heating_design_day?: string
+    chosen_cooling_design_day?: string
+    required_roles?: string[]
+    available_roles?: string[]
   }
 }
 
@@ -279,8 +291,120 @@ export interface ProjectSettings {
   neighbor_dataset_id: string | null
   template_dataset_id: string | null
   weather_dataset_id: string | null
+  tipo15_dataset_id: string | null
+  ddy_dataset_id: string | null
   updated_at: string
   datasets: Record<string, DatasetRecord | null>
+}
+
+export interface ProductProfile {
+  profile: { fingerprint: string; source_hashes: Record<string, string> }
+  inputs: { gis: string | null; tipo15: string | null; climate: string | null; template: string | null }
+  missing_inputs: string[]
+  entrypoints: Record<string, boolean>
+}
+
+export interface ProductPreflight {
+  ok: boolean
+  missing_inputs?: string[]
+  scope?: string
+  district?: string | null
+  buildings_in_scope?: number
+  runnable?: number
+  excluded?: number
+  exclusion_reasons?: Record<string, number>
+  estimated_minutes?: number
+  estimated_bytes?: number
+  policy_fingerprint?: string | null
+  stock_source_fingerprint?: string | null
+  profile?: { fingerprint: string; source_hashes: Record<string, string> }
+}
+
+export interface ProductRunListItem {
+  run: string
+  modified: number
+  has_summary: boolean
+  buildings: number
+  running: boolean
+}
+
+export interface ProductProgress {
+  run: string
+  started: boolean
+  counts?: Record<string, number>
+  completed?: number
+  cpu_seconds?: number
+}
+
+export interface ProductClusterSummary {
+  cluster: string
+  buildings: number
+  residential_area_m2: number
+  total_site_gwh: number
+  area_weighted_kwh_m2: number
+  rai_consume_kwh_m2?: number
+  cadastral_area_m2?: number
+  cadastral_kwh_m2?: number
+  vs_rai_pct?: number
+}
+
+export interface ProductStockSummary {
+  buildings_ok: number
+  buildings_failed: number
+  buildings_failed_qa: number
+  buildings_excluded: number
+  coverage: {
+    buildings_in_scope: number
+    buildings_with_result: number
+    buildings_without_result: number
+    building_coverage_pct: number
+    footprint_coverage_pct: number
+    note?: string
+  }
+  qa_failed: number
+  unexplained_severes: number
+  implausible_occupancy: number
+  totals: {
+    heating_gwh: number
+    cooling_gwh: number
+    dhw_gwh: number
+    total_site_gwh: number
+    residential_area_m2: number
+    area_weighted_total_site_kwh_m2: number
+    cadastral_total_site_kwh_m2: number
+    carbon_total_site_t_yr: number
+    tipo15_residential_area_m2: number
+    area_basis?: string
+    area_basis_note?: string
+  }
+  by_cluster: ProductClusterSummary[]
+  provenance?: Record<string, unknown>
+}
+
+export interface ProductRunDetail {
+  progress: ProductProgress
+  running: boolean
+  summary: ProductStockSummary | null
+}
+
+export interface ProductLedgerRow extends Record<string, unknown> {
+  refparcela: string
+  status: string
+  cluster?: string
+  total_site_kwh_m2?: number
+  total_site_kwh?: number
+  total_site_co2_t_yr?: number
+  occupancy_plausibility?: string
+  qa_all_passed?: boolean
+  error?: string
+}
+
+export interface ProductLedgerPage {
+  run: string
+  total: number
+  offset: number
+  limit: number
+  items: ProductLedgerRow[]
 }
 
 export type BuildingFeature = Feature<Geometry, Record<string, unknown>> & { id: string }

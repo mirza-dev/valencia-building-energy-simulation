@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import zipfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from workbench import stock_adapter
+from workbench import db, integrity, stock_adapter
 from workbench.api import app
 
 BENICALAP = "BENICALAP"
@@ -129,6 +132,35 @@ def test_ledger_csv_has_one_row_per_building(client, has_finished_run):
     assert len({row["refparcela"] for row in rows}) == len(rows)
 
 
+def test_ledger_page_is_bounded_searchable_and_filterable(client, has_finished_run):
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    page = client.get(
+        f"/api/stock/runs/{FINISHED_RUN}/ledger",
+        params={"status": "ok", "limit": 7},
+    ).json()
+    assert page["run"] == FINISHED_RUN
+    assert page["total"] > 7
+    assert len(page["items"]) == 7
+    assert all(row["status"] == "ok" for row in page["items"])
+
+    reference = page["items"][0]["refparcela"]
+    found = client.get(
+        f"/api/stock/runs/{FINISHED_RUN}/ledger", params={"q": reference}
+    ).json()
+    assert found["total"] == 1
+    assert found["items"][0]["refparcela"] == reference
+
+
+def test_finished_run_log_endpoint_is_safe_and_uncached(client, has_finished_run):
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    response = client.get(f"/api/stock/runs/{FINISHED_RUN}/log")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
 def test_energyplus_table_is_served_sandboxed(client, has_finished_run):
     if not has_finished_run:
         pytest.skip(f"{FINISHED_RUN} not on disk")
@@ -162,3 +194,36 @@ def test_an_artifact_path_cannot_escape_the_run(has_finished_run):
         pytest.skip(f"{FINISHED_RUN} not on disk")
     with pytest.raises((ValueError, FileNotFoundError)):
         stock_adapter.artifact_path(FINISHED_RUN, "../../../etc", "eplustbl.htm")
+
+
+def test_selected_package_is_complete_and_ed25519_signed(monkeypatch, tmp_path: Path):
+    stock_root = tmp_path / "stock"
+    run = stock_root / "sample"
+    deep = run / "runs" / "REF1_deep"
+    models = run / "models" / "Cluster"
+    deep.mkdir(parents=True)
+    models.mkdir(parents=True)
+    (deep / "qa_report.txt").write_text("QA PASS", encoding="utf-8")
+    model = models / "REF1.osm"
+    model.write_text("OSM", encoding="utf-8")
+    row = {"refparcela": "REF1", "status": "ok", "cluster": "Cluster",
+           "model_osm": str(model)}
+    (run / "ledger.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    (run / "aggregate.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+    monkeypatch.setattr(db, "VAR_DIR", tmp_path / "var")
+    monkeypatch.setenv("WORKBENCH_EXPORT_ROOT", str(tmp_path / "exports"))
+
+    plan = stock_adapter.package_plan("sample", ["REF1"])
+    assert plan["scope"] == "selection"
+    assert plan["signed"] is True
+    package = stock_adapter.export_package("sample", ["REF1"])
+    with zipfile.ZipFile(package) as archive:
+        names = set(archive.namelist())
+        assert {"selected_ledger.json", "export_manifest.json",
+                "export_manifest.sig.json"} <= names
+        assert any(name.endswith("qa_report.txt") for name in names)
+        assert any(name.endswith("REF1.osm") for name in names)
+        manifest = json.loads(archive.read("export_manifest.json"))
+        signature = json.loads(archive.read("export_manifest.sig.json"))
+    assert integrity.verify_signed_manifest(manifest, signature)

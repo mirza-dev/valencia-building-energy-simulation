@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "product": "Valencia Stock Energy Workbench",
+  "required_python": "3.13",
+  "openstudio_version": "3.11.0",
+  "energyplus_version": "25.2.0",
+  "payload": [
+    {"path": "data/gis/DatosRai_ciudadValencia.shp", "sha256": "7daeed45f3ab00ec16b1e1c84953f99410f90e622831141413814ecb2d8d03a7", "role": "Valencia building GIS"},
+    {"path": "data/gis/DatosRai_ciudadValencia.dbf", "sha256": "63d754a205dfafaa939937c4bc8a0fb82da61734f54432989145ab9a07b10426", "role": "Valencia building GIS attributes"},
+    {"path": "data/gis/DatosRai_ciudadValencia.shx", "sha256": "5869b625b9785a88cb3966006a0ed3faf0c6c2ce3b8bcb66dd26388798888404", "role": "Valencia building GIS index"},
+    {"path": "data/gis/DatosRai_ciudadValencia.prj", "sha256": "03329a8b83248ce6963187291d05a46dfd70b28854fccb01c3fcabd2a28fdcce", "role": "Valencia building GIS projection"},
+    {"path": "data/gis/DatosRai_ciudadValencia.cpg", "sha256": "3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824", "role": "Valencia building GIS encoding"},
+    {"path": "data/gis/DatosRai_ciudadValencia.sbn", "sha256": "46cbc8b9e7391d1c42a0ed4cdaf8c1da5bbf091bbd90b61ba047dc967c556dd8", "role": "Valencia building GIS spatial index"},
+    {"path": "data/gis/DatosRai_ciudadValencia.sbx", "sha256": "045662ef564fffa909a8b588740881abc54df634e5fb2e0ce767d4357e05fe57", "role": "Valencia building GIS spatial index companion"},
+    {"path": "data/gis/DatosRai_ciudadValencia.shp.xml", "sha256": "39b2910f87bf9a25872cec3e10725fcd73370714a7f2a3a7247ca4db6b1e91cc", "role": "Valencia building GIS metadata"},
+    {"path": "data/reference/Tipo15_soloV(in).csv", "sha256": "c6e85c677c32596b1ba1ffe028aa1cf3f99bad6159eab650de7386ae0659b17b", "role": "Tipo15 companion"},
+    {"path": "data/weather/ESP_Valencia.082840_IWEC.epw", "sha256": "09dd4adf2bf25ba57252b8eddef5cbf3eb2bbae4ac813f70f9249d80ed98f194", "role": "Annual weather"},
+    {"path": "data/weather/ESP_Valencia.082840_IWEC.ddy", "sha256": "3ddb6f02ca1320801061a7e53c4b5f91cb324b8084229033e8e3d03b26d127f0", "role": "Sizing design days"},
+    {"path": "data/templates/PlantillaOS_v2.osm", "sha256": "68640fda436e09c8ed3215363bd3aa390b5882d1020d2bff19518ec91b4249e5", "role": "OpenStudio template"},
+    {"path": "out/stock/benicalap_v6/aggregate.json", "sha256": "274136c45e689311a9b3480c963e7c51c46efbeaee0778295ff729339a4e6cd8", "role": "Finished Benicalap example aggregate"},
+    {"path": "out/stock/benicalap_v6/ledger.jsonl", "sha256": "a106c55e188b289c49bb9559530d21abf330b12911a92111a1cd423fe2ca042d", "role": "Finished Benicalap example ledger"},
+    {"path": "out/stock/benicalap_v6/runs", "role": "Finished Benicalap per-building evidence directory", "minimum_files": 16000, "required_globs": [{"pattern": "*/eplusout.sql", "minimum": 968}, {"pattern": "*/eplustbl.htm", "minimum": 968}]},
+    {"path": "out/stock/benicalap_v6/models", "role": "Finished Benicalap OpenStudio models directory", "minimum_files": 968}
+  ]
+}

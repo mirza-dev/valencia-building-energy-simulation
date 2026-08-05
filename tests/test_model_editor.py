@@ -385,12 +385,12 @@ def test_recoverable_session_commits_selected_nonpilot_model_as_immutable_author
     assert all(path.stat().st_mode & 0o222 == 0 for path in destination.iterdir() if path.is_file())
 
 
-def test_schema_v7_immediate_job_is_worker_isolated(tmp_path, monkeypatch):
+def test_current_schema_immediate_job_is_worker_isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "VAR_DIR", tmp_path / "var")
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "var/workbench.sqlite3")
     db.init_db()
     with db.connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == db.LATEST_SCHEMA_VERSION
         columns = {row[1] for row in connection.execute("PRAGMA table_info(runs)")}
     assert {"provenance", "authored_from", "patch_journal_json"} <= columns
     job_id = db.create_immediate_job("model_edit", "pilot", {"patch_count": 1})

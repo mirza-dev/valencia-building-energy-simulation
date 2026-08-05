@@ -6,6 +6,13 @@ buildings).
 
 Built during an Erasmus+ internship at Universitat Politècnica de València.
 
+## Workbench quick start
+
+The packaged application uses one operational flow: **Files → Run → Outputs**.
+Follow the cross-platform [getting-started guide](docs/getting-started.md) for
+exact prerequisites, installation, first-run verification, resumable execution
+and signed evidence export.
+
 ---
 
 ## What the problem actually is
@@ -196,7 +203,7 @@ output, and what each fix was worth.
 
 ---
 
-## Running it
+## Running the engine from source
 
 Requires OpenStudio 3.11 (which bundles EnergyPlus 25.2) and Python 3.13.
 OpenStudio's Python bindings are unstable on 3.14.
@@ -204,11 +211,13 @@ OpenStudio's Python bindings are unstable on 3.14.
 ```bash
 python3.13 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/          # 347 tests
+.venv/bin/python -m pytest tests/          # 408 tests
 ```
 
-**The input data is not in this repository.** It belongs to the UPV research
-group and to third parties, and is not mine to redistribute:
+**The input data is not in the public source repository.** It belongs to the UPV
+research group and to third parties. The separately supplied research
+distribution contains the authorised inputs and a completed Benicalap example;
+its installer verifies them against `distribution-manifest.json`:
 
 | Input | What it is | Where it comes from |
 |---|---|---|

@@ -15,7 +15,7 @@ from typing import Any, Literal
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from model_config import BuildConfig, config_for_profile, flatten_config, profile_catalog
@@ -313,7 +313,7 @@ def datasets():
 
 @app.post("/api/datasets")
 async def upload_dataset(
-    kind: Literal["gis", "template", "weather"] = Form(...),
+    kind: Literal["gis", "tipo15", "template", "weather", "ddy"] = Form(...),
     name: str = Form(...),
     file: UploadFile = File(...),
 ):
@@ -324,8 +324,13 @@ async def upload_dataset(
             status_code=422,
             detail="Upload Shapefiles as one ZIP containing .shp/.dbf/.shx/.prj/.cpg sidecars",
         )
-    allowed = {"gis": {".gpkg", ".geojson", ".json", ".zip"},
-               "template": {".osm"}, "weather": {".epw"}}
+    allowed = {
+        "gis": {".gpkg", ".geojson", ".json", ".zip"},
+        "tipo15": {".csv"},
+        "template": {".osm"},
+        "weather": {".epw"},
+        "ddy": {".ddy"},
+    }
     if suffix not in allowed[kind]:
         raise HTTPException(status_code=422, detail=f"Unsupported {kind} file type: {suffix}")
     import_capacity = storage.admission("dataset_import", requested_bytes=1280 * 1024 ** 2)
@@ -334,18 +339,25 @@ async def upload_dataset(
             f"Insufficient protected disk capacity for dataset import: {import_capacity['reason']}",
             import_capacity,
         )
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
-        temp_path = Path(handle.name)
-        received = 0
-        while chunk := await file.read(1024 * 1024):
-            received += len(chunk)
-            if received > 512 * 1024 * 1024:
-                raise HTTPException(status_code=413, detail="Dataset exceeds the 512 MB local import limit")
-            handle.write(chunk)
+    temp_path: Path | None = None
     try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as handle:
+            temp_path = Path(handle.name)
+            received = 0
+            while chunk := await file.read(1024 * 1024):
+                received += len(chunk)
+                if received > 512 * 1024 * 1024:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Dataset exceeds the 512 MB local import limit",
+                    )
+                handle.write(chunk)
         return import_dataset(kind, name, temp_path, original_name=filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
-        temp_path.unlink(missing_ok=True)
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
 @app.post("/api/datasets/{dataset_id}/field-map")
@@ -1481,7 +1493,12 @@ def stock_profile():
     """Which verified model this installation runs - shown in the header."""
     inputs = stock_adapter.default_inputs()
     return {"profile": stock_adapter.profile(),
-            "inputs": {"gis": str(inputs.gis), "tipo15": str(inputs.tipo15)},
+            "inputs": {
+                "gis": str(inputs.gis) if inputs.gis else None,
+                "tipo15": str(inputs.tipo15) if inputs.tipo15 else None,
+                "climate": str(inputs.climate) if inputs.climate else None,
+                "template": str(inputs.template) if inputs.template else None,
+            },
             "missing_inputs": inputs.missing(),
             "entrypoints": stock_adapter.entrypoints_present()}
 
@@ -1615,6 +1632,65 @@ def stock_ledger_csv(name: str):
     return StreamingResponse(
         stream(), media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{name}_buildings.csv"'})
+
+
+@app.get("/api/stock/runs/{name}/ledger")
+def stock_ledger_page(
+    name: str,
+    q: str = Query(default="", max_length=160),
+    status: str = Query(default="", max_length=32),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    try:
+        return stock_adapter.ledger_page(
+            name, query=q, status=status, offset=offset, limit=limit)
+    except (FileNotFoundError, ValueError) as exc:
+        raise not_found(name) from exc
+
+
+@app.get("/api/stock/runs/{name}/log")
+def stock_run_log(name: str):
+    try:
+        content = stock_adapter.log_tail(name)
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    return PlainTextResponse(
+        content,
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.get("/api/stock/runs/{name}/export-plan")
+def stock_export_plan(name: str, references: list[str] | None = Query(default=None)):
+    try:
+        return stock_adapter.package_plan(name, references)
+    except FileNotFoundError as exc:
+        raise not_found(name) from exc
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+
+
+@app.get("/api/stock/runs/{name}/export.zip")
+def stock_export(name: str, references: list[str] | None = Query(default=None)):
+    if stock_adapter.active_process(name) is not None:
+        raise _stock_bad_request("stop the run before creating a signed package")
+    try:
+        plan = stock_adapter.package_plan(name, references)
+        evidence = storage.admission("export", requested_bytes=int(plan["uncompressed_bytes"]))
+        if not evidence["allowed"]:
+            raise storage.StorageAdmissionError(
+                f"Insufficient protected disk capacity for export: {evidence['reason']}", evidence,
+            )
+        path = stock_adapter.export_package(name, references)
+    except FileNotFoundError as exc:
+        raise not_found(name) from exc
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    return FileResponse(
+        path, media_type="application/zip", filename=path.name,
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
 
 
 @app.get("/api/stock/runs/{name}/buildings/{refparcela}/{filename}")

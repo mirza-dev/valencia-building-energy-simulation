@@ -15,7 +15,7 @@ from typing import Any
 PROJECT = Path(__file__).resolve().parents[2]
 VAR_DIR = Path(os.environ.get("WORKBENCH_VAR_DIR", PROJECT / "var"))
 DB_PATH = Path(os.environ.get("WORKBENCH_DB_PATH", VAR_DIR / "workbench.sqlite3"))
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -54,15 +54,19 @@ CREATE TABLE IF NOT EXISTS project_settings (
     project_id TEXT PRIMARY KEY,
     building_dataset_id TEXT,
     neighbor_dataset_id TEXT,
+    tipo15_dataset_id TEXT,
     template_dataset_id TEXT,
     weather_dataset_id TEXT,
+    ddy_dataset_id TEXT,
     initialized INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(project_id) REFERENCES projects(id),
     FOREIGN KEY(building_dataset_id) REFERENCES datasets(id),
     FOREIGN KEY(neighbor_dataset_id) REFERENCES datasets(id),
+    FOREIGN KEY(tipo15_dataset_id) REFERENCES datasets(id),
     FOREIGN KEY(template_dataset_id) REFERENCES datasets(id),
-    FOREIGN KEY(weather_dataset_id) REFERENCES datasets(id)
+    FOREIGN KEY(weather_dataset_id) REFERENCES datasets(id),
+    FOREIGN KEY(ddy_dataset_id) REFERENCES datasets(id)
 );
 CREATE TABLE IF NOT EXISTS datasets (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL,
@@ -282,6 +286,12 @@ def _migration_7(con: sqlite3.Connection) -> None:
     con.execute("DROP TABLE workflow_input_policies_v6")
 
 
+def _migration_8(con: sqlite3.Connection) -> None:
+    """Add the two files the per-building product previously took from constants."""
+    _ensure_column(con, "project_settings", "tipo15_dataset_id", "TEXT")
+    _ensure_column(con, "project_settings", "ddy_dataset_id", "TEXT")
+
+
 def init_db() -> None:
     VAR_DIR.mkdir(parents=True, exist_ok=True)
     with connect() as probe:
@@ -311,6 +321,8 @@ def init_db() -> None:
             _migration_6(con)
         if current < 7:
             _migration_7(con)
+        if current < 8:
+            _migration_8(con)
         con.execute(f"PRAGMA user_version={LATEST_SCHEMA_VERSION}")
         con.execute(
             "INSERT OR IGNORE INTO projects(id,name,locale,created_at) VALUES(?,?,?,?)",
@@ -453,7 +465,8 @@ def project_settings() -> dict[str, Any]:
 def update_project_settings(values: dict[str, str | None]) -> dict[str, Any]:
     allowed = {
         "building_dataset_id", "neighbor_dataset_id",
-        "template_dataset_id", "weather_dataset_id",
+        "tipo15_dataset_id", "template_dataset_id", "weather_dataset_id",
+        "ddy_dataset_id",
     }
     unknown = set(values) - allowed
     if unknown:

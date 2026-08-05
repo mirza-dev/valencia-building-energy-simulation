@@ -20,12 +20,18 @@ the interface down with it.  As a subprocess:
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
+import threading
 import time
+import uuid
+import zipfile
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +40,7 @@ import geopandas as gpd
 import stock_input_policy as sip
 import stock_runner as sr
 import verified_model as vm
+from workbench import db, file_inputs, integrity
 
 PROJECT = Path(__file__).resolve().parents[2]
 RUNNER_PATH = PROJECT / "src/stock_runner.py"
@@ -62,34 +69,69 @@ SERVABLE_ARTIFACTS = {
 SECONDS_PER_BUILDING = 40.6
 BYTES_PER_BUILDING_FULL = 5.8 * 1024 ** 2
 BYTES_PER_BUILDING_SUMMARY = 1.05 * 1024 ** 2
+_EXPORT_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
 class InputSet:
     """The four files a stock run reads.  Resolved once, reported as one thing."""
 
-    gis: Path
-    tipo15: Path
+    gis: Path | None
+    tipo15: Path | None
     climate: Path | None = None
     template: Path | None = None
 
     def missing(self) -> list[str]:
         absent = []
-        for label, path in (("gis", self.gis), ("tipo15", self.tipo15)):
+        for label, path in (
+            ("gis", self.gis), ("tipo15", self.tipo15),
+            ("climate", self.climate), ("template", self.template),
+        ):
             if path is None or not Path(path).exists():
-                absent.append(label)
-        for label, path in (("climate", self.climate), ("template", self.template)):
-            if path is not None and not Path(path).exists():
                 absent.append(label)
         return absent
 
 
+@lru_cache(maxsize=8)
+def _managed_climate(epw: str, ddy: str, climate_root: str) -> Path:
+    """Build once per immutable input pair; managed uploads are content-addressed."""
+    path, _ = file_inputs.build_climate_bundle(
+        Path(epw), Path(ddy), Path(climate_root))
+    return path
+
+
 def default_inputs() -> InputSet:
-    """The files the CLI defaults to, so the UI opens on a working configuration."""
+    """Resolve the six active dataset records into the runner's four inputs."""
     import model_builder as mb
     root = Path(mb._project_root())
-    return InputSet(gis=root / "data/gis/DatosRai_ciudadValencia.shp",
-                    tipo15=root / "data/reference/Tipo15_soloV(in).csv")
+    try:
+        settings = db.project_settings()
+
+        def selected(field: str) -> Path | None:
+            dataset_id = settings.get(field)
+            item = db.get_dataset(str(dataset_id)) if dataset_id else None
+            return Path(item["path"]) if item else None
+
+        gis = selected("building_dataset_id")
+        tipo15 = selected("tipo15_dataset_id")
+        template = selected("template_dataset_id")
+        epw = selected("weather_dataset_id")
+        ddy = selected("ddy_dataset_id")
+        climate_path = None
+        if epw is not None and ddy is not None and epw.exists() and ddy.exists():
+            var_root = Path(os.environ.get("WORKBENCH_VAR_DIR", PROJECT / "var"))
+            climate_path = _managed_climate(
+                str(epw.resolve()), str(ddy.resolve()), str((var_root / "climates").resolve()))
+        return InputSet(gis=gis, tipo15=tipo15, climate=climate_path, template=template)
+    except (RuntimeError, OSError, sqlite3.Error):
+        # Direct CLI/import use before Workbench bootstrap keeps the historical
+        # project defaults.  The UI path always has a database and never guesses.
+        return InputSet(
+            gis=root / "data/gis/DatosRai_ciudadValencia.shp",
+            tipo15=root / "data/reference/Tipo15_soloV(in).csv",
+            climate=root / "climates/valencia_iwec.json",
+            template=root / "data/templates/PlantillaOS_v2.osm",
+        )
 
 
 def entrypoints_present() -> dict[str, bool]:
@@ -200,6 +242,10 @@ def start_run(name: str, scope: str, *, district: str | None = None,
             "--keep", keep,
             "--gis", str(inputs.gis),
             "--tipo15", str(inputs.tipo15)]
+    if inputs.climate is not None:
+        argv += ["--climate", str(inputs.climate)]
+    if inputs.template is not None:
+        argv += ["--template", str(inputs.template)]
     if district:
         argv += ["--district", district]
     if references:
@@ -240,6 +286,56 @@ def active_process(name: str) -> dict[str, Any] | None:
     if not isinstance(pid, int) or not is_running(pid):
         return None
     return record
+
+
+def log_tail(name: str, max_bytes: int = 160_000) -> str:
+    """Return a bounded UTF-8 tail; the process marker is the only log authority."""
+    directory = run_directory(name)
+    marker = directory / "run_process.json"
+    if not marker.exists():
+        return ""
+    try:
+        record = json.loads(marker.read_text(encoding="utf-8"))
+        path = Path(str(record["log"])).resolve()
+    except (KeyError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid process record for {name}") from exc
+    allowed_root = Path(os.environ.get("WORKBENCH_VAR_DIR", PROJECT / "var")).resolve()
+    try:
+        path.relative_to(allowed_root)
+    except ValueError as exc:
+        raise ValueError("stock log escaped the Workbench var root") from exc
+    if not path.is_file():
+        return ""
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        handle.seek(max(0, size - max_bytes))
+        return handle.read(max_bytes).decode("utf-8", errors="replace")
+
+
+def ledger_page(name: str, *, query: str = "", status: str = "",
+                offset: int = 0, limit: int = 100) -> dict[str, Any]:
+    """A bounded view over the durable ledger for the Outputs table."""
+    rows = ledger_rows(name)
+    needle = query.strip().casefold()
+    wanted_status = status.strip().casefold()
+    filtered = []
+    for row in rows:
+        if wanted_status and str(row.get("status", "")).casefold() != wanted_status:
+            continue
+        if needle:
+            haystack = " ".join(str(row.get(key, "")) for key in (
+                "refparcela", "cluster", "status", "error", "occupancy_plausibility",
+            )).casefold()
+            if needle not in haystack:
+                continue
+        filtered.append(row)
+    return {
+        "run": name,
+        "total": len(filtered),
+        "offset": offset,
+        "limit": limit,
+        "items": filtered[offset:offset + limit],
+    }
 
 
 def stop_run(pid: int) -> bool:
@@ -338,3 +434,122 @@ def artifact_path(name: str, refparcela: str, filename: str) -> Path:
     if out_dir not in candidate.parents:
         raise ValueError("resolved outside the run directory")
     return candidate
+
+
+# ---------------------------------------------------------------------------
+# Signed packages - generated on demand, never folded back into the run
+# ---------------------------------------------------------------------------
+def _package_sources(name: str, references: list[str] | None = None) -> tuple[list[tuple[str, Path]], bytes | None]:
+    out_dir = run_directory(name)
+    if not (out_dir / "ledger.jsonl").is_file():
+        raise FileNotFoundError(name)
+
+    selected_ledger: bytes | None = None
+    candidates: list[Path] = []
+    if references is None:
+        candidates = [
+            path for path in out_dir.rglob("*")
+            if path.is_file() and not path.is_symlink() and path.name != "run_process.json"
+        ]
+    else:
+        requested = list(dict.fromkeys(str(item).strip() for item in references if str(item).strip()))
+        if not requested:
+            raise ValueError("at least one refparcela is required")
+        rows = {str(row.get("refparcela")): row for row in ledger_rows(name)}
+        missing = [reference for reference in requested if reference not in rows]
+        if missing:
+            raise ValueError(f"unknown refparcela: {', '.join(missing[:8])}")
+        for reference in requested:
+            if reference != Path(reference).name or any(sep in reference for sep in ("/", "\\", "\x00")):
+                raise ValueError(f"invalid refparcela: {reference!r}")
+            row = rows[reference]
+            model_value = row.get("model_osm")
+            if model_value:
+                model = (PROJECT / str(model_value)).resolve()
+                if model.is_file():
+                    candidates.append(model)
+            deep = out_dir / "runs" / f"{reference}_deep"
+            if deep.is_dir():
+                candidates.extend(path for path in deep.rglob("*") if path.is_file() and not path.is_symlink())
+        for common in ("aggregate.json", "run_config.json"):
+            path = out_dir / common
+            if path.is_file():
+                candidates.append(path)
+        selected_ledger = integrity.canonical_json_bytes({
+            "schema_version": 1, "run": name,
+            "rows": [rows[reference] for reference in requested],
+        })
+
+    sources: dict[str, Path] = {}
+    for path in candidates:
+        resolved = path.resolve()
+        try:
+            relative = resolved.relative_to(out_dir)
+        except ValueError as exc:
+            raise ValueError(f"package source escaped run directory: {path}") from exc
+        sources[relative.as_posix()] = resolved
+    return sorted(sources.items()), selected_ledger
+
+
+def package_plan(name: str, references: list[str] | None = None) -> dict[str, Any]:
+    sources, selected_ledger = _package_sources(name, references)
+    size = sum(path.stat().st_size for _, path in sources) + len(selected_ledger or b"")
+    return {
+        "run": name,
+        "scope": "full" if references is None else "selection",
+        "references": None if references is None else len(set(references)),
+        "files": len(sources) + (1 if selected_ledger is not None else 0),
+        "uncompressed_bytes": size,
+        "signed": True,
+    }
+
+
+def export_package(name: str, references: list[str] | None = None) -> Path:
+    """Create one Ed25519-signed ZIP while hashing each source in a single pass."""
+    sources, selected_ledger = _package_sources(name, references)
+    export_root = Path(os.environ.get("WORKBENCH_EXPORT_ROOT", PROJECT / "var/exports"))
+    export_root.mkdir(parents=True, exist_ok=True)
+    if references is None:
+        suffix = "full"
+    else:
+        identity = integrity.canonical_json_bytes(sorted(set(references)))
+        suffix = f"selected-{hashlib.sha256(identity).hexdigest()[:12]}"
+    output = export_root / f"stock_{name}_{suffix}.zip"
+    temporary = export_root / f".{output.name}.{uuid.uuid4().hex}.tmp"
+
+    with _EXPORT_LOCK:
+        try:
+            package_files: list[dict[str, Any]] = []
+            with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED,
+                                 allowZip64=True) as archive:
+                for arcname, source in sources:
+                    digest = hashlib.sha256()
+                    size = 0
+                    with source.open("rb") as reader, archive.open(arcname, "w", force_zip64=True) as writer:
+                        for chunk in iter(lambda: reader.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                            size += len(chunk)
+                            writer.write(chunk)
+                    package_files.append({"path": arcname, "sha256": digest.hexdigest(), "size_bytes": size})
+                if selected_ledger is not None:
+                    archive.writestr("selected_ledger.json", selected_ledger)
+                    package_files.append({
+                        "path": "selected_ledger.json",
+                        "sha256": hashlib.sha256(selected_ledger).hexdigest(),
+                        "size_bytes": len(selected_ledger),
+                    })
+                manifest = {
+                    "schema_version": 1,
+                    "run": name,
+                    "scope": "full" if references is None else "selection",
+                    "references": None if references is None else sorted(set(references)),
+                    "created_at": integrity.utcnow(),
+                    "files": package_files,
+                }
+                signature = integrity.sign_manifest(manifest)
+                archive.writestr("export_manifest.json", integrity.canonical_json_bytes(manifest))
+                archive.writestr("export_manifest.sig.json", integrity.canonical_json_bytes(signature))
+            temporary.replace(output)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return output

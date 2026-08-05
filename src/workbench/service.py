@@ -27,13 +27,15 @@ from shapely import make_valid
 from shapely.geometry import MultiPolygon, Polygon, box, mapping
 
 import model_builder as mb
+import climate as climate_domain
+import template_contract
 from model_config import (
     BuildConfig,
     config_for_profile,
     profile_catalog,
     validate_override_provenance,
 )
-from workbench import db
+from workbench import db, file_inputs
 from workbench import integrity, renderer_provenance, storage
 from workbench.data_dictionary import TIPO15_PATH, companion_bootstrap_metadata
 from workbench.environment import runtime_environment
@@ -119,6 +121,8 @@ def bootstrap() -> None:
         ("tipo15-ledger", "companion", "Tipo15 dwelling ledger", TIPO15_PATH),
         ("plantilla-v2", "template", "PlantillaOS_v2", config.data.template_path),
         ("valencia-iwec", "weather", "Valencia IWEC", config.data.epw_path),
+        ("valencia-iwec-ddy", "ddy", "Valencia IWEC design days",
+         PROJECT / "data/weather/ESP_Valencia.082840_IWEC.ddy"),
     ]
     for dataset_id, kind, name, path in defaults:
         existing = db.get_dataset(dataset_id)
@@ -137,6 +141,8 @@ def bootstrap() -> None:
                     metadata["inspection_error"] = str(exc)
             elif kind == "companion":
                 metadata.update(companion_bootstrap_metadata())
+            elif kind in {"template", "weather", "ddy"}:
+                metadata.update(_inspect_uploaded_dataset(kind, path))
             db.upsert_dataset({
                 "id": dataset_id,
                 "kind": kind,
@@ -152,8 +158,10 @@ def bootstrap() -> None:
     defaults_by_field = {
         "building_dataset_id": "valencia-city",
         "neighbor_dataset_id": "valencia-city",
+        "tipo15_dataset_id": "tipo15-ledger",
         "template_dataset_id": "plantilla-v2",
         "weather_dataset_id": "valencia-iwec",
+        "ddy_dataset_id": "valencia-iwec-ddy",
     }
     initial_settings = {
         field: dataset_id for field, dataset_id in defaults_by_field.items()
@@ -161,6 +169,17 @@ def bootstrap() -> None:
     }
     if not settings.get("initialized"):
         db.update_project_settings(initial_settings)
+    else:
+        # Schema v8 introduced these two explicit inputs.  Existing installations
+        # already used these exact files implicitly; record them without changing
+        # any of the four older active selections.
+        migrated_defaults = {
+            field: defaults_by_field[field]
+            for field in ("tipo15_dataset_id", "ddy_dataset_id")
+            if not settings.get(field) and db.get_dataset(defaults_by_field[field])
+        }
+        if migrated_defaults:
+            db.update_project_settings(migrated_defaults)
     try:
         db.replace_profiles(profile_catalog(workbench_base_config()))
     except RuntimeError:
@@ -200,8 +219,10 @@ def recover_committing_runs() -> None:
 SETTING_KINDS = {
     "building_dataset_id": "gis",
     "neighbor_dataset_id": "gis",
+    "tipo15_dataset_id": ("tipo15", "companion"),
     "template_dataset_id": "template",
     "weather_dataset_id": "weather",
+    "ddy_dataset_id": "ddy",
 }
 
 
@@ -224,9 +245,12 @@ def set_project_settings(values: dict[str, str | None]) -> dict[str, Any]:
         if dataset is None:
             raise KeyError(dataset_id)
         expected = SETTING_KINDS[field]
-        if dataset["kind"] != expected:
-            raise ValueError(f"{field} requires a {expected} dataset")
-        if expected == "gis":
+        expected_kinds = (expected,) if isinstance(expected, str) else expected
+        if dataset["kind"] not in expected_kinds:
+            raise ValueError(
+                f"{field} requires one of {', '.join(expected_kinds)}; got {dataset['kind']}"
+            )
+        if "gis" in expected_kinds:
             metadata = dataset.get("metadata", {})
             columns = set(metadata.get("columns", []))
             missing = {"refparcela", "altura_max"} - columns
@@ -236,6 +260,15 @@ def set_project_settings(values: dict[str, str | None]) -> dict[str, Any]:
                 )
             if "25830" not in str(metadata.get("crs", "")):
                 raise ValueError("Active GIS datasets must use EPSG:25830; normalize the dataset first")
+    resolved = db.project_settings() | values
+    weather_id = resolved.get("weather_dataset_id")
+    ddy_id = resolved.get("ddy_dataset_id")
+    if weather_id and ddy_id:
+        weather = db.get_dataset(str(weather_id))
+        ddy = db.get_dataset(str(ddy_id))
+        if weather is None or ddy is None:
+            raise KeyError(weather_id if weather is None else ddy_id)
+        _validate_climate_pair(Path(weather["path"]), Path(ddy["path"]))
     _read_gdf.cache_clear()
     if values:
         db.update_project_settings(values)
@@ -1546,6 +1579,32 @@ def _extract_zipped_shapefile(source: Path, staging: Path) -> Path:
         raise
 
 
+def _validate_climate_pair(epw: Path, ddy: Path) -> dict[str, Any]:
+    mutable = runtime_environment()["mutable_paths"]
+    assert isinstance(mutable, dict)
+    _, record = file_inputs.build_climate_bundle(
+        epw, ddy, Path(str(mutable["var_dir"])) / "climates")
+    return record
+
+
+def _inspect_uploaded_dataset(kind: str, source: Path) -> dict[str, Any]:
+    """Run the domain contract before an upload is registered as VERIFIED."""
+    if kind == "tipo15":
+        return file_inputs.inspect_tipo15(source)
+    if kind == "weather":
+        return file_inputs.inspect_weather(source)
+    if kind == "ddy":
+        return file_inputs.inspect_ddy(source)
+    if kind == "template":
+        report = template_contract.validate_template(source)
+        return {
+            "contract": "template-roles-v1",
+            "bound_roles": len(report["found"]),
+            "missing_optional_roles": [item["role"] for item in report["missing"]],
+        }
+    return {}
+
+
 def import_dataset(kind: str, name: str, source: Path, *, original_name: str | None = None) -> dict[str, Any]:
     preserved_name = Path(original_name).name if original_name else source.name
     staged_dir: Path | None = None
@@ -1555,6 +1614,7 @@ def import_dataset(kind: str, name: str, source: Path, *, original_name: str | N
         snapshot_source = _extract_zipped_shapefile(source, staged_dir)
         preserved_name = snapshot_source.name
 
+    validation = _inspect_uploaded_dataset(kind, snapshot_source)
     snapshot = integrity.ensure_snapshot(snapshot_source, kind=kind)
     digest = snapshot["snapshot_hash"]
     dataset_id = f"managed-{digest[:20]}"
@@ -1577,7 +1637,7 @@ def import_dataset(kind: str, name: str, source: Path, *, original_name: str | N
     metadata: dict[str, Any] = {
         "managed": True, "original_name": preserved_name,
         "snapshot_components": snapshot["components"],
-    }
+    } | validation
     if kind == "gis":
         try:
             gdf = gpd.read_file(target)

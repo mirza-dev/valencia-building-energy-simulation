@@ -242,7 +242,7 @@ def _register_real_policy_inputs(tmp_path: Path, monkeypatch) -> None:
     db.update_project_settings({"building_dataset_id": "valencia-city"})
 
 
-def test_schema_v6_policy_row_migrates_to_append_only_v7(tmp_path: Path, monkeypatch):
+def test_schema_v6_policy_row_migrates_to_append_only_current(tmp_path: Path, monkeypatch):
     database = tmp_path / "var/workbench.sqlite3"
     database.parent.mkdir(parents=True)
     policy = StockInputPolicy().to_dict()
@@ -282,7 +282,7 @@ def test_schema_v6_policy_row_migrates_to_append_only_v7(tmp_path: Path, monkeyp
         version = connection.execute("PRAGMA user_version").fetchone()[0]
     assert primary_key == ["project_id", "workflow", "revision"]
     assert row == ("city", 1, "old-fingerprint")
-    assert version == 7
+    assert version == db.LATEST_SCHEMA_VERSION
 
 
 def test_queued_job_keeps_resolved_policy_after_project_default_changes(tmp_path: Path, monkeypatch):

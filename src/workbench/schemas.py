@@ -43,8 +43,10 @@ class DatasetFieldNoteRequest(StrictRequest):
 class ProjectSettingsRequest(StrictRequest):
     building_dataset_id: str | None = None
     neighbor_dataset_id: str | None = None
+    tipo15_dataset_id: str | None = None
     template_dataset_id: str | None = None
     weather_dataset_id: str | None = None
+    ddy_dataset_id: str | None = None
 
 
 class StockInputPolicyFields(StrictRequest):

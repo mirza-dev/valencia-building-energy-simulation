@@ -175,9 +175,9 @@ def test_workflow_contracts_expose_only_controls_that_exist_today():
         assert client.get("/api/workflows/not-real/input-policy").status_code == 404
 
 
-def test_schema_v7_contains_dataset_annotation_and_versioned_policy_tables():
+def test_current_schema_contains_dataset_annotation_and_versioned_policy_tables():
     with db.connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == db.LATEST_SCHEMA_VERSION
         tables = {row[0] for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
