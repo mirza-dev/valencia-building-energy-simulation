@@ -1,0 +1,23 @@
+{
+  "name": "lecco_bergamo_tmyx",
+  "description": "Lecco (Lombardy, 45.86 N 9.39 E, 214 m). Nearest representative station with a full ASHRAE design-day pair is Milano-Bergamo Orio al Serio (WMO 160760), 32 km south-west at 237 m - the same Po-valley plain climate. The mountain stations that are physically closer (Grigna, Bisbino) sit above 1000 m and describe a different climate entirely. TMYx 2009-2023.",
+
+  "epw": "data/weather/lecco/ITA_LM_Milano-Bergamo.Intl.AP.160760_TMYx.2009-2023.epw",
+  "ddy": "data/weather/lecco/ITA_LM_Milano-Bergamo.Intl.AP.160760_TMYx.2009-2023.ddy",
+
+  "heating_design_day": "Milano-Bergamo.Intl.AP Ann Htg 99.6% Condns DB",
+  "cooling_design_day": "Milano-Bergamo.Intl.AP Ann Clg .4% Condns DB=>MWB",
+
+  "ground_temperature_c": 18.0,
+  "water_mains_temperature_c": 13.7,
+
+  "_notes": {
+    "ground_temperature_c": "Site:GroundTemperature:BuildingSurface is the temperature of the ground IN CONTACT WITH THE SLAB, not the undisturbed earth: EnergyPlus documents it as running close to the average indoor temperature, and feeding it the undisturbed value produces excessive floor heat loss. It is therefore set by the indoor conditions, and Lecco is run on the same template with the same CTE thermostat schedules as Valencia, so it keeps the same 18.0 C. Stated here rather than inherited silently. For the record, this EPW's own UNDISTURBED ground temperature averages 13.60 C at 0.5 m, 13.66 C at 2 m and 13.71 C at 4 m - none of those belong in this field.",
+
+    "water_mains_temperature_c": "This one IS climate-dependent - it is the cold water arriving from the network - so it is derived from this file rather than inherited: 13.7 C, the annual mean of the EPW's own ground temperature at 2 m, roughly the depth at which mains are buried. WARNING for any Lecco-vs-Valencia DHW comparison: Valencia runs at 10.0 C, which is not a Valencia measurement but the OpenStudio template's FixedDefault that Rai left in place. Lecco's warmer mains therefore make its DHW look cheaper by about 9 % on the temperature rise alone (50-13.7 = 36.3 K against 50-10 = 40 K), and that gap is an artefact of the two sources, not a difference between the cities.",
+
+    "design_days": "Read from the .ddy at load time and cross-checked against this EPW's own DESIGN CONDITIONS header (2025 ASHRAE Handbook): heating 99.6% -3.8 C, cooling 0.4% 33.0 C / 22.7 C MWB.",
+
+    "station_distance": "Lecco 45.8556 N 9.3910 E, 214 m. Bergamo 45.6689 N 9.7003 E, 237 m. About 32 km, 23 m of elevation. Lecco sits at the lake's southern tip where the plain meets the pre-Alps, so the lake and the valley moderate it slightly against the open plain; that is the main known limitation of this climate."
+  }
+}

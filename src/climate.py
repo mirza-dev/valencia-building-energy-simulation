@@ -54,6 +54,24 @@ SITE_LATLON_TOLERANCE_DEG = 0.05
 SITE_ELEVATION_TOLERANCE_M = 5.0
 DESIGN_TEMPERATURE_TOLERANCE_C = 0.15
 DESIGN_WIND_TOLERANCE = 0.15
+# The cooling design day's daily range is the one field where the two files are
+# NOT restating the same number.  The EPW header reports the ASHRAE tabulated
+# DBR - the mean daily range of the hottest month - while the .ddy's design day
+# carries the range that belongs to the 0.4 % peak condition itself; in the
+# tables these are separate quantities.  Measured 2026-08-06 across four Italian
+# TMYx pairs (Bergamo 2009-2023 and 2011-2025, Linate 2009-2023 and 2011-2025):
+# every other cooling field agreed to 0.00 - month, peak dry bulb, coincident
+# wet bulb, wind speed, wind direction - and only the range differed, by a
+# consistent 0.80 K at Bergamo and 1.00 K at Linate.  Valencia's older IWEC pair
+# states the same value in both places and still agrees to 0.00, so this is a
+# property of the newer generation of files rather than a damaged download.
+#
+# The range sets the design day's MINIMUM (peak minus range), not its peak, so a
+# disagreement here moves the morning of the sizing day and not the load that
+# sizes the coil.  It gets its own tolerance rather than widening
+# DESIGN_TEMPERATURE_TOLERANCE_C, which must stay tight: that constant guards
+# the peak temperatures, and those two files really are restating one number.
+DESIGN_RANGE_TOLERANCE_C = 1.5
 # Barometric pressure follows elevation by the ISA barometric formula; 2 % is
 # wide enough for the difference between a station's measured mean and the
 # standard atmosphere, narrow enough to catch a pressure left at a default.
@@ -273,7 +291,7 @@ def _check_design_conditions(day: dict, block: list[float] | None,
         compare("wind direction", block[14], day["wind_direction"], 1.0)
     elif kind == "cooling" and len(block) >= 16:
         compare("month", block[0], day["month"], 0.0)
-        compare("daily range", block[1], day["range"], DESIGN_TEMPERATURE_TOLERANCE_C)
+        compare("daily range", block[1], day["range"], DESIGN_RANGE_TOLERANCE_C)
         compare("dry bulb 0.4 %", block[2], day["db"], DESIGN_TEMPERATURE_TOLERANCE_C)
         if day["wb"] is not None:
             compare("mean coincident wet bulb", block[3], day["wb"],
