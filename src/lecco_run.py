@@ -162,9 +162,11 @@ def simulate_lecco_building(reference: str, out_dir: Path, row, *,
     stats["occupants_source"] = occupants_source
     stats["climate"] = climate.name
     stats["climate_fingerprint"] = climate.fingerprint
-    tipo15 = row.get("tipo15_res_area_m2")
-    stats["tipo15_res_area_m2"] = (round(float(tipo15), 1)
-                                   if tipo15 is not None and float(tipo15) > 0 else None)
+    # Carried for reporting only.  The stock deliberately writes no
+    # `tipo15_res_area_m2`, so the engine stamps `unchecked_no_tipo15` and
+    # leaves every storey of a purely residential building as housing.
+    stats["eu_gross_floor_area_m2"] = row.get("eu_gross_floor_area_m2")
+    stats["eu_net_floor_area_m2"] = row.get("eu_net_floor_area_m2")
     stats["res_area_source"] = "geometry: footprint x residential storeys"
 
     run_dir = out_dir / f"{reference}_deep"
@@ -272,7 +274,7 @@ def screen(stock) -> tuple[list[str], list[dict]]:
         except Exception as exc:                   # noqa: BLE001 - the gate itself
             excluded.append({"refparcela": str(row.refparcela), "status": "excluded",
                              "reason": str(exc),
-                             "floor_area_m2": float(row.tipo15_res_area_m2 or 0.0)})
+                             "floor_area_m2": float(row.eu_gross_floor_area_m2 or 0.0)})
             continue
         runnable.append(str(row.refparcela))
     return runnable, excluded
@@ -291,8 +293,8 @@ def select(stock, *, per_cluster: int | None, limit: int | None,
     if per_cluster:
         picked: list[str] = []
         for _, group in frame.groupby("cluster"):
-            median = group["tipo15_res_area_m2"].median()
-            order = (group["tipo15_res_area_m2"] - median).abs().sort_values()
+            median = group["eu_gross_floor_area_m2"].median()
+            order = (group["eu_gross_floor_area_m2"] - median).abs().sort_values()
             picked += list(group.loc[order.index[:per_cluster], "refparcela"])
         return picked
     # Deterministically shuffled.  The stock arrives in database order, which
@@ -444,7 +446,7 @@ def run(stock_path: Path, climate_path: Path, out_dir: Path, *,
     log.info("[stock] %d buildings from %s", len(stock), stock_path.name)
 
     runnable, excluded = screen(stock)
-    total_area = float(stock["tipo15_res_area_m2"].sum())
+    total_area = float(stock["eu_gross_floor_area_m2"].sum())
     lost_area = sum(item["floor_area_m2"] for item in excluded)
     log.info("[screen] %d runnable, %d excluded by the engine's own footprint "
              "gate = %.2f %% of buildings but %.2f %% of floor area "

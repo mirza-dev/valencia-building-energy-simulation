@@ -14,7 +14,7 @@ another's, because Valencia and Lecco arrive in genuinely different forms:
     EPSG:25830                     EPSG:4326
 
 The engine reads `refparcela`, `altura_max`, `cluster`, `pob_total`,
-`num_vivend`, `tipo15_res_area_m2` and `ground_use` off a row.  This module
+`num_vivend` and `ground_use` off a row.  This module
 produces exactly those, plus the Italian U-values as columns.
 
 Why the U-values travel as columns
@@ -68,6 +68,11 @@ LECCO_POPULATION = 47_500
 
 MEAN_DWELLING_AREA_M2 = 100.0     # only where OCD gives no dwelling band
 STOREY_HEIGHT_M = 3.0             # Italian residential floor-to-floor
+
+# `net_floor_area` is this exact multiple of `gross_floor_area` for every
+# building in the file - measured, not assumed.  Recorded so the gross figure
+# can be recovered for reporting, and as evidence that the net one is derived.
+NET_TO_GROSS_RATIO = 0.7368
 
 RESIDENTIAL_OCC = ("RES", "RES1", "RES3", "RES4")
 
@@ -285,12 +290,40 @@ def extract(db_path: Path, out_path: Path, *,
     for column in ("wall_u", "roof_u", "floor_u", "window_u"):
         stock[column] = [tabula[key][column] for key in stock["tabula_string"]]
 
-    # The dwelling-area basis: this file's analogue of Tipo15.
-    stock["tipo15_res_area_m2"] = stock["net_floor_area"].fillna(0.0)
+    # ---- deliberately NOT written: `tipo15_res_area_m2` ---------------------
+    # The deep chain uses that column to decide how many storeys are dwellings
+    # and converts the rest to commercial floor.  In Valencia it holds the
+    # cadastral Tipo15 dwelling surface - a real, per-building survey figure.
+    # This database has no equivalent, and passing one of its floor areas off as
+    # one produces a fabricated mixed-use split.  Measured 2026-08-06:
+    #
+    #   * `net_floor_area` is exactly 0.7368 x `gross_floor_area` for every
+    #     building, in total and at the median - a fixed multiplier, so it is
+    #     derived and carries no information the gross figure does not.
+    #   * `gross_floor_area / footprint` sits at 2.85 at both the 50th and the
+    #     75th percentile - a default storey count, so it is derived too.
+    #   * The source already states the use: these rows were selected on
+    #     `OCC in RES/RES1/RES3/RES4`, and buildings with commercial floor carry
+    #     their own `MIX(...)` codes and were filtered out. Converting storeys
+    #     to commercial here would contradict the classification we selected on.
+    #
+    # Feeding the net figure did exactly that: city-wide the conditioned area
+    # came out 1.523x the residential area, against roughly 1.2 in Valencia,
+    # and 61 % of buildings had storeys reclassified. Leaving the column out
+    # makes the engine stamp `mixed_use_basis: unchecked_no_tipo15`, which is
+    # the honest description of what we know.
+    #
+    # Both source areas travel as plainly-named columns for reporting and for
+    # the coverage accounting, where they are floor-area weights and nothing more.
+    stock["eu_net_floor_area_m2"] = stock["net_floor_area"].fillna(0.0)
+    stock["eu_gross_floor_area_m2"] = (stock["net_floor_area"].fillna(0.0)
+                                       / NET_TO_GROSS_RATIO).round(1)
 
     # No per-building population exists, so allocate the municipal total by
     # recorded dwelling area.  The stock then sums to Lecco's real population.
-    area = stock["tipo15_res_area_m2"].clip(lower=0.0)
+    # The net figure is used as a WEIGHT here, which the fixed net/gross ratio
+    # leaves unaffected - proportions are identical either way.
+    area = stock["eu_net_floor_area_m2"].clip(lower=0.0)
     total_area = float(area.sum())
     if total_area <= 0:
         raise LeccoStockError("no recorded dwelling area; occupancy cannot be allocated")
@@ -307,7 +340,7 @@ def extract(db_path: Path, out_path: Path, *,
 
     stock = stock[["refparcela", "cluster", "family", "period", "period_assumed",
                    "tabula_string", "altura_max", "storeys_raised", "footprint_m2",
-                   "net_floor_area", "tipo15_res_area_m2", "num_vivend",
+                   "eu_net_floor_area_m2", "eu_gross_floor_area_m2", "num_vivend",
                    "dwellings_source", "pob_total", "occupancy_source",
                    "ground_use", "ground_use_source",
                    "wall_u", "roof_u", "floor_u", "window_u",
@@ -322,7 +355,8 @@ def extract(db_path: Path, out_path: Path, *,
 def summarise(stock: gpd.GeoDataFrame) -> str:
     lines = [
         f"buildings            {len(stock):>8,}",
-        f"residential area     {stock['tipo15_res_area_m2'].sum():>8,.0f} m2",
+        f"net floor area       {stock['eu_net_floor_area_m2'].sum():>8,.0f} m2",
+        f"gross floor area     {stock['eu_gross_floor_area_m2'].sum():>8,.0f} m2",
         f"allocated residents  {stock['pob_total'].sum():>8,.0f}",
         f"period assumed       {int(stock['period_assumed'].sum()):>8,} "
         f"({stock['period_assumed'].mean() * 100:.1f} %)",
