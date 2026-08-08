@@ -2,11 +2,11 @@
   "schema_version": 1,
   "status": "LOCKED_VERIFIED_MODEL",
   "profile_id": "valencia-deep-v1",
-  "profile_fingerprint": "c592d7f1874453383933ca214dce3461ed62422f78139519c8611cf308aa6dd6",
+  "profile_fingerprint": "03908cd3b3b6e06ab21bb860786466410707fc3a459a1aa194bd9e764fcfd1d6",
   "locked_source_hashes": {
     "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
     "run_simulation.py": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
-    "model_config.py": "786d1565951b9f21741e2762cd66dc7fd361c2c58e884be3d5ef05d1899e2271",
+    "model_config.py": "ab388f646b89d74834ff53af07454f559012082f48f50197bb4ddec30ddc91da",
     "deep_building.py": "a1f903a9006441f28a462b58bbd4dcbfd40d0e1f37c30bc63ee53791b18f8064"
   },
   "verified_on": "2026-07-27",

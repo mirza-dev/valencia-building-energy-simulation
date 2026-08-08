@@ -507,8 +507,9 @@ def test_every_cluster_resolves_its_own_period_envelope():
         assert resolved[f"{family}P01"][0] > resolved[f"{family}P06"][0], family
     # and the families are not interchangeable
     assert resolved["EdiPluriP04"][0] != resolved["BlocPluriP04"][0]
-    # 16 distinct envelopes over 18 clusters - the duplicates are TABULA's own
-    # (VivUniP02 == P03, and P07 maps onto P06)
+    # Near-distinct envelopes over 18 clusters; the floor allows for the
+    # duplicates each source carries of its own accord (the IVE table has
+    # VivUniP02 == P03, Rai's has none) without pinning either one's count.
     assert len(set(resolved.values())) >= 15
 
 
@@ -874,14 +875,18 @@ def test_runner_reproduces_the_single_building_path(tmp_path):
     row = [r for r in sr.read_ledger(tmp_path / "run" / "ledger.jsonl")
            if r["refparcela"] == PILOT][0]
     assert row["qa_all_passed"] is True
-    # Measured 2026-07-30, after the TABULA cluster envelope was connected. The
-    # pilot is BlocPluriP04, whose roof U of 1.92 replaced the template's
-    # uninsulated flat roof; the previous 2.26 / 2.73 / 50.19 belong to the run
-    # where every building shared one envelope.
-    assert row["space_heating_kwh_m2"] == pytest.approx(2.22, abs=0.01)
-    assert row["cooling_kwh_m2"] == pytest.approx(2.71, abs=0.01)
+    # Measured 2026-08-06, on Rai's own envelope (ENVELOPE_SOURCE = "rai").
+    # The pilot is BlocPluriP04: his wall is 1.369 against the IVE 1.33 and his
+    # roof 2.479 against 1.92, so both directions of the envelope got leakier
+    # and heating and cooling both rise.  The roof carries it - 562 m2 at
+    # +0.559 W/m2K is about 314 W/K, against roughly 39 W/K from the walls.
+    # DHW does not move, because it never depended on the envelope.
+    # Earlier baselines: 2.22 / 2.71 / 50.12 on the IVE table (2026-07-30), and
+    # 2.26 / 2.73 / 50.19 before any cluster envelope was connected at all.
+    assert row["space_heating_kwh_m2"] == pytest.approx(2.74, abs=0.01)
+    assert row["cooling_kwh_m2"] == pytest.approx(3.00, abs=0.01)
     assert row["dhw_kwh_m2"] == pytest.approx(10.32, abs=0.01)
-    assert row["total_site_kwh_m2"] == pytest.approx(50.12, abs=0.01)
+    assert row["total_site_kwh_m2"] == pytest.approx(50.99, abs=0.01)
     assert row["profile_fingerprint"] == vm.profile_fingerprint()
     # the two area bases travel side by side and are never conflated
     assert row["res_area_m2"] == pytest.approx(2809.9, abs=0.1)

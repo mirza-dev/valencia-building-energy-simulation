@@ -65,6 +65,7 @@ from pathlib import Path
 
 import deep_building as db
 import model_builder as mb
+import model_config as mc
 
 
 log = logging.getLogger("verified_model")
@@ -142,6 +143,12 @@ LOCKED_BEHAVIOUR: dict[str, object] = {
                     "(1/21, ClearSky, clearness 0.0) and Ann Clg .4 % DB=>MWB "
                     "(8/21, ASHRAETau taub 0.505 / taud 1.864)"),
     "interzone_slabs": "template default (period appropriate); Rai's 2.119 available opt-in",
+    # Which cluster envelope the per-building chain resolves against.  The
+    # verification replica pins Rai's measured U-values directly and never
+    # reaches this table, so the 13 gates are unaffected either way - but a
+    # stock run's numbers move with it, so it is recorded here and the drift
+    # guard fails if it changes without a re-verification.
+    "cluster_envelope_source": mc.ENVELOPE_SOURCE,
     "shading": "persiana + balcony overhangs + neighbour context (Rai models none)",
     "area_basis": "residential floor area primary, total conditioned reported alongside",
 }
@@ -311,7 +318,7 @@ SHARED_LAYERS = (
 LOCKED_SOURCE_HASHES: dict[str, str] = {
     "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
     "run_simulation.py": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
-    "model_config.py": "786d1565951b9f21741e2762cd66dc7fd361c2c58e884be3d5ef05d1899e2271",
+    "model_config.py": "ab388f646b89d74834ff53af07454f559012082f48f50197bb4ddec30ddc91da",
     "deep_building.py": "a1f903a9006441f28a462b58bbd4dcbfd40d0e1f37c30bc63ee53791b18f8064",
 }
 

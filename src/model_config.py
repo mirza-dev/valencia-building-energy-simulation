@@ -209,6 +209,80 @@ TABULA_ES: dict[tuple[str, str], dict[str, float]] = {
 }
 
 
+# The envelope Rai modelled, read out of the 41 OpenStudio files he sent on
+# 2026-08-04 and remapped on 2026-08-06.
+#
+# His file names do not mean what the shapefile's `cluster` column means.  He
+# stated the mapping himself - "EdiPluri there means BlocPluri", "VivUniAis
+# means VivUni", "VivUniAdo means EdiPluri" - while warning that he could not
+# open the files to check.  It was not taken on trust: for every model the
+# construction actually *assigned* to the exterior surfaces was extracted and
+# compared against the IVE table above.  His `EdiPluri` walls land on our
+# BlocPluri column (P03 +0.6%, P04 +2.9%, P06 -2.9%) and miss our EdiPluri
+# column by 10-22%, on four of four uncorrupted periods.  That is the mapping.
+#
+# Reading rule, because his library is not internally consistent: a value comes
+# from the surface it is assigned to in the file whose name matches the period,
+# latest revision, and retrofit assemblies are rejected.  The same construction
+# *name* carries different assemblies in different files - `EdiPluriP03_Roof` is
+# 0.453 in the P01/P02 files and 2.652 in the P03 file - and 0.453 sits next to
+# `EdiPluriP04_Roof_Mejorada` = 0.40, so it is a retrofit that leaked into base
+# models.  This is what made the P01/P02 roofs look physically impossible on
+# 2026-08-04; the period-correct entries were in the library all along.
+# Windows: where a file assigns two, the dominant one wins (8-12 openings
+# against a single stray `U_4.5`).
+#
+# Four entries stay on the IVE values because his library has no counterpart:
+# marked `# IVE` below.
+RAI_ENVELOPE: dict[tuple[str, str], dict[str, float]] = {
+    # <- VivUniAis*PTHP*.osm
+    ("VivUni", "P01"): dict(wall_u=3.203, roof_u=2.184, window_u=4.9),
+    ("VivUni", "P02"): dict(wall_u=1.728, roof_u=1.546, window_u=4.5),
+    ("VivUni", "P03"): dict(wall_u=1.728, roof_u=1.310, window_u=4.5),
+    ("VivUni", "P04"): dict(wall_u=1.013, roof_u=1.762, window_u=4.5),
+    ("VivUni", "P05"): dict(wall_u=0.416, roof_u=0.610, window_u=3.10),
+    # VivUniAisP06 carries a facade only; roof and window stay on IVE.
+    ("VivUni", "P06"): dict(wall_u=0.320, roof_u=0.48, window_u=2.92),  # IVE roof+window
+    # <- VivUniAdo*PTHP*.osm
+    ("EdiPluri", "P01"): dict(wall_u=1.728, roof_u=2.184, window_u=4.9),
+    ("EdiPluri", "P02"): dict(wall_u=1.728, roof_u=1.521, window_u=4.5),
+    # The P03 file assigns VivUniAdoP04PitchedRoof - a label slip, so its roof
+    # stays on IVE rather than borrowing the next period's.
+    ("EdiPluri", "P03"): dict(wall_u=1.728, roof_u=1.67, window_u=4.5),  # IVE roof
+    ("EdiPluri", "P04"): dict(wall_u=1.013, roof_u=1.521, window_u=5.7),
+    # No VivUniAdoP05 facade or roof exists; only its window is his.
+    ("EdiPluri", "P05"): dict(wall_u=0.62, roof_u=0.56, window_u=3.10),  # IVE wall+roof
+    ("EdiPluri", "P06"): dict(wall_u=0.416, roof_u=0.449, window_u=2.9),
+    # <- EdiPluri*.osm / EdiPluriHWater*.osm
+    ("BlocPluri", "P01"): dict(wall_u=1.584, roof_u=1.786, window_u=5.3),
+    ("BlocPluri", "P02"): dict(wall_u=1.584, roof_u=2.919, window_u=5.3),
+    ("BlocPluri", "P03"): dict(wall_u=2.284, roof_u=2.652, window_u=5.7),
+    ("BlocPluri", "P04"): dict(wall_u=1.369, roof_u=2.479, window_u=5.7),
+    ("BlocPluri", "P05"): dict(wall_u=0.488, roof_u=0.633, window_u=3.3),
+    ("BlocPluri", "P06"): dict(wall_u=0.466, roof_u=0.364, window_u=3.3),
+}
+
+# Which of the two tables the per-building chain resolves clusters against.
+# "rai" is the current decision; "ive" restores the previous behaviour exactly,
+# so a run can be reproduced on either envelope rather than argued about.  The
+# value is part of the verified profile, so every ledger row records which
+# envelope produced it.
+ENVELOPE_SOURCE = "rai"
+
+ENVELOPE_TABLES = {"ive": TABULA_ES, "rai": RAI_ENVELOPE}
+
+
+def envelope_table(source: str | None = None) -> dict[tuple[str, str], dict[str, float]]:
+    """The cluster envelope table currently in force."""
+    key = source or ENVELOPE_SOURCE
+    try:
+        return ENVELOPE_TABLES[key]
+    except KeyError:
+        raise KeyError(
+            f"unknown envelope source {key!r}; expected one of "
+            f"{sorted(ENVELOPE_TABLES)}") from None
+
+
 def config_for_profile(base: BuildConfig, profile_id: str) -> BuildConfig:
     """Return an immutable-baseline copy for the pilot or a TABULA cluster."""
     out = base.model_copy(deep=True)
@@ -217,11 +291,12 @@ def config_for_profile(base: BuildConfig, profile_id: str) -> BuildConfig:
     if profile_id == "pilot_ive_1974":
         return out
     cluster = profile_id.removeprefix("tabula_")
+    table = envelope_table()
     for family in ("VivUni", "EdiPluri", "BlocPluri"):
         if cluster.startswith(family):
             period = cluster[len(family):]
             period = "P06" if period == "P07" else period
-            values = TABULA_ES.get((family, period))
+            values = table.get((family, period))
             if values is None:
                 break
             out.envelope.wall_u = values["wall_u"]
@@ -267,13 +342,17 @@ def profile_catalog(base: BuildConfig) -> list[dict[str, Any]]:
         "source": "IVE/TABULA + Javier wall-layer confirmation",
         "config": base.model_dump(mode="json"),
     }]
-    for (family, period), _ in TABULA_ES.items():
+    source_label = {
+        "ive": "TABULA España (IVE), estado original",
+        "rai": "Rai's OpenStudio models (2026-08-04), IVE where he has no counterpart",
+    }[ENVELOPE_SOURCE]
+    for (family, period), _ in envelope_table().items():
         profile_id = f"tabula_{family}{period}"
         cfg = config_for_profile(base, profile_id)
         profiles.append({
             "id": profile_id,
             "label": f"{family} {period}",
-            "source": "TABULA España (IVE), estado original",
+            "source": source_label,
             "config": cfg.model_dump(mode="json"),
         })
     return deepcopy(profiles)
