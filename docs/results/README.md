@@ -43,39 +43,89 @@ climate, template, data policy, source-data hash and runner schema.
 ## `benicalap_district.json`
 
 Every modellable building in the Benicalap district of Valencia, simulated
-individually: **967 buildings, 137.44 GWh site energy**, at **58.73 kWh/m²** of
-the floor area the model conditions.
+individually: **967 buildings, 109.76 GWh site energy**, at **50.87 kWh/m²** of
+cadastral dwelling area.
 
-**Which square metres.** That intensity is per *geometric residential storey
-area* — footprint × the storeys simulated as housing. The reference city model's
-per-cluster constants are per *cadastral dwelling area* (its own code sums
-`442_sfc` over the dwelling records of each parcel), and the two are not the same
-quantity. On the cadastral basis the same energy is **63.69 kWh/m²**. Every
-comparison below is on the cadastral basis, because that is the basis the
-reference is defined on.
+**Which square metres.** Three different areas appear below and they are not
+interchangeable:
+
+| | m² | what it is |
+|---|---:|---|
+| cadastral dwelling | 2 157 843 | `442_sfc` summed over the parcel's dwelling records — the basis the reference constants are defined on |
+| geometric residential | 2 340 150 | footprint × the storeys simulated as housing (+8.4 % on the cadastral one) |
+| conditioned | 2 757 102 | every zone the model actually heats and lights, commercial storeys included |
+
+The reference divides **all** of a building's energy — its ground commercial
+storey included — by dwelling area alone. That is its convention, so every
+comparison here follows it. It is an accounting ratio, not a physical intensity;
+the physical one is `residential_total_site_kwh_m2` = **42.23 kWh/m²**.
 
 ```
                  n     geo   cadastral    ref    Δ vs ref   energy
-BlocPluriP04   460   55.40      59.45   46.55     +27.7 %    1.28×
-BlocPluriP05   209   56.54      58.66   46.59     +25.9 %    1.26×
-BlocPluriP03    83   58.04      68.06   51.71     +31.6 %    1.32×
-VivUniP02       55   65.94      94.28   55.82     +68.9 %    1.69×
-BlocPluriP06    33   75.81      91.08   45.00    +102.4 %    2.02×
-EdiPluriP02     24   61.95      78.19   52.02     +50.3 %    1.50×
+BlocPluriP04   460   50.71      54.42   46.55     +16.9 %    1.17×
+BlocPluriP05   209   45.00      46.70   46.59      +0.2 %    1.00×
+BlocPluriP03    83   51.70      60.62   51.71     +17.2 %    1.17×
+VivUniP02       55   51.49      73.62   55.82     +31.9 %    1.32×
+BlocPluriP06    33   39.12      46.99   45.00      +4.4 %    1.04×
+EdiPluriP02     24   51.91      65.52   52.02     +26.0 %    1.26×
+VivUniP05       23   35.89      36.73   42.77     −14.1 %    0.86×
+EdiPluriP03     23   46.05      62.33   52.04     +19.8 %    1.20×
+VivUniP03       22   50.89      66.17   54.56     +21.3 %    1.21×
 ```
 
 `energy` is the ratio of our kWh to the kWh the reference method would assign to
 exactly these buildings (`constant × cadastral area`). It is basis-free, and it
-is the honest headline: **district-wide we are 1.37× the reference**.
+is the honest headline: **district-wide we are 1.09× the reference**.
 
-An earlier version of this page reported the largest cluster at **+1.0 %** of the
-reference. That number was real but it was an intensity coincidence, not an
-energy agreement: it divided our energy by a floor area 59 % larger than the
-cadastral area the reference constant is meant to multiply. Correcting the floor
-area (see below) and putting the comparison on the reference's own basis moves
-that cluster to +27.7 %. The gap was always there; the denominator hid it.
+### A second retracted claim: the gap was mostly ours
 
-Two things in that table are worth stating rather than smoothing over.
+An earlier version of this page reported **1.37×** district-wide and, for the
+largest cluster, **+27.7 %** — adding that an even earlier **+1.0 %** had been an
+"intensity coincidence" and that "the gap was always there; the denominator hid
+it." Measured against the engine's own output, that reading was wrong in the same
+way the number it replaced was: it attributed to the method a gap that was
+this pipeline's own accounting.
+
+Two defects were behind it, and they compound.
+
+* **The model conditioned floor area the cadastre does not record.** The builder
+  extrudes footprint × `altura_max`. On a parcel covering a whole block those two
+  inputs describe different things — the footprint is the block's, `altura_max`
+  is its tallest point — so the product is floor that does not exist. District
+  wide the model conditioned **1.78×** the recorded dwelling area.
+* **The numerator and the denominator described different buildings.** All of
+  that floor's energy was divided by dwelling area alone.
+
+Sorting the buildings by how much more floor the model conditions than the
+cadastre records shows the whole effect, and it is close to monotonic:
+
+| conditioned ÷ cadastral | n | cadastral EUI | ref | Δ |
+|---|---:|---:|---:|---:|
+| ≤ 1.00 | 76 | 39.29 | 46.45 | **−15.4 %** |
+| 1.00–1.35 *(the reference's own regime)* | 488 | 49.10 | 46.72 | **+5.1 %** |
+| 1.35–1.8 | 304 | 55.09 | 46.37 | +18.8 % |
+| 1.8–3.0 | 83 | 77.01 | 47.27 | +62.9 % |
+| > 3.0 | 16 | 125.79 | 54.69 | +130.0 % |
+
+The one reference building whose EnergyPlus report is published — the
+EdiPluriP04 model this pipeline is verified against — is four dwelling storeys
+over one commercial one, a ratio of **1.25**. Half this district now sits in the
+band around it, and there the deviation is **+5.1 %**. Where the model still
+carries more floor than that regime implies, it still reads high: the residual
+deviation correlates with the ratio at Spearman **+0.795** (p ≈ 10⁻²¹²). That is
+a remaining geometric mismatch. It is not evidence about the envelope, and this
+page no longer claims otherwise.
+
+(The thesis gives the three reference geometries as 2, 2 and 6 storeys but does
+not say whether they carry a tertiary ground floor, so 1.25 is read off the one
+model that was published in full, not assumed for the others.)
+
+For completeness: dividing only the dwellings' own lights, equipment, HVAC and
+hot water by dwelling area gives **45.80** against the reference's 46.61,
+i.e. **−1.7 %**. That figure is *not* like-for-like — the reference constant has
+its own tertiary storey inside it — so it is reported, not led with.
+
+Two more things in that table are worth stating rather than smoothing over.
 
 ### A retracted claim: the deviation was mostly ours, not the method's
 
@@ -104,8 +154,9 @@ typology. Measured across every configuration we could build:
 | Run · reference · clusters | vs absolute storeys | vs **gap to reference** |
 |---|---:|---:|
 | old run · shapefile · no VivUni *(as published)* | −0.832 (p = 0.001) | −0.070 (p = 0.84) |
-| current run · shapefile · no VivUni | −0.648 (p = 0.031) | −0.154 (p = 0.65) |
-| **current run · thesis reference · all clusters** | **−0.224 (p = 0.37)** | **−0.032 (p = 0.90)** |
+| v6 run · shapefile · no VivUni | −0.648 (p = 0.031) | −0.154 (p = 0.65) |
+| v6 run · thesis reference · all clusters | −0.224 (p = 0.37) | −0.032 (p = 0.90) |
+| **v8 run · thesis reference · all clusters** | **−0.550 (p = 0.018)** | **+0.025 (p = 0.92)** |
 
 The published −0.80 reproduces (−0.832), so the original measurement was sound.
 It does not survive two corrections to **our own** work:
@@ -116,12 +167,20 @@ It does not survive two corrections to **our own** work:
   is the pattern the −0.80 was measuring.
 * **Seven missing clusters.** The reference table omitted all VivUni clusters —
   5 262 buildings, 20 % of the stock — not for any reason, but because they were
-  never entered. Restoring them halves what is left of the correlation.
+  never entered.
 
-The claimed mechanism has a correlation of −0.03 with the quantity it predicts.
-What remains is a per-cluster deviation of +26 % to +102 % whose cause is **not
-established**; the envelope is now the leading candidate, since the reference's
-own wall constructions run 15–60 % lower in U than the ones derived here.
+Across every configuration, the correlation with the quantity the claimed
+mechanism actually predicts — the gap between a cluster's height and its
+reference model's — stays inside noise: **−0.07, −0.15, −0.03, +0.03**. The
+attribution is withdrawn.
+
+The correlation with *absolute* storey count is real and now has a mechanism that
+does not involve the reference method at all. The tertiary ground storey is
+conditioned but outside the area basis, so it is a larger share of a short
+building than of a tall one: median conditioned-to-cadastral ratio runs **1.52**
+at one dwelling storey and **1.22** at six. Deviation tracks that ratio at
+**+0.795** and storey count at only −0.550 — the height correlation is what the
+ratio looks like when sorted by height.
 
 Honest limits: eighteen clusters in this district; the reference constants are
 the thesis's own per-cluster figures (Ilustración 31), and two values in the
@@ -143,21 +202,50 @@ The remaining floor is commercial or office, and the cadastre is not
 under-reporting it; it simply is not housing. Across the district that was
 **842 462 m², 24.6 % of the floor area being simulated as dwellings**.
 
-Storeys the recorded dwelling area cannot fill are now typed as conditioned
-tertiary space — the same regime the ground floor already gets — and leave the
-residential area basis. 449 buildings, 739 storeys. The effect is worth stating
-precisely, because it is not what one might expect: floor area fell 31.7 % but
-**energy fell only 2.8 %**. The storeys do not disappear; they stay conditioned
-and keep their gains. What the correction fixes is the *denominator*: modelled
-residential area now sits within **8.4 %** of the cadastral dwelling area,
-against 58.9 % before.
+The first attempt at this re-typed those storeys as conditioned tertiary space
+and took them out of the area basis. That fixed the denominator — modelled
+residential area came within **8.4 %** of the cadastral dwelling area, against
+58.9 % before — and it fixed nothing else: floor area fell 31.7 % and **energy
+fell 2.8 %**. The storeys were renamed, not removed. They were still lit, heated
+and conditioned, and their energy still landed in the district total.
+
+The extreme case makes the point. `3748901YJ2734H` is a 17 272 m² parcel at
+`altura_max` 15 holding 342 dwellings — 38 158 m² of housing. Extruded whole it
+conditions **259 000 m²**, and on its own it carried **5.6 %** of the district's
+energy. That is not a mixed-use block; it is a city block whose footprint and
+tallest point were multiplied together.
+
+The cap now reaches the geometry: storeys the cadastre cannot fill are never
+extruded. **399 buildings, 687 storeys**, and the effect is what one would expect
+of removing floor that was being conditioned:
+
+| | v7 (re-typed only) | v8 (not built) |
+|---|---:|---:|
+| Site energy | 138.15 GWh | **109.76 GWh** |
+| Conditioned area | 3 835 288 m² | **2 757 102 m²** |
+| Cadastral-basis EUI | 64.02 kWh/m² | **50.87 kWh/m²** |
+| vs reference | 1.37× | **1.09×** |
+
+521 of the 967 buildings come back bit-identical — those are the ones with no
+cadastral evidence to cut, or already short enough. Where there is no Tipo15
+join, nothing is cut at all: the verification replica and the single-building CLI
+are unchanged, and `--verify` still scores 13/13 bit-identical.
+
+**What it cannot fix.** The smallest model the frozen builder can extrude is a
+ground storey plus one, so a two-level building whose cadastre supports one is
+re-typed as before rather than shrunk — 74 buildings still condition more than
+twice their cadastral dwelling area. And a capped block is a flatter box than the
+tower it stands for, so its surface-to-volume ratio is wrong even though its
+floor area is now right. Heating and cooling are 8.6 % of site energy here and
+lighting and equipment scale linearly with floor, so the area correction
+dominates — but the shape error is real and is not corrected.
 
 **Coverage is stated, not implied.** 967 of 1 012 buildings in scope — 95.6 % of
-buildings and **98.1 %** of the footprint. So the 137.44 GWh figure is the energy
+buildings and **98.1 %** of the footprint. So the 109.76 GWh figure is the energy
 of the modellable district, not of the district. The intensity is not neutral to
 that gap either: footprint anti-correlates with EUI among the buildings that did
 run, so excluding large buildings biases the subset's intensity upward. Nine
-buildings above the single-zone threshold carry 9.2 % of the area and 15.0 % of
+buildings above the single-zone threshold carry 9.2 % of the area and 8.0 % of
 the energy on a coarser zoning assumption; that share is reported rather than
 buried.
 
@@ -200,15 +288,35 @@ the count, but **19 % of the district's floor area**, one of them 17,272 m² ove
 The verification is unaffected and was re-run to prove it: Rai's building is
 954.8 m², far from either ceiling, and all 13 gates came back bit-identical.
 
+### How much of a mixed-use block is shops
+
+The template gives dwellings and tertiary space their own lighting and equipment
+objects, but both reported into the same `Interior Lighting:General` row, so a
+block's electricity could not be split by use. They now carry separate end-use
+subcategories, the way the hot-water boiler already did. District-wide the
+tertiary storeys are **10.9 GWh, 10.0 %** of site energy.
+
+Heating, cooling, fans and pumps are metered per end use rather than per zone, so
+they cannot be attributed this way and stay with the dwellings.
+`residential_site_kwh` is therefore an upper bound on the dwellings, not a clean
+sub-total, and the field says so.
+
 ## What the fixes were worth
 
-| | one shared envelope | per-cluster envelope | + warmup fix |
-|---|---:|---:|---:|
-| Buildings | 957 | 947 | **958** |
-| Site energy (GWh) | 120.67 | 113.89 | **118.75** |
-| Heating (GWh) | 5.66 | 3.78 | **3.81** |
-| Intensity (kWh/m²) | 46.19 | 45.33 | **45.04** |
-| Footprint coverage | 85.73 % | 83.16 % | **86.33 %** |
+| | shared envelope | per-cluster | + warmup | + ceiling & ground *(v6)* | + supervisor's envelope *(v7)* | + storey cap *(v8)* |
+|---|---:|---:|---:|---:|---:|---:|
+| Buildings | 957 | 947 | 958 | 967 | 967 | **967** |
+| Site energy (GWh) | 120.67 | 113.89 | 118.75 | 137.44 | 138.15 | **109.76** |
+| Heating (GWh) | 5.66 | 3.78 | 3.81 | 3.92 | 4.31 | **4.83** |
+| Cadastral EUI (kWh/m²) | — | — | — | 63.69 | 64.02 | **50.87** |
+| vs reference | — | — | — | 1.37× | 1.37× | **1.09×** |
+| Footprint coverage | 85.73 % | 83.16 % | 86.33 % | 98.1 % | 98.1 % | **98.1 %** |
+
+The supervisor's own envelope raised heating 10 % and left the total almost
+unmoved: his BlocPluriP04 roof is 2.479 W/m²K against the 1.92 derived from the
+typology brochure, and 562 m² at +0.559 is roughly eight times what the wall
+difference contributes. The storey cap is the change that moves the total, and it
+moves it by removing floor that was never there.
 
 Connecting the cluster envelopes cut district **heating by a third** — Benicalap
 is mostly post-1980 insulated stock that had been running on a 1974 envelope.

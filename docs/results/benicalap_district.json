@@ -1,197 +1,300 @@
 {
-  "buildings_ok": 958,
+  "buildings_ok": 967,
   "buildings_failed": 1,
   "buildings_failed_qa": 0,
-  "buildings_excluded": 53,
+  "buildings_excluded": 44,
   "coverage": {
     "buildings_in_scope": 1012,
-    "buildings_with_result": 958,
-    "buildings_without_result": 54,
-    "building_coverage_pct": 94.66,
-    "note": "totals are summed over buildings_with_result only. The area-weighted intensity is a ratio and is unaffected; an absolute GWh figure under-reports by the missing share.",
-    "footprint_coverage_pct": 86.33
+    "buildings_with_result": 967,
+    "buildings_without_result": 45,
+    "building_coverage_pct": 95.55,
+    "note": "totals are summed over buildings_with_result only, so an absolute GWh figure under-reports by the missing share. The area-weighted intensity is the EUI of the modellable subset, not an unbiased estimate of the whole scope: exclusions concentrate in large buildings and footprint anti-correlates with EUI (Spearman -0.552, Benicalap v3), so the subset's intensity is biased upward relative to the full stock.",
+    "footprint_coverage_pct": 98.1
+  },
+  "zoning": {
+    "threshold_m2": 5000.0,
+    "scheme": "one_well_mixed_zone_per_storey",
+    "buildings": 9,
+    "buildings_pct": 0.93,
+    "residential_area_pct": 9.23,
+    "total_site_pct": 8.03,
+    "note": "buildings above the threshold have no core/perimeter split; they are included in every total above and this is the share they account for"
   },
   "qa_failed": 0,
   "unexplained_severes": 0,
-  "implausible_occupancy": 15,
+  "implausible_occupancy": 17,
   "totals": {
-    "heating_gwh": 3.81261,
-    "cooling_gwh": 5.09322,
-    "dhw_gwh": 19.17906,
-    "total_site_gwh": 118.75471,
-    "residential_area_m2": 2636907.7,
-    "area_weighted_total_site_kwh_m2": 45.036,
+    "heating_gwh": 4.82967,
+    "cooling_gwh": 4.60712,
+    "dhw_gwh": 20.35419,
+    "total_site_gwh": 109.76248,
+    "residential_area_m2": 2340150.1,
+    "area_weighted_total_site_kwh_m2": 46.904,
+    "conditioned_area_m2": 2757102.3,
+    "residential_total_site_kwh_m2": 42.234,
+    "residential_site_gwh": 98.83489,
+    "terciario_site_gwh": 10.92733,
+    "storey_capped_buildings": 399,
+    "storey_capped_energy_pct": 54.98,
     "area_basis": "geometric_residential_storeys",
-    "area_basis_note": "every kWh/m2 is per geometric residential storey area, matching Rai's own 954.80 m2 basis; tipo15_residential_area_m2 is the cadastral net area, reported for reference only",
-    "tipo15_residential_area_m2": 1979926.2,
-    "tipo15_vs_geometric_pct": 33.18,
-    "carbon_total_site_t_yr": 37792.8
+    "area_basis_note": "area_weighted_total_site_kwh_m2 and cadastral_total_site_kwh_m2 divide ALL the site energy, commercial storeys included, by residential area only.  That is Rai's own convention - his ground Terciario is conditioned but out of the floor-area basis - so the vs_rai_* figures are computed that way and stay comparable.  It is NOT the floor the model conditions: conditioned_area_m2 is the area actually simulated, and residential_total_site_kwh_m2 is the dwellings' own energy over their own area, which is the physical intensity.  An earlier version of this note called the residential basis 'the floor the model actually conditions', which was false (corrected 2026-08-08).  Rai's ConsumE constants are per CADASTRAL dwelling area (thesis annex: groupby('31_pc')['442_sfc'].sum()), so vs_rai_* uses the cadastral denominator; the earlier claim that the geometric basis matched 'Rai's own 954.80 m2' came from his trial box, not his city method (corrected 2026-08-04).",
+    "tipo15_residential_area_m2": 2157843.3,
+    "tipo15_vs_geometric_pct": 8.45,
+    "cadastral_total_site_kwh_m2": 50.867,
+    "carbon_total_site_t_yr": 34723.0
   },
   "by_cluster": [
     {
       "cluster": "BlocPluriP04",
       "buildings": 460,
-      "residential_area_m2": 1208575.2,
-      "total_site_gwh": 57.38901,
-      "area_weighted_kwh_m2": 47.485,
-      "rai_consume_kwh_m2": 47,
-      "vs_rai_pct": 1.03
+      "residential_area_m2": 1022315.2,
+      "total_site_gwh": 51.84576,
+      "area_weighted_kwh_m2": 50.714,
+      "rai_consume_kwh_m2": 46.55,
+      "cadastral_area_m2": 952712.0,
+      "cadastral_kwh_m2": 54.419,
+      "vs_rai_pct": 16.9,
+      "vs_rai_energy_ratio": 1.169
     },
     {
       "cluster": "BlocPluriP05",
-      "buildings": 206,
-      "residential_area_m2": 964376.3,
-      "total_site_gwh": 41.20173,
-      "area_weighted_kwh_m2": 42.724,
-      "rai_consume_kwh_m2": 47,
-      "vs_rai_pct": -9.1
+      "buildings": 209,
+      "residential_area_m2": 802537.2,
+      "total_site_gwh": 36.11668,
+      "area_weighted_kwh_m2": 45.003,
+      "rai_consume_kwh_m2": 46.59,
+      "cadastral_area_m2": 773429.0,
+      "cadastral_kwh_m2": 46.697,
+      "vs_rai_pct": 0.23,
+      "vs_rai_energy_ratio": 1.0023
     },
     {
       "cluster": "BlocPluriP06",
-      "buildings": 27,
-      "residential_area_m2": 287980.2,
-      "total_site_gwh": 10.40281,
-      "area_weighted_kwh_m2": 36.123,
-      "rai_consume_kwh_m2": 45,
-      "vs_rai_pct": -19.73
+      "buildings": 33,
+      "residential_area_m2": 338515.9,
+      "total_site_gwh": 13.24144,
+      "area_weighted_kwh_m2": 39.116,
+      "rai_consume_kwh_m2": 45.0,
+      "cadastral_area_m2": 281773.4,
+      "cadastral_kwh_m2": 46.993,
+      "vs_rai_pct": 4.43,
+      "vs_rai_energy_ratio": 1.0443
     },
     {
       "cluster": "BlocPluriP03",
       "buildings": 83,
-      "residential_area_m2": 107521.9,
-      "total_site_gwh": 5.47632,
-      "area_weighted_kwh_m2": 50.932,
-      "rai_consume_kwh_m2": 52,
-      "vs_rai_pct": -2.05
+      "residential_area_m2": 92704.0,
+      "total_site_gwh": 4.79298,
+      "area_weighted_kwh_m2": 51.702,
+      "rai_consume_kwh_m2": 51.71,
+      "cadastral_area_m2": 79068.0,
+      "cadastral_kwh_m2": 60.618,
+      "vs_rai_pct": 17.23,
+      "vs_rai_energy_ratio": 1.1723
     },
     {
       "cluster": "VivUniP02",
       "buildings": 55,
-      "residential_area_m2": 9219.5,
-      "total_site_gwh": 0.82837,
-      "area_weighted_kwh_m2": 89.85
+      "residential_area_m2": 12991.3,
+      "total_site_gwh": 0.66895,
+      "area_weighted_kwh_m2": 51.492,
+      "rai_consume_kwh_m2": 55.82,
+      "cadastral_area_m2": 9086.0,
+      "cadastral_kwh_m2": 73.624,
+      "vs_rai_pct": 31.9,
+      "vs_rai_energy_ratio": 1.319
     },
     {
       "cluster": "VivUniP05",
       "buildings": 23,
-      "residential_area_m2": 14115.4,
-      "total_site_gwh": 0.71657,
-      "area_weighted_kwh_m2": 50.765
-    },
-    {
-      "cluster": "EdiPluriP02",
-      "buildings": 24,
-      "residential_area_m2": 6078.2,
-      "total_site_gwh": 0.49694,
-      "area_weighted_kwh_m2": 81.757,
-      "rai_consume_kwh_m2": 0,
-      "vs_rai_pct": null
+      "residential_area_m2": 16596.0,
+      "total_site_gwh": 0.59566,
+      "area_weighted_kwh_m2": 35.892,
+      "rai_consume_kwh_m2": 42.77,
+      "cadastral_area_m2": 16217.1,
+      "cadastral_kwh_m2": 36.73,
+      "vs_rai_pct": -14.12,
+      "vs_rai_energy_ratio": 0.8588
     },
     {
       "cluster": "EdiPluriP05",
       "buildings": 9,
-      "residential_area_m2": 7200.0,
-      "total_site_gwh": 0.45145,
-      "area_weighted_kwh_m2": 62.701,
-      "rai_consume_kwh_m2": 46,
-      "vs_rai_pct": 36.31
+      "residential_area_m2": 9909.8,
+      "total_site_gwh": 0.45819,
+      "area_weighted_kwh_m2": 46.236,
+      "rai_consume_kwh_m2": 45.84,
+      "cadastral_area_m2": 11168.0,
+      "cadastral_kwh_m2": 41.027,
+      "vs_rai_pct": -10.5,
+      "vs_rai_energy_ratio": 0.895
+    },
+    {
+      "cluster": "EdiPluriP02",
+      "buildings": 24,
+      "residential_area_m2": 8263.9,
+      "total_site_gwh": 0.42896,
+      "area_weighted_kwh_m2": 51.908,
+      "rai_consume_kwh_m2": 52.02,
+      "cadastral_area_m2": 6547.0,
+      "cadastral_kwh_m2": 65.52,
+      "vs_rai_pct": 25.95,
+      "vs_rai_energy_ratio": 1.2595
     },
     {
       "cluster": "EdiPluriP06",
       "buildings": 5,
-      "residential_area_m2": 9852.6,
-      "total_site_gwh": 0.44378,
-      "area_weighted_kwh_m2": 45.042,
-      "rai_consume_kwh_m2": 46,
-      "vs_rai_pct": -2.08
+      "residential_area_m2": 9976.6,
+      "total_site_gwh": 0.42056,
+      "area_weighted_kwh_m2": 42.155,
+      "rai_consume_kwh_m2": 45.81,
+      "cadastral_area_m2": 7631.4,
+      "cadastral_kwh_m2": 55.11,
+      "vs_rai_pct": 20.3,
+      "vs_rai_energy_ratio": 1.203
     },
     {
       "cluster": "EdiPluriP03",
       "buildings": 23,
-      "residential_area_m2": 6586.8,
-      "total_site_gwh": 0.44187,
-      "area_weighted_kwh_m2": 67.085,
-      "rai_consume_kwh_m2": 52,
-      "vs_rai_pct": 29.01
+      "residential_area_m2": 9117.4,
+      "total_site_gwh": 0.41987,
+      "area_weighted_kwh_m2": 46.052,
+      "rai_consume_kwh_m2": 52.04,
+      "cadastral_area_m2": 6736.0,
+      "cadastral_kwh_m2": 62.333,
+      "vs_rai_pct": 19.78,
+      "vs_rai_energy_ratio": 1.1978
     },
     {
       "cluster": "VivUniP03",
       "buildings": 22,
-      "residential_area_m2": 3736.9,
-      "total_site_gwh": 0.34486,
-      "area_weighted_kwh_m2": 92.284
+      "residential_area_m2": 5504.5,
+      "total_site_gwh": 0.28011,
+      "area_weighted_kwh_m2": 50.887,
+      "rai_consume_kwh_m2": 54.56,
+      "cadastral_area_m2": 4233.0,
+      "cadastral_kwh_m2": 66.173,
+      "vs_rai_pct": 21.28,
+      "vs_rai_energy_ratio": 1.2128
     },
     {
       "cluster": "BlocPluriP07",
       "buildings": 1,
-      "residential_area_m2": 5435.8,
-      "total_site_gwh": 0.18862,
-      "area_weighted_kwh_m2": 34.7,
-      "rai_consume_kwh_m2": 45,
-      "vs_rai_pct": -22.89
+      "residential_area_m2": 4529.8,
+      "total_site_gwh": 0.16085,
+      "area_weighted_kwh_m2": 35.51,
+      "rai_consume_kwh_m2": 45.0,
+      "cadastral_area_m2": 3871.5,
+      "cadastral_kwh_m2": 41.548,
+      "vs_rai_pct": -7.67,
+      "vs_rai_energy_ratio": 0.9233
     },
     {
       "cluster": "VivUniP04",
       "buildings": 6,
-      "residential_area_m2": 1828.0,
-      "total_site_gwh": 0.10555,
-      "area_weighted_kwh_m2": 57.739
+      "residential_area_m2": 1945.3,
+      "total_site_gwh": 0.08882,
+      "area_weighted_kwh_m2": 45.659,
+      "rai_consume_kwh_m2": 50.79,
+      "cadastral_area_m2": 1449.0,
+      "cadastral_kwh_m2": 61.298,
+      "vs_rai_pct": 20.69,
+      "vs_rai_energy_ratio": 1.2069
     },
     {
       "cluster": "EdiPluriP04",
       "buildings": 6,
-      "residential_area_m2": 1557.2,
-      "total_site_gwh": 0.0931,
-      "area_weighted_kwh_m2": 59.787,
-      "rai_consume_kwh_m2": 52,
-      "vs_rai_pct": 14.97
+      "residential_area_m2": 1944.3,
+      "total_site_gwh": 0.0861,
+      "area_weighted_kwh_m2": 44.284,
+      "rai_consume_kwh_m2": 51.51,
+      "cadastral_area_m2": 1437.0,
+      "cadastral_kwh_m2": 59.918,
+      "vs_rai_pct": 16.32,
+      "vs_rai_energy_ratio": 1.1632
     },
     {
       "cluster": "EdiPluriP01",
       "buildings": 3,
-      "residential_area_m2": 753.3,
-      "total_site_gwh": 0.06019,
-      "area_weighted_kwh_m2": 79.901,
-      "rai_consume_kwh_m2": 54,
-      "vs_rai_pct": 47.96
-    },
-    {
-      "cluster": "VivUniP06",
-      "buildings": 3,
-      "residential_area_m2": 980.9,
-      "total_site_gwh": 0.04857,
-      "area_weighted_kwh_m2": 49.516
+      "residential_area_m2": 1208.5,
+      "total_site_gwh": 0.06425,
+      "area_weighted_kwh_m2": 53.168,
+      "rai_consume_kwh_m2": 54.36,
+      "cadastral_area_m2": 906.0,
+      "cadastral_kwh_m2": 70.92,
+      "vs_rai_pct": 30.46,
+      "vs_rai_energy_ratio": 1.3046
     },
     {
       "cluster": "BlocPluriP02",
       "buildings": 1,
-      "residential_area_m2": 875.0,
-      "total_site_gwh": 0.04591,
-      "area_weighted_kwh_m2": 52.47,
-      "rai_consume_kwh_m2": 52,
-      "vs_rai_pct": 0.9
+      "residential_area_m2": 875.1,
+      "total_site_gwh": 0.03803,
+      "area_weighted_kwh_m2": 43.46,
+      "rai_consume_kwh_m2": 47.81,
+      "cadastral_area_m2": 629.0,
+      "cadastral_kwh_m2": 60.464,
+      "vs_rai_pct": 26.47,
+      "vs_rai_energy_ratio": 1.2647
+    },
+    {
+      "cluster": "VivUniP06",
+      "buildings": 3,
+      "residential_area_m2": 980.8,
+      "total_site_gwh": 0.03515,
+      "area_weighted_kwh_m2": 35.838,
+      "rai_consume_kwh_m2": 38.0,
+      "cadastral_area_m2": 727.9,
+      "cadastral_kwh_m2": 48.289,
+      "vs_rai_pct": 27.08,
+      "vs_rai_energy_ratio": 1.2708
     },
     {
       "cluster": "VivUniP01",
       "buildings": 1,
       "residential_area_m2": 234.5,
-      "total_site_gwh": 0.01906,
-      "area_weighted_kwh_m2": 81.27
+      "total_site_gwh": 0.0201,
+      "area_weighted_kwh_m2": 85.73,
+      "rai_consume_kwh_m2": 62.57,
+      "cadastral_area_m2": 222.0,
+      "cadastral_kwh_m2": 90.557,
+      "vs_rai_pct": 44.73,
+      "vs_rai_energy_ratio": 1.4473
     }
   ],
   "by_district": [
     {
       "nombre": "BENICALAP",
-      "buildings": 958,
-      "residential_area_m2": 2636907.7,
-      "total_site_gwh": 118.75471,
-      "area_weighted_kwh_m2": 45.036
+      "buildings": 967,
+      "residential_area_m2": 2340150.1,
+      "total_site_gwh": 109.76248,
+      "area_weighted_kwh_m2": 46.904
     }
   ],
   "seconds_per_building": {
-    "median": 68.0,
-    "mean": 89.7,
-    "max": 1071.1
+    "median": 40.2,
+    "mean": 60.1,
+    "max": 1130.1
   },
-  "elapsed_minutes": 239.75
+  "elapsed_minutes": 323.47,
+  "ledger": "out/stock/benicalap_v8/ledger.jsonl",
+  "provenance": {
+    "identity": {
+      "run_identity": "fcff5de8e508fc82f7102d85f9ed7f4fbb5595cd2018b988dc9f3ad9032e550b",
+      "profile_fingerprint": "80b3d4dafcdb7190935a1a4d09533c1c29be85a0061f181bb6a03a89cc73579f",
+      "climate_fingerprint": "79c11a5992edeee5db6f81820f0b1c2f38a916004dd06c4f8bd577cacf4616ae",
+      "template_fingerprint": "fa64bfc31d3adccfaed8add1a2a516cc575f5bb53323707c335ed89929d8297a",
+      "policy_fingerprint": "6b730d4946e772c1949abcf64e8d83f4215065878e375539003c48186c4f2681",
+      "zero_policy": "literal_zero",
+      "stock_source_fingerprint": "be32b6492a5a205da6fd38792aabb6ce3af76ef46094a091f7ea8ee6fc84dadd",
+      "runner_schema": "2"
+    },
+    "source_ledgers": [
+      {
+        "path": "out/stock/benicalap_v8/ledger.jsonl",
+        "sha256": "10875e88ea1e7e82f5aadc1f58d1cfc06d1ae5f8bbb74dbe46f0d70a212d7362",
+        "rows": 1012
+      }
+    ],
+    "merge_rule": "latest_per_reference: when a refparcela appears more than once, the last row in ledger order wins"
+  }
 }
