@@ -116,10 +116,13 @@ LEDGER_METRICS = (
     "site_gas_kwh_m2", "site_elec_kwh_m2", "dhw_share_pct",
     "hvac_co2_kg_m2", "total_site_co2_kg_m2", "hvac_co2_t_yr", "total_site_co2_t_yr",
     "total_site_kwh", "space_heating_kwh", "cooling_kwh", "dhw_kwh",
+    "residential_total_site_kwh_m2", "residential_site_kwh", "terciario_site_kwh",
+    "terciario_share_pct", "conditioned_to_cadastral_ratio",
     "res_area_m2", "tipo15_res_area_m2", "res_area_source",
     "total_conditioned_area_m2", "footprint_m2", "large_footprint_single_zone",
     "n_floors_total", "n_floors_residential", "mixed_use_storeys_converted",
-    "mixed_use_basis", "residential_storeys_effective", "n_party_surfaces",
+    "mixed_use_basis", "residential_storeys_effective",
+    "built_storeys", "storey_cap_applied", "n_party_surfaces",
     "n_shading_surfaces", "n_windows", "window_area_m2",
     "padron_occupants", "occupants_applied", "occupants_source",
     "occupancy_plausibility", "ground_use", "ground_use_source",
@@ -735,21 +738,54 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
     totals["residential_area_m2"] = round(float(area.sum()), 1)
     totals["area_weighted_total_site_kwh_m2"] = round(
         float((frame["total_site_kwh_m2"] * area).sum() / area.sum()), 3)
+    conditioned = (pd.to_numeric(frame["total_conditioned_area_m2"], errors="coerce")
+                   if "total_conditioned_area_m2" in frame else area)
+    totals["conditioned_area_m2"] = round(float(conditioned.fillna(area).sum()), 1)
+    # The dwellings against their own floor area.  The figure above divides ALL
+    # the energy - commercial storeys included - by residential area only; that
+    # is Rai's convention and it is kept for the comparison against him, but on
+    # a block with more shop floor than housing it is an accounting ratio rather
+    # than an intensity.  This one is the physical number.
+    if "residential_total_site_kwh_m2" in frame:
+        residential_eui = pd.to_numeric(
+            frame["residential_total_site_kwh_m2"], errors="coerce")
+        if residential_eui.notna().any():
+            covered = residential_eui.notna()
+            totals["residential_total_site_kwh_m2"] = round(
+                float((residential_eui[covered] * area[covered]).sum()
+                      / area[covered].sum()), 3)
+            totals["residential_site_gwh"] = round(
+                float((residential_eui[covered] * area[covered]).sum()) / 1e6, 5)
+            if "terciario_site_kwh" in frame:
+                totals["terciario_site_gwh"] = round(
+                    float(pd.to_numeric(frame["terciario_site_kwh"], errors="coerce")
+                          .fillna(0.0).sum()) / 1e6, 5)
+    # Absent from every ledger written before 2026-08-08; those runs are still
+    # readable, they simply do not report a cap that did not exist yet.
+    if "storey_cap_applied" in frame:
+        capped = frame["storey_cap_applied"].fillna(False).astype(bool)
+        totals["storey_capped_buildings"] = int(capped.sum())
+        totals["storey_capped_energy_pct"] = round(
+            100.0 * float((frame["total_site_kwh_m2"] * area)[capped].sum())
+            / float((frame["total_site_kwh_m2"] * area).sum()), 2)
     # Which denominator every kWh/m2 above is on, stated rather than assumed.
-    # Rai's own EUI is 52 008 kWh / 954.80 m2, and his 954.80 is 4 x 238.70 -
-    # geometric residential storeys. So the comparison against his ConsumE is on
-    # a matching basis. Tipo15 is the cadastral net area and is ~32 % smaller
-    # city-wide; it is reported, never divided by.
     totals["area_basis"] = "geometric_residential_storeys"
     totals["area_basis_note"] = (
-        "area_weighted_total_site_kwh_m2 is per geometric residential storey "
-        "area - the floor the model actually conditions.  Rai's ConsumE "
+        "area_weighted_total_site_kwh_m2 and cadastral_total_site_kwh_m2 divide "
+        "ALL the site energy, commercial storeys included, by residential area "
+        "only.  That is Rai's own convention - his ground Terciario is "
+        "conditioned but out of the floor-area basis - so the vs_rai_* figures "
+        "are computed that way and stay comparable.  It is NOT the floor the "
+        "model conditions: conditioned_area_m2 is the area actually simulated, "
+        "and residential_total_site_kwh_m2 is the dwellings' own energy over "
+        "their own area, which is the physical intensity.  An earlier version of "
+        "this note called the residential basis 'the floor the model actually "
+        "conditions', which was false (corrected 2026-08-08).  Rai's ConsumE "
         "constants are per CADASTRAL dwelling area (thesis annex: "
-        "groupby('31_pc')['442_sfc'].sum()), so every vs_rai_* figure is "
-        "computed on the cadastral basis instead, and reported separately.  The "
-        "earlier note here claimed the geometric basis matched 'Rai's own "
-        "954.80 m2'; that 954.80 came from his trial box, not from his city "
-        "method (corrected 2026-08-04).")
+        "groupby('31_pc')['442_sfc'].sum()), so vs_rai_* uses the cadastral "
+        "denominator; the earlier claim that the geometric basis matched 'Rai's "
+        "own 954.80 m2' came from his trial box, not his city method "
+        "(corrected 2026-08-04).")
     if "tipo15_res_area_m2" in frame:
         tipo15 = pd.to_numeric(frame["tipo15_res_area_m2"], errors="coerce")
         if tipo15.notna().any():

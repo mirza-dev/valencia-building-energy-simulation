@@ -2,12 +2,12 @@
   "schema_version": 1,
   "status": "LOCKED_VERIFIED_MODEL",
   "profile_id": "valencia-deep-v1",
-  "profile_fingerprint": "03908cd3b3b6e06ab21bb860786466410707fc3a459a1aa194bd9e764fcfd1d6",
+  "profile_fingerprint": "b9cbe1001ae1291c05f89cdc1dfb7a8705e36ae81011c43bfbd24f0fe4e5c368",
   "locked_source_hashes": {
     "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
     "run_simulation.py": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
     "model_config.py": "ab388f646b89d74834ff53af07454f559012082f48f50197bb4ddec30ddc91da",
-    "deep_building.py": "a1f903a9006441f28a462b58bbd4dcbfd40d0e1f37c30bc63ee53791b18f8064"
+    "deep_building.py": "40ecd1958edd869b1db6b6526f5c09598ec73e95961ec7fc743a3db8fa3fee16"
   },
   "verified_on": "2026-07-27",
   "verified_against": "Rai EdiPluriP04 (informe_openstudio + eplustbl)",
@@ -144,7 +144,14 @@
     "space_heating_kwh_m2_conditioned": 1.96,
     "cooling_kwh_m2_conditioned": 3.5,
     "dhw_share_pct": 19.6,
-    "area_basis": "residential_only (primary) + total_conditioned (secondary)"
+    "terciario_site_kwh": 6255.6,
+    "terciario_lighting_kwh": 4344.4,
+    "terciario_equipment_kwh": 1911.1,
+    "residential_site_kwh": 44994.4,
+    "residential_total_site_kwh_m2": 47.12,
+    "terciario_share_pct": 12.2,
+    "area_basis": "residential_only (primary) + total_conditioned (secondary)",
+    "residential_split_basis": "lights and equipment attributed by space type; HVAC and DHW are metered per end use and remain in the residential figure"
   },
   "rai_reference": {
     "residential_area_m2": 954.8,

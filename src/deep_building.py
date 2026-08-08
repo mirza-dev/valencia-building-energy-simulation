@@ -70,6 +70,7 @@ DHW_LOOP_SETPOINT_C = 50.0                # Rai: SetpointManager:Scheduled
 DHW_LOOP_EXIT_TEMPERATURE_C = 82.0
 DHW_LOOP_DELTA_T_K = 11.0
 DHW_END_USE_SUBCATEGORY = "DHW"           # keeps the boiler gas OUT of the space-heating row
+TERCIARIO_END_USE_SUBCATEGORY = "Terciario"   # commercial lights/equipment, reported apart from the dwellings
 
 PTHP_HEATING_COP = 4.07                   # Rai: residential Coil:Heating:DX:SingleSpeed
 PTHP_COOLING_COP = 5.0                    # Rai: Coil:Cooling:DX:SingleSpeed
@@ -458,6 +459,38 @@ def apply_mixed_use_storeys(osm, keep_residential: int) -> dict:
         "space_type": GROUND_TERCIARIO_SPACE_TYPE,
         "converted_spaces": converted,
         "in_floor_area_basis": False,
+    }
+
+
+def tag_terciario_end_uses(osm) -> dict:
+    """Meter the commercial storeys' lights and equipment under their own subcategory.
+
+    The template already gives Terciario its own `Iluminacion Terciario Media`
+    and equipment objects - they were simply reported in the same
+    `Interior Lighting:General` row as the dwellings, so a reader could not tell
+    how much of a mixed-use block's electricity was shops.  This is the pattern
+    `add_dhw_loop` uses to keep boiler gas out of the space-heating row, applied
+    to the other place where two uses share one meter.
+
+    Only lights and equipment can be attributed this way.  Heating, cooling,
+    fans and pumps are metered per end use, not per zone, so they stay in one
+    bucket - that limit is stated where the numbers are published rather than
+    papered over.  Run this after every re-typing layer, so it sees the space
+    types the model finished with.
+    """
+    terciario = _by_name(osm.getSpaceTypes(), GROUND_TERCIARIO_SPACE_TYPE)
+    if terciario is None:
+        return {"tagged_lights": 0, "tagged_equipment": 0, "subcategory": None}
+
+    lights = list(terciario.lights())
+    equipment = list(terciario.electricEquipment())
+    for load in lights + equipment:
+        load.setEndUseSubcategory(TERCIARIO_END_USE_SUBCATEGORY)
+    return {
+        "tagged_lights": len(lights),
+        "tagged_equipment": len(equipment),
+        "subcategory": TERCIARIO_END_USE_SUBCATEGORY,
+        "spaces": len(list(terciario.spaces())),
     }
 
 
@@ -973,6 +1006,14 @@ def read_end_uses_split(sql_path: Path, res_area_m2: float,
         site_elec = gj("End Uses", "Total End Uses", "Electricity")
         site_gas = gj("End Uses", "Total End Uses", "Natural Gas")
 
+        # The commercial storeys' own lights and equipment, tagged by
+        # `tag_terciario_end_uses`.  A model with no Terciario space simply has
+        # no such row and these come back zero.
+        terciario_lighting = gj("End Uses By Subcategory",
+                                f"Interior Lighting:{TERCIARIO_END_USE_SUBCATEGORY}", "Electricity")
+        terciario_equipment = gj("End Uses By Subcategory",
+                                 f"Interior Equipment:{TERCIARIO_END_USE_SUBCATEGORY}", "Electricity")
+
         # EnergyPlus meters the DHW boiler under the *Heating* end use, so the
         # split has to come from the subcategory rows ("<end use>:<subcategory>").
         # Reading them directly is safer than subtracting one from the other.
@@ -992,6 +1033,14 @@ def read_end_uses_split(sql_path: Path, res_area_m2: float,
     dhw = dhw_gas + dhw_elec
     space_heating = space_heat_gas + heat_elec
     hvac = space_heating + cool_elec + fans_elec + pumps_elec
+
+    # What can honestly be attributed to the commercial storeys, and what is
+    # left.  HVAC is metered per end use rather than per zone, so it cannot be
+    # split and stays with the dwellings: `residential_site_kwh` is therefore an
+    # upper bound on the dwellings, not a clean sub-total, and it is named and
+    # published as such.
+    terciario_site = terciario_lighting + terciario_equipment
+    residential_site = total_site - terciario_site
 
     def per_res(value: float) -> float:
         return round(value / res_area_m2, 2)
@@ -1024,7 +1073,17 @@ def read_end_uses_split(sql_path: Path, res_area_m2: float,
         "space_heating_kwh_m2_conditioned": per_total(space_heating),
         "cooling_kwh_m2_conditioned": per_total(cool_elec),
         "dhw_share_pct": round(100.0 * dhw / total_site, 1),
+        # the dwellings on their own, against the floor area that is theirs
+        "terciario_site_kwh": round(terciario_site, 1),
+        "terciario_lighting_kwh": round(terciario_lighting, 1),
+        "terciario_equipment_kwh": round(terciario_equipment, 1),
+        "residential_site_kwh": round(residential_site, 1),
+        "residential_total_site_kwh_m2": per_res(residential_site),
+        "terciario_share_pct": round(100.0 * terciario_site / total_site, 1),
         "area_basis": "residential_only (primary) + total_conditioned (secondary)",
+        "residential_split_basis": (
+            "lights and equipment attributed by space type; HVAC and DHW are "
+            "metered per end use and remain in the residential figure"),
     }
 
 
@@ -1316,8 +1375,40 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
             setattr(build_config.openings, field,
                     getattr(build_config.openings, field) * glass_fraction)
 
+    # Storeys the cadastre cannot fill are cut from the geometry before it is
+    # extruded, not merely re-typed afterwards.  On a parcel that covers a whole
+    # block the two inputs describe different things - the footprint is the
+    # block's, `altura_max` is its tallest point - so their product is floor
+    # area that does not exist.  3748901YJ2734H is 17,272 m2 at 15 storeys
+    # against 38,158 m2 of recorded dwellings across 342 flats: 259,000 m2
+    # simulated, 5.6 % of Benicalap's energy in one building.  Re-typing that
+    # floor to Terciario left it lit, heated and conditioned all the same.
+    #
+    # The frozen builder reads its storey count from the row rather than from a
+    # constant, so the cap travels on a copy of the row and the module itself is
+    # untouched.  Neighbour shading is unaffected: `resolve_neighbour_source`
+    # reads the surrounding mass from a separate file and every neighbour brings
+    # its own `altura_max`, so trimming the target cannot change what it stands
+    # among.  Without a Tipo15 area nothing is cut - the single-building CLI
+    # path reads the raw GIS row and stays byte for byte as it was.
+    built_storeys_raw = int(row["altura_max"]) + (1 if ground_is_residential else 0)
+    footprint_pre_m2 = mb.prepare_footprint(
+        mb.clean_polygon(row.geometry), config=build_config)[1]
+    capped_storeys = residential_storeys_from_cadastre(
+        row.get("tipo15_res_area_m2"), footprint_pre_m2, built_storeys_raw)
+    storey_cap_applied = capped_storeys < built_storeys_raw
+    if storey_cap_applied:
+        row = row.copy()
+        # The builder counts residential storeys ABOVE the bajo; with a
+        # residential ground the kept total includes it.  One storey is the
+        # smallest model it can extrude, and any remainder that floor leaves
+        # over is re-typed downstream exactly as before.
+        row["altura_max"] = max(1, capped_storeys - (1 if ground_is_residential else 0))
+
     result = mb.build_model_with_config(row, party_geom, build_config, neighbors=neighbors)
     osm, stats = result.osm, dict(result.stats)
+    stats["built_storeys"] = built_storeys_raw
+    stats["storey_cap_applied"] = storey_cap_applied
 
     res_area_m2 = float(stats["res_area_m2"])
     footprint_m2 = float(stats["footprint_m2"])
@@ -1329,10 +1420,12 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
         res_area_m2 = round(footprint_m2 * (n_res + 1), 1)
         stats["res_area_m2"] = res_area_m2
 
-    # `altura_max` says where the highest dwelling is, not that everything below
-    # it is housing.  Storeys the recorded dwelling area cannot fill are
-    # commercial floor and must not be simulated as dwellings - the area basis
-    # follows the conversion, so this has to settle before the density cap.
+    # The same rule, now on what was actually extruded.  After the geometric cap
+    # above this normally finds nothing left to do; it still runs because the
+    # cap has a floor of one storey, and because a caller that reaches this
+    # function with an already-short building must get the same answer either
+    # way.  The area basis follows the conversion, so it settles before the
+    # density cap.
     built_res_storeys = n_res + (1 if ground_is_residential else 0)
     cadastral_area = row.get("tipo15_res_area_m2")
     try:
@@ -1405,6 +1498,9 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
         # the glass separately.
         stats["window_glass_area_m2"] = frames["glass_area_m2"]
         stats["window_area_m2"] = frames["opening_area_m2"]
+    # After every re-typing layer, so it meters the space types the model
+    # finished with rather than the ones it started from.
+    layers["terciario_metering"] = tag_terciario_end_uses(osm)
     layers["dhw"] = add_dhw_loop(osm, occupants,
                                  litres_per_person_day=litres_per_person_day,
                                  climate=climate)
@@ -1430,6 +1526,16 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
     }
     stats["deep_layers"] = layers
     stats["total_conditioned_area_m2"] = round(footprint_m2 * (n_res + 1), 1)
+    # How much more floor the model conditions than the cadastre records as
+    # dwellings.  Rai's own regime is one commercial storey under the flats, so
+    # a value near (n+1)/n is his; far above it means the prism still carries
+    # floor the cadastre never accounted for.
+    try:
+        cadastral = float(row.get("tipo15_res_area_m2"))
+    except (TypeError, ValueError):
+        cadastral = 0.0
+    stats["conditioned_to_cadastral_ratio"] = (
+        round(stats["total_conditioned_area_m2"] / cadastral, 3) if cadastral > 0 else None)
     return osm, stats
 
 

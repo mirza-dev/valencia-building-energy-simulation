@@ -151,6 +151,16 @@ LOCKED_BEHAVIOUR: dict[str, object] = {
     "cluster_envelope_source": mc.ENVELOPE_SOURCE,
     "shading": "persiana + balcony overhangs + neighbour context (Rai models none)",
     "area_basis": "residential floor area primary, total conditioned reported alongside",
+    # Storeys the recorded dwelling area cannot fill are cut from the geometry
+    # before it is extruded, not re-typed after the fact.  The replica and the
+    # single-building CLI carry no Tipo15 area, so neither is ever cut and the
+    # 13 gates are unaffected - but a stock run's floor area moves with it.
+    "storey_count": ("footprint x altura_max, capped at the storeys the cadastral "
+                     "Tipo15 dwelling area can fill (+1 commercial ground); "
+                     "unchanged where no Tipo15 area is joined"),
+    "load_metering": ("Terciario lights and equipment carry their own end-use "
+                      "subcategory; HVAC and DHW are metered per end use and "
+                      "cannot be attributed by space type"),
 }
 
 # What Rai publishes for his own building, and the tolerance our replica has to
@@ -319,7 +329,7 @@ LOCKED_SOURCE_HASHES: dict[str, str] = {
     "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
     "run_simulation.py": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
     "model_config.py": "ab388f646b89d74834ff53af07454f559012082f48f50197bb4ddec30ddc91da",
-    "deep_building.py": "a1f903a9006441f28a462b58bbd4dcbfd40d0e1f37c30bc63ee53791b18f8064",
+    "deep_building.py": "40ecd1958edd869b1db6b6526f5c09598ec73e95961ec7fc743a3db8fa3fee16",
 }
 
 

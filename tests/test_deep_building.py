@@ -514,3 +514,97 @@ def test_cadastral_storeys_never_exceed_what_was_built():
 
 def test_cadastral_storeys_keep_at_least_one_dwelling_storey():
     assert db.residential_storeys_from_cadastre(10.0, 562.0, 5) == 1
+
+
+def test_the_block_parcel_that_forced_the_geometric_cap():
+    # 3748901YJ2734H: 17,272 m2 of footprint at altura_max 15, against 38,158 m2
+    # of dwellings across 342 flats.  Extruded whole it conditions 259,000 m2 -
+    # 5.6 % of Benicalap's energy in one record.  The footprint is the block's,
+    # the height is its tallest point; only about 2.2 storeys of housing exist.
+    assert db.residential_storeys_from_cadastre(38158.0, 17272.5, 15) == 3
+
+
+# ---------------------------------------------------------------------------
+# The cap has to reach the GEOMETRY, not just the space types: floor that is
+# re-typed to Terciario is still lit, heated and conditioned (2026-08-08).
+# ---------------------------------------------------------------------------
+@pytest.mark.integration
+def test_cadastral_evidence_cuts_the_storeys_before_they_are_extruded():
+    ref = "4648906YJ2744H"
+    row = db.load_building_row(ref).copy()
+    geometry = mb.clean_polygon(row.geometry)
+    neighbors = mb.load_neighbors(geometry, ref, mb.NEIGHBORS_SHP)
+    party = mb.find_party_walls(geometry, ref, mb.NEIGHBORS_SHP, neighbors=neighbors)
+
+    built = int(row["altura_max"])
+    footprint = mb.prepare_footprint(geometry)[1]
+    # Give it dwelling area for two storeys of a taller building.
+    row["tipo15_res_area_m2"] = footprint * 2 - 1.0
+
+    osm, stats = db.build_deep_model(row, party, 20.0, neighbors=neighbors)
+    assert stats["built_storeys"] == built
+    assert stats["storey_cap_applied"] is True
+    assert stats["n_floors_residential"] == 2
+    # and the floor is gone from the model, not merely renamed
+    assert len(osm.getSpaces()) == 3                      # 2 dwellings + the bajo
+    assert stats["res_area_m2"] == pytest.approx(round(footprint * 2, 1), abs=0.2)
+
+
+@pytest.mark.integration
+def test_the_cap_does_not_change_what_the_building_stands_among():
+    """Neighbour shading reads a separate file, so trimming the target is safe.
+
+    The two paths were deliberately separated on 2026-07-28; this pins it, because
+    a regression here would move every shaded building's cooling without failing
+    anything else.
+    """
+    ref = "4648906YJ2744H"
+    geometry = mb.clean_polygon(db.load_building_row(ref).geometry)
+    neighbors = mb.load_neighbors(geometry, ref, mb.NEIGHBORS_SHP)
+    party = mb.find_party_walls(geometry, ref, mb.NEIGHBORS_SHP, neighbors=neighbors)
+    footprint = mb.prepare_footprint(geometry)[1]
+
+    uncapped = db.build_deep_model(db.load_building_row(ref).copy(), party, 20.0,
+                                   neighbors=neighbors)[1]
+    capped_row = db.load_building_row(ref).copy()
+    capped_row["tipo15_res_area_m2"] = footprint * 2 - 1.0
+    capped = db.build_deep_model(capped_row, party, 20.0, neighbors=neighbors)[1]
+
+    assert capped["n_floors_residential"] < uncapped["n_floors_residential"]
+    # the context is read from the neighbours' own file and does not move
+    assert capped["n_shading_surfaces"] == uncapped["n_shading_surfaces"]
+    # party walls are the target's OWN walls, so they follow its height - the
+    # same count per storey, against the same neighbours
+    assert (capped["n_party_surfaces"] / capped["n_floors_total"]
+            == uncapped["n_party_surfaces"] / uncapped["n_floors_total"])
+
+
+@pytest.mark.integration
+def test_without_cadastral_area_the_building_is_built_exactly_as_before(pilot_model):
+    """The single-building CLI path reads the raw GIS row, which has no Tipo15."""
+    _, stats = pilot_model
+    assert stats["storey_cap_applied"] is False
+    assert stats["built_storeys"] == stats["n_floors_residential"] == 5
+    assert stats["mixed_use_basis"] == "unchecked_no_tipo15"
+    assert stats["res_area_m2"] == pytest.approx(PILOT_RES_AREA, abs=0.1)
+    assert stats["conditioned_to_cadastral_ratio"] is None
+
+
+# ---------------------------------------------------------------------------
+# Metering the commercial storeys apart from the dwellings
+# ---------------------------------------------------------------------------
+@pytest.mark.integration
+def test_terciario_loads_carry_their_own_end_use_subcategory(pilot_model):
+    osm, stats = pilot_model
+    tagged = stats["deep_layers"]["terciario_metering"]
+    assert tagged["subcategory"] == db.TERCIARIO_END_USE_SUBCATEGORY
+    assert tagged["tagged_lights"] > 0
+    assert tagged["tagged_equipment"] > 0
+
+    terciario = db._by_name(osm.getSpaceTypes(), db.GROUND_TERCIARIO_SPACE_TYPE)
+    for load in list(terciario.lights()) + list(terciario.electricEquipment()):
+        assert load.endUseSubcategory() == db.TERCIARIO_END_USE_SUBCATEGORY
+    # the dwellings keep the default, so the two never share a row
+    residential = db._by_name(osm.getSpaceTypes(), db.RESIDENTIAL_SPACE_TYPE)
+    for load in list(residential.lights()) + list(residential.electricEquipment()):
+        assert load.endUseSubcategory() != db.TERCIARIO_END_USE_SUBCATEGORY
