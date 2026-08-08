@@ -350,12 +350,40 @@ def stop_run(pid: int) -> bool:
     return True
 
 
+def _process_state(pid: int) -> str:
+    """The kernel's one-letter state for a pid, or "" when it is unknown."""
+    try:
+        result = subprocess.run(["ps", "-o", "state=", "-p", str(pid)],
+                                capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip()[:1]
+
+
 def is_running(pid: int) -> bool:
+    """True only for a process that can still do work.
+
+    `os.kill(pid, 0)` succeeds for a *zombie* - a child that has exited but
+    whose parent has not reaped it.  A stopped run leaves exactly that: the
+    subprocess dies, the API process that spawned it never calls wait(), and
+    the pid stays in the process table.  Treating that as alive made every
+    stopped run refuse its own resume with "run is already going" until the
+    service was restarted - which is the one thing the durable ledger exists to
+    make unnecessary.
+    """
     try:
         os.kill(pid, 0)
     except OSError:
         return False
-    return True
+    # When this process is the parent, reaping clears the zombie for good
+    # instead of re-detecting it on every poll.  A restarted service is not the
+    # parent any more, so ChildProcessError is the normal path there.
+    try:
+        if os.waitpid(pid, os.WNOHANG)[0] == pid:
+            return False
+    except (ChildProcessError, OSError):
+        pass
+    return _process_state(pid) != "Z"
 
 
 # ---------------------------------------------------------------------------

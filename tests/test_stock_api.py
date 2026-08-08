@@ -9,6 +9,8 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
+import time
 import zipfile
 from pathlib import Path
 
@@ -182,6 +184,27 @@ def test_only_allowlisted_artifacts_are_served(client, has_finished_run):
     response = client.get(
         f"/api/stock/runs/{FINISHED_RUN}/buildings/{reference}/eplusout.sql")
     assert response.status_code == 422
+
+
+def test_a_stopped_run_does_not_look_alive_and_block_its_own_resume():
+    """A stopped run leaves a zombie, and `os.kill(pid, 0)` succeeds for those.
+
+    Until this was fixed, every stopped stock run reported "run is already
+    going" and could not be resumed until the service restarted - defeating the
+    durable ledger it was stopped against.
+    """
+    pid = os.fork()
+    if pid == 0:                      # child: exit at once, unreaped for now
+        os._exit(0)
+    deadline = time.time() + 5
+    while time.time() < deadline and stock_adapter._process_state(pid) != "Z":
+        time.sleep(0.05)
+
+    assert stock_adapter.is_running(pid) is False
+
+
+def test_a_live_process_is_still_reported_as_running():
+    assert stock_adapter.is_running(os.getpid()) is True
 
 
 def test_a_run_name_cannot_escape_the_stock_root():
