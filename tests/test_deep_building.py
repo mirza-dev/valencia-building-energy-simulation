@@ -544,10 +544,35 @@ def test_cadastral_evidence_cuts_the_storeys_before_they_are_extruded():
     osm, stats = db.build_deep_model(row, party, 20.0, neighbors=neighbors)
     assert stats["built_storeys"] == built
     assert stats["storey_cap_applied"] is True
+    assert stats["built_storeys"] > stats["n_floors_residential"]
     assert stats["n_floors_residential"] == 2
     # and the floor is gone from the model, not merely renamed
     assert len(osm.getSpaces()) == 3                      # 2 dwellings + the bajo
     assert stats["res_area_m2"] == pytest.approx(round(footprint * 2, 1), abs=0.2)
+
+
+@pytest.mark.integration
+def test_a_building_too_short_to_shrink_reports_no_cap():
+    """The smallest model the builder can extrude is a bajo plus one storey.
+
+    4149106YJ2745A has a residential ground and one storey above it, and here the
+    cadastre supports only one of the two.  The geometry cannot shrink, so the
+    flag has to say so - reporting "capped" whenever the rule merely bound would
+    overstate how many buildings this touched, and its energy is unchanged.
+    """
+    ref = "4149106YJ2745A"
+    row = db.load_building_row(ref).copy()
+    row["ground_use"] = "residential"
+    geometry = mb.clean_polygon(row.geometry)
+    neighbors = mb.load_neighbors(geometry, ref, mb.NEIGHBORS_SHP)
+    party = mb.find_party_walls(geometry, ref, mb.NEIGHBORS_SHP, neighbors=neighbors)
+    row["tipo15_res_area_m2"] = mb.prepare_footprint(geometry)[1] * 0.5
+
+    _, stats = db.build_deep_model(row, party, 8.0, neighbors=neighbors)
+    assert stats["storey_cap_applied"] is False
+    assert stats["built_storeys"] == stats["n_floors_residential"] == int(row["altura_max"])
+    # the excess is still taken out of the dwellings the only way left: re-typing
+    assert stats["mixed_use_storeys_converted"] == 1
 
 
 @pytest.mark.integration

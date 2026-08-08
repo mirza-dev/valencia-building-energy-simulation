@@ -1396,18 +1396,23 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
         mb.clean_polygon(row.geometry), config=build_config)[1]
     capped_storeys = residential_storeys_from_cadastre(
         row.get("tipo15_res_area_m2"), footprint_pre_m2, built_storeys_raw)
-    storey_cap_applied = capped_storeys < built_storeys_raw
+    # The builder counts residential storeys ABOVE the bajo; with a residential
+    # ground the kept total includes it.  One storey is the smallest model it can
+    # extrude, so a two-level building whose cadastre supports one cannot shrink;
+    # the remainder is re-typed downstream as before, and the flag says the
+    # geometry DID NOT change, because it did not.  Reporting "capped" whenever
+    # the rule merely bound would overstate how many buildings this touched.
+    capped_altura_max = max(1, capped_storeys - (1 if ground_is_residential else 0))
+    storey_cap_applied = capped_altura_max < int(row["altura_max"])
     if storey_cap_applied:
         row = row.copy()
-        # The builder counts residential storeys ABOVE the bajo; with a
-        # residential ground the kept total includes it.  One storey is the
-        # smallest model it can extrude, and any remainder that floor leaves
-        # over is re-typed downstream exactly as before.
-        row["altura_max"] = max(1, capped_storeys - (1 if ground_is_residential else 0))
+        row["altura_max"] = capped_altura_max
 
     result = mb.build_model_with_config(row, party_geom, build_config, neighbors=neighbors)
     osm, stats = result.osm, dict(result.stats)
-    stats["built_storeys"] = built_storeys_raw
+    # On the builder's own definition, so it reads against n_floors_residential
+    # directly: residential storeys above the bajo, before the cap.
+    stats["built_storeys"] = built_storeys_raw - (1 if ground_is_residential else 0)
     stats["storey_cap_applied"] = storey_cap_applied
 
     res_area_m2 = float(stats["res_area_m2"])
