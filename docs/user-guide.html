@@ -523,7 +523,7 @@
   <tbody>
     <tr><td><strong>Selected buildings</strong></td><td>Testing, or reproducing one specific cadastral reference exactly.</td><td class="n">seconds to minutes</td></tr>
     <tr><td><strong>One district</strong></td><td>The normal working unit. Every eligible building in a named district.</td><td class="n">967 buildings · 5.4 h</td></tr>
-    <tr><td><strong>All Valencia</strong></td><td>Production runs. Requires an extra explicit acknowledgement.</td><td class="n">~24,900 buildings</td></tr>
+    <tr><td><strong>All Valencia</strong></td><td>Production runs. Requires an extra explicit acknowledgement.</td><td class="n">25,094 of 26,452</td></tr>
   </tbody>
 </table>
 
@@ -547,8 +547,9 @@
 
 <div class="note">
   <b>Count the loss by area, not by building</b>
-  In this district 45 of 1,012 buildings produced no result — 4.4 % by count,
-  but only <strong>1.9 % by floor area</strong>. Exclusions concentrate in
+  In this district 45 of 1,012 buildings produced no result — 44 excluded up
+  front by the four reasons above and 1 that failed during simulation. That is
+  4.4 % by count, but only <strong>1.9 % by floor area</strong>. Exclusions concentrate in
   unusual, often large-footprint buildings, so a headcount overstates the
   coverage gap in one direction and understates its importance in the other.
   Outputs always shows both.
@@ -579,7 +580,7 @@
   <div><span>Geometric EUI</span><strong>46.9</strong><small>kWh/m² · modelled residential floor</small></div>
   <div><span>Cadastral EUI</span><strong class="hi">50.9</strong><small>kWh/m² · Tipo15 dwelling area</small></div>
   <div><span>Carbon</span><strong>34,723</strong><small>tCO₂/year · total site</small></div>
-  <div><span>Coverage</span><strong>95.6 %</strong><small>967 OK · 45 excluded</small></div>
+  <div><span>Coverage</span><strong>95.6 %</strong><small>967 OK · 44 excluded</small></div>
   <div><span>QA status</span><strong style="color:var(--green)">PASS</strong><small>0 QA failed · 0 unexplained severe</small></div>
 </div>
 
@@ -719,9 +720,10 @@
   <thead><tr><th style="width:26%">File</th><th>Open it when you want to…</th></tr></thead>
   <tbody>
     <tr><td><code>eplustbl.htm</code></td><td>see the full EnergyPlus report — end uses, surfaces, loads, sizing — in the same format as any other EnergyPlus study.</td></tr>
-    <tr><td><code>qa_report.txt</code></td><td>check what was verified after the simulation and by how much each check passed.</td></tr>
+    <tr><td><code>deep_layers.json</code></td><td>see what each stage of §4 did to this specific building, and the QA checks with the model value, the EnergyPlus value and the tolerance side by side.</td></tr>
     <tr><td><code>model_python.osm</code></td><td>open the actual model in OpenStudio and inspect or modify it yourself.</td></tr>
     <tr><td><code>eplusout.err</code></td><td>read every warning EnergyPlus raised for this building.</td></tr>
+    <tr><td><code>verified_profile.json</code></td><td>see the locked parameters and source checksums this particular building was simulated under.</td></tr>
   </tbody>
 </table>
 
@@ -886,7 +888,7 @@
   <tbody>
     <tr><td>Residential floor area (m²)</td><td class="n">954.800</td><td class="n">954.800</td><td class="n">0.00 %</td></tr>
     <tr><td>Wall U-value (W/m²K)</td><td class="n">1.409</td><td class="n">1.409</td><td class="n">0.00 %</td></tr>
-    <tr><td>HVAC sensible heating (GJ)</td><td class="n">26.527</td><td class="n">27.300</td><td class="n">−2.85 %</td></tr>
+    <tr><td>HVAC sensible heating (GJ)</td><td class="n">26.527</td><td class="n">27.300</td><td class="n">−2.83 %</td></tr>
     <tr><td>HVAC sensible cooling (GJ)</td><td class="n">−68.403</td><td class="n">−65.030</td><td class="n">+5.19 %</td></tr>
     <tr><td><strong>Total site energy (kWh/m²)</strong></td><td class="n"><strong>53.680</strong></td><td class="n"><strong>54.500</strong></td><td class="n"><strong>−1.50 %</strong></td></tr>
   </tbody>

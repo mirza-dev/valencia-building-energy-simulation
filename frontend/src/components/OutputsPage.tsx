@@ -6,9 +6,14 @@ import { formatProductBytes } from '../lib/productStock'
 import type { ProductLedgerRow } from '../lib/types'
 
 const PAGE_SIZE = 100
+// Must stay a subset of `stock_runner.KEPT_ARTIFACTS`, which is what a stock run
+// actually preserves.  `qa_report.txt` used to be listed here and always 404'd:
+// it belongs to the single-building Part B path, not to the stock runner, whose
+// QA record lives inside `deep_layers.json`.
 const ARTIFACTS = [
-  ['eplustbl.htm', 'EnergyPlus table'], ['qa_report.txt', 'QA report'],
+  ['eplustbl.htm', 'EnergyPlus table'], ['deep_layers.json', 'Model layers and QA'],
   ['model_python.osm', 'OpenStudio model'], ['eplusout.err', 'EnergyPlus errors'],
+  ['verified_profile.json', 'Verified profile'],
 ] as const
 
 function number(value?: number, digits = 2) {
