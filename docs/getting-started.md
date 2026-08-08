@@ -9,7 +9,7 @@ interface.
 
 Use the complete Valencia Workbench research distribution supplied by the
 project team. A plain source-code clone does **not** contain the licensed UPV
-inputs or the 4.8 GB completed Benicalap evidence run.
+inputs or the 4.4 GB completed Benicalap evidence run.
 
 After unpacking, the project must contain:
 
@@ -18,7 +18,7 @@ After unpacking, the project must contain:
 - `Tipo15_soloV(in).csv`;
 - the Valencia IWEC `.epw` and matching `.ddy`;
 - `PlantillaOS_v2.osm`;
-- `out/stock/benicalap_v6/`, including its aggregate, ledger, models and
+- `out/stock/benicalap_v8/`, including its aggregate, ledger, models and
   preserved EnergyPlus outputs.
 
 The installer checks the published SHA-256 values and stops if this payload is
@@ -133,8 +133,13 @@ error file.
   size. After confirmation it creates a ZIP64 archive with an Ed25519-signed
   manifest.
 
-The distribution already includes the completed `benicalap_v6` run, so Outputs
+The distribution already includes the completed `benicalap_v8` run, so Outputs
 is useful before starting a new simulation.
+
+For what every number on that screen means, and for what the product can and
+cannot do, read the user guide: [`Valencia Workbench - User Guide.pdf`](Valencia%20Workbench%20-%20User%20Guide.pdf)
+(the same document as [`user-guide.html`](user-guide.html), which is what the
+PDF is rendered from).
 
 ## 5. Update safely
 

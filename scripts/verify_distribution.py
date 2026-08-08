@@ -52,11 +52,11 @@ def verify() -> dict:
         present.append(item)
 
     example = None
-    aggregate = PROJECT / "out/stock/benicalap_v6/aggregate.json"
+    aggregate = PROJECT / "out/stock/benicalap_v8/aggregate.json"
     if aggregate.is_file() and not any(item["path"] == str(aggregate.relative_to(PROJECT)) for item in mismatched):
         body = json.loads(aggregate.read_text(encoding="utf-8"))
         example = {
-            "run": "benicalap_v6",
+            "run": "benicalap_v8",
             "buildings_ok": body.get("buildings_ok"),
             "total_site_gwh": body.get("totals", {}).get("total_site_gwh"),
         }

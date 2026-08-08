@@ -17,9 +17,9 @@
     {"path": "data/weather/ESP_Valencia.082840_IWEC.epw", "sha256": "09dd4adf2bf25ba57252b8eddef5cbf3eb2bbae4ac813f70f9249d80ed98f194", "role": "Annual weather"},
     {"path": "data/weather/ESP_Valencia.082840_IWEC.ddy", "sha256": "3ddb6f02ca1320801061a7e53c4b5f91cb324b8084229033e8e3d03b26d127f0", "role": "Sizing design days"},
     {"path": "data/templates/PlantillaOS_v2.osm", "sha256": "68640fda436e09c8ed3215363bd3aa390b5882d1020d2bff19518ec91b4249e5", "role": "OpenStudio template"},
-    {"path": "out/stock/benicalap_v6/aggregate.json", "sha256": "274136c45e689311a9b3480c963e7c51c46efbeaee0778295ff729339a4e6cd8", "role": "Finished Benicalap example aggregate"},
-    {"path": "out/stock/benicalap_v6/ledger.jsonl", "sha256": "a106c55e188b289c49bb9559530d21abf330b12911a92111a1cd423fe2ca042d", "role": "Finished Benicalap example ledger"},
-    {"path": "out/stock/benicalap_v6/runs", "role": "Finished Benicalap per-building evidence directory", "minimum_files": 16000, "required_globs": [{"pattern": "*/eplusout.sql", "minimum": 968}, {"pattern": "*/eplustbl.htm", "minimum": 968}]},
-    {"path": "out/stock/benicalap_v6/models", "role": "Finished Benicalap OpenStudio models directory", "minimum_files": 968}
+    {"path": "out/stock/benicalap_v8/aggregate.json", "sha256": "6a2dbba91ff6c79087dee42e4a873cf432f778badba4090594722351f27ef5b0", "role": "Finished Benicalap example aggregate"},
+    {"path": "out/stock/benicalap_v8/ledger.jsonl", "sha256": "10875e88ea1e7e82f5aadc1f58d1cfc06d1ae5f8bbb74dbe46f0d70a212d7362", "role": "Finished Benicalap example ledger"},
+    {"path": "out/stock/benicalap_v8/runs", "role": "Finished Benicalap per-building evidence directory", "minimum_files": 16000, "required_globs": [{"pattern": "*/eplusout.sql", "minimum": 968}, {"pattern": "*/eplustbl.htm", "minimum": 968}]},
+    {"path": "out/stock/benicalap_v8/models", "role": "Finished Benicalap OpenStudio models directory", "minimum_files": 968}
   ]
 }
