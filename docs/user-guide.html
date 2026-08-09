@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Valencia Stock Energy Workbench — User Guide</title>
+<title>Valencia Stock Energy Workbench — Visual Guide</title>
 <style>
-  @page { size: A4; margin: 16mm 15mm 18mm 15mm; }
+  @page { size: A4; margin: 15mm 15mm 16mm 15mm; }
 
   :root{
     --ink:#16202c; --soft:#5a6875; --line:#d8dee6; --pale:#f4f6f9;
@@ -16,97 +16,109 @@
   }
   *{box-sizing:border-box}
   body{
-    font:11pt/1.55 "Helvetica Neue",Helvetica,Arial,sans-serif;
-    color:var(--ink); margin:0 auto; max-width:190mm; padding:0 4mm;
+    font:10.5pt/1.5 "Helvetica Neue",Helvetica,Arial,sans-serif;
+    color:var(--ink); margin:0 auto; max-width:190mm; padding:0 3mm;
     -webkit-print-color-adjust:exact; print-color-adjust:exact;
   }
-  h1,h2,h3{line-height:1.25; margin:0 0 .4em}
+  h1,h2,h3{line-height:1.22; margin:0 0 .35em}
   h1{font-size:26pt; letter-spacing:-.4pt}
   h2{
-    font-size:15pt; margin-top:1.9em; padding-bottom:.28em;
+    font-size:14.5pt; margin:1.7em 0 .55em; padding-bottom:.26em;
     border-bottom:2.5px solid var(--blue); color:var(--blue);
     page-break-after:avoid;
   }
-  h3{font-size:11.5pt; margin-top:1.35em; color:var(--ink); page-break-after:avoid}
   h2 .num{
-    display:inline-block; min-width:1.55em; color:#93a3b3;
+    display:inline-block; min-width:1.5em; color:#93a3b3;
     font-weight:400; font-variant-numeric:tabular-nums;
   }
-  p{margin:.55em 0}
-  ul,ol{margin:.5em 0 .7em; padding-left:1.25em}
-  li{margin:.24em 0}
+  h3{font-size:11pt; margin-top:1.1em; page-break-after:avoid}
+  p{margin:.45em 0}
+  p.lead{color:var(--soft); font-size:10pt; margin:0 0 .9em; max-width:64ch}
+  ul,ol{margin:.4em 0 .6em; padding-left:1.15em}
+  li{margin:.28em 0}
   code{
-    font:9.5pt/1.4 "SF Mono",Menlo,Consolas,monospace;
+    font:9pt/1.35 "SF Mono",Menlo,Consolas,monospace;
     background:var(--pale); border:1px solid var(--line);
     border-radius:3px; padding:.5px 4px; white-space:nowrap;
   }
   table{
-    width:100%; border-collapse:collapse; margin:.85em 0 1.1em;
-    font-size:9.5pt; page-break-inside:avoid;
+    width:100%; border-collapse:collapse; margin:.7em 0 .9em;
+    font-size:9.2pt; page-break-inside:avoid;
   }
-  th,td{border:1px solid var(--line); padding:5.5px 8px; text-align:left; vertical-align:top}
-  th{background:var(--pale); font-weight:600; font-size:8.8pt; letter-spacing:.25pt; text-transform:uppercase; color:var(--soft)}
+  th,td{border:1px solid var(--line); padding:5px 8px; text-align:left; vertical-align:top}
+  th{background:var(--pale); font-weight:600; font-size:8.4pt; letter-spacing:.25pt; text-transform:uppercase; color:var(--soft)}
   td.n,th.n{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
   tbody tr:nth-child(even) td{background:#fbfcfd}
 
   .note,.warn,.good{
     border-left:4px solid; border-radius:0 5px 5px 0;
-    padding:9px 13px; margin:1em 0; font-size:10pt; page-break-inside:avoid;
+    padding:8px 12px; margin:.85em 0; font-size:9.6pt; page-break-inside:avoid;
   }
   .note{background:var(--blue-soft); border-color:var(--blue)}
   .warn{background:var(--amber-soft); border-color:var(--amber)}
   .good{background:var(--green-soft); border-color:var(--green)}
-  .note b,.warn b,.good b{display:block; margin-bottom:.15em}
+  .note b,.warn b,.good b{display:block; margin-bottom:.1em}
   .warn b{color:var(--amber)} .good b{color:var(--green)} .note b{color:var(--blue)}
 
-  figure{margin:1.2em 0; page-break-inside:avoid}
+  figure{margin:.9em 0; page-break-inside:avoid}
   figure svg{width:100%; height:auto; display:block}
   figcaption{
-    font-size:8.8pt; color:var(--soft); margin-top:.5em;
-    padding-top:.4em; border-top:1px solid var(--line);
+    font-size:8.6pt; color:var(--soft); margin-top:.45em;
+    padding-top:.35em; border-top:1px solid var(--line);
   }
   figcaption b{color:var(--ink)}
 
   .cover{
-    page-break-after:always; padding-top:38mm; min-height:255mm;
+    page-break-after:always; padding-top:34mm; min-height:258mm;
     display:flex; flex-direction:column;
   }
   .cover .eyebrow{
     font-size:9pt; letter-spacing:2.6pt; text-transform:uppercase;
-    color:var(--blue); font-weight:700; margin-bottom:1.5em;
+    color:var(--blue); font-weight:700; margin-bottom:1.4em;
   }
   .cover h1{max-width:19ch}
-  .cover .sub{font-size:13pt; color:var(--soft); margin:.5em 0 0; max-width:52ch; line-height:1.5}
+  .cover .sub{font-size:12.5pt; color:var(--soft); margin:.5em 0 0; max-width:54ch; line-height:1.45}
   .cover .meta{
-    margin-top:auto; border-top:2.5px solid var(--blue); padding-top:12px;
-    font-size:9pt; color:var(--soft); display:grid;
+    margin-top:auto; border-top:2.5px solid var(--blue); padding-top:11px;
+    font-size:8.8pt; color:var(--soft); display:grid;
     grid-template-columns:repeat(2,1fr); gap:5px 26px;
   }
   .cover .meta b{color:var(--ink); font-weight:600}
 
-  .toc{
-    background:var(--pale); border:1px solid var(--line); border-radius:6px;
-    padding:14px 18px; margin:1.5em 0 0; font-size:10pt;
-  }
-  .toc ol{columns:2; column-gap:26px; margin:.3em 0 0; padding-left:1.3em}
-  .toc li{margin:.2em 0; break-inside:avoid}
+  .frame{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin:10mm 0 0}
+  .frame div{border:1px solid var(--line); border-left-width:4px; border-radius:0 5px 5px 0; padding:8px 11px; background:#fff}
+  .frame b{display:block; font-size:9.4pt; margin-bottom:1px}
+  .frame small{display:block; font-size:8.6pt; color:var(--soft); line-height:1.4}
+  .frame .f1{border-left-color:var(--blue)} .frame .f1 b{color:var(--blue)}
+  .frame .f2{border-left-color:var(--green)} .frame .f2 b{color:var(--green)}
+  .frame .f3{border-left-color:var(--amber)} .frame .f3 b{color:var(--amber)}
 
-  .kpi{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin:1em 0}
-  .kpi div{
-    border:1px solid var(--line); border-radius:5px; padding:9px 11px;
-    background:#fff; page-break-inside:avoid;
-  }
-  .kpi span{display:block; font-size:7.6pt; letter-spacing:.7pt; text-transform:uppercase; color:var(--soft)}
-  .kpi strong{display:block; font-size:16pt; line-height:1.15; margin:2px 0 1px; font-variant-numeric:tabular-nums}
-  .kpi small{display:block; font-size:8.2pt; color:var(--soft); line-height:1.35}
+  .kpi{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:.8em 0}
+  .kpi div{border:1px solid var(--line); border-radius:5px; padding:8px 10px; background:#fff; page-break-inside:avoid}
+  .kpi span{display:block; font-size:7.4pt; letter-spacing:.7pt; text-transform:uppercase; color:var(--soft)}
+  .kpi strong{display:block; font-size:15pt; line-height:1.12; margin:2px 0 1px; font-variant-numeric:tabular-nums}
+  .kpi small{display:block; font-size:8pt; color:var(--soft); line-height:1.3}
   .kpi .hi{color:var(--blue)}
 
-  .pill{
-    display:inline-block; font-size:8pt; font-weight:700; letter-spacing:.4pt;
-    padding:1.5px 7px; border-radius:9px; vertical-align:1px;
-  }
+  .pill{display:inline-block; font-size:7.6pt; font-weight:700; letter-spacing:.4pt; padding:1.5px 7px; border-radius:9px; vertical-align:1px}
   .pill.can{background:var(--green-soft); color:var(--green)}
   .pill.cant{background:var(--red-soft); color:var(--red)}
+
+  .mynotes{
+    border:1px solid var(--line); border-radius:6px; padding:2px 13px 8px;
+    margin:.7em 0; page-break-inside:avoid; background:#fff;
+    font-size:9.9pt; line-height:1.42;
+  }
+  .mynotes ul,.mynotes ol{margin:.35em 0 .2em}
+  .mynotes li{margin:.2em 0}
+  .mynotes h3{margin:.75em 0 .3em; font-size:10.2pt; display:flex; align-items:baseline; gap:8px}
+  .mynotes h3 em{font-style:normal; font-size:7.6pt; letter-spacing:1.2pt; text-transform:uppercase; color:#fff; background:var(--blue); padding:2px 7px; border-radius:9px}
+  .mynotes.gapsA h3 em{background:var(--red)}
+  .mynotes.gapsB h3 em{background:var(--amber)}
+  .mynotes.gapsC h3 em{background:var(--green)}
+  .mynotes li b{font-weight:600}
+  .mynotes li .sz{font-size:8.6pt; color:var(--soft); font-variant-numeric:tabular-nums}
+
   .brk{page-break-before:always}
   a{color:var(--blue)}
   @media print{ a{text-decoration:none} }
@@ -114,862 +126,675 @@
 </head>
 <body>
 
-<!-- ══════════════════════════ COVER ══════════════════════════ -->
+<!-- ═════════════════════ COVER ═════════════════════ -->
 <section class="cover">
-  <div class="eyebrow">User Guide</div>
+  <div class="eyebrow">Visual Guide</div>
   <h1>Valencia Stock Energy Workbench</h1>
   <p class="sub">
-    How the tool works, which data it uses at every step, how to read every
-    number it produces — and, just as importantly, what it cannot do.
+    How the flow runs, which source supplies which value at every step, and how
+    to read every number it produces.
   </p>
 
-  <figure style="margin-top:14mm">
-    <svg viewBox="0 0 760 132" role="img" aria-label="Files, Run and Outputs flow">
+  <figure style="margin-top:12mm">
+    <svg viewBox="0 0 760 132" role="img" aria-label="Three tabs: Files feeds Run, Run feeds Outputs">
       <defs>
         <marker id="ar" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
           <path d="M0,0 L7.5,3.2 L0,6.4 z" fill="#93a3b3"/>
         </marker>
       </defs>
-      <g font-family="Helvetica,Arial" >
-        <g>
-          <rect x="8" y="14" width="212" height="104" rx="8" fill="#e8f0f7" stroke="#1f4e79" stroke-width="1.6"/>
-          <text x="26" y="40" font-size="10" font-weight="700" fill="#1f4e79" letter-spacing="1.6">01 · FILES</text>
-          <text x="26" y="62" font-size="14.5" font-weight="700" fill="#16202c">Four inputs</text>
-          <text x="26" y="82" font-size="10.5" fill="#5a6875">Validate and activate the</text>
-          <text x="26" y="97" font-size="10.5" fill="#5a6875">GIS, Tipo15, climate and</text>
-          <text x="26" y="112" font-size="10.5" fill="#5a6875">template the engine reads.</text>
-        </g>
+      <g font-family="Helvetica,Arial">
+        <rect x="8" y="14" width="212" height="104" rx="8" fill="#e8f0f7" stroke="#1f4e79" stroke-width="1.6"/>
+        <text x="26" y="40" font-size="10" font-weight="700" fill="#1f4e79" letter-spacing="1.6">01 · FILES</text>
+        <text x="26" y="63" font-size="14.5" font-weight="700" fill="#16202c">Four inputs</text>
+        <text x="26" y="84" font-size="10.5" fill="#5a6875">Validate and activate the</text>
+        <text x="26" y="99" font-size="10.5" fill="#5a6875">data the engine will read.</text>
+
         <line x1="226" y1="66" x2="266" y2="66" stroke="#93a3b3" stroke-width="1.6" marker-end="url(#ar)"/>
-        <g>
-          <rect x="272" y="14" width="212" height="104" rx="8" fill="#fdf3e3" stroke="#a8620a" stroke-width="1.6"/>
-          <text x="290" y="40" font-size="10" font-weight="700" fill="#a8620a" letter-spacing="1.6">02 · RUN</text>
-          <text x="290" y="62" font-size="14.5" font-weight="700" fill="#16202c">One model per building</text>
-          <text x="290" y="82" font-size="10.5" fill="#5a6875">Pick a scope, read the</text>
-          <text x="290" y="97" font-size="10.5" fill="#5a6875">preflight, then simulate</text>
-          <text x="290" y="112" font-size="10.5" fill="#5a6875">a full year, building by building.</text>
-        </g>
+
+        <rect x="272" y="14" width="212" height="104" rx="8" fill="#fdf3e3" stroke="#a8620a" stroke-width="1.6"/>
+        <text x="290" y="40" font-size="10" font-weight="700" fill="#a8620a" letter-spacing="1.6">02 · RUN</text>
+        <text x="290" y="63" font-size="14.5" font-weight="700" fill="#16202c">One model per building</text>
+        <text x="290" y="84" font-size="10.5" fill="#5a6875">A full simulated year, for</text>
+        <text x="290" y="99" font-size="10.5" fill="#5a6875">every building in scope.</text>
+
         <line x1="490" y1="66" x2="530" y2="66" stroke="#93a3b3" stroke-width="1.6" marker-end="url(#ar)"/>
-        <g>
-          <rect x="536" y="14" width="212" height="104" rx="8" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.6"/>
-          <text x="554" y="40" font-size="10" font-weight="700" fill="#1d6b45" letter-spacing="1.6">03 · OUTPUTS</text>
-          <text x="554" y="62" font-size="14.5" font-weight="700" fill="#16202c">Results and evidence</text>
-          <text x="554" y="82" font-size="10.5" fill="#5a6875">Totals, per-cluster comparison,</text>
-          <text x="554" y="97" font-size="10.5" fill="#5a6875">a searchable ledger and the</text>
-          <text x="554" y="112" font-size="10.5" fill="#5a6875">raw EnergyPlus files.</text>
-        </g>
+
+        <rect x="536" y="14" width="212" height="104" rx="8" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.6"/>
+        <text x="554" y="40" font-size="10" font-weight="700" fill="#1d6b45" letter-spacing="1.6">03 · OUTPUTS</text>
+        <text x="554" y="63" font-size="14.5" font-weight="700" fill="#16202c">Results and evidence</text>
+        <text x="554" y="84" font-size="10.5" fill="#5a6875">Totals, per-building ledger</text>
+        <text x="554" y="99" font-size="10.5" fill="#5a6875">and the raw output files.</text>
       </g>
     </svg>
   </figure>
 
+  <div class="frame">
+    <div class="f1"><b>Normative estimate</b><small>Lighting, appliances and hot water follow Spanish standard densities — 90 % of the total.</small></div>
+    <div class="f2"><b>HVAC is simulated</b><small>Heating and cooling come from real building physics over 8,760 hours.</small></div>
+    <div class="f3"><b>Verified, not validated</b><small>Scored against a published reference model. Never compared with a meter.</small></div>
+  </div>
+
   <div class="meta">
-    <div><b>Example run in this guide</b><br>Benicalap district · <code>benicalap_v8</code></div>
+    <div><b>Example run throughout</b><br>Benicalap district · <code>benicalap_v8</code></div>
     <div><b>Verified profile</b><br><code>80b3d4dafcdb7190…</code></div>
     <div><b>Engine</b><br>EnergyPlus 25.2.0 · OpenStudio 3.11.0</div>
-    <div><b>Installation</b><br>See <code>getting-started.md</code></div>
+    <div><b>Installation</b><br>See <code>docs/getting-started.md</code></div>
   </div>
 </section>
 
-<!-- ══════════════════════════ 1 ══════════════════════════ -->
-<h2><span class="num">1</span>What this is — and what it is not</h2>
+<!-- ═════════════════════ 1 ═════════════════════ -->
+<h2><span class="num">1</span>The whole flow, on one page</h2>
 
-<p>
-  The Workbench turns the Valencia cadastre into an energy result. It reads the
-  official building dataset, constructs a separate OpenStudio model for
-  <em>each individual building</em>, runs a full annual EnergyPlus simulation on
-  every one of them, and reports the outcome per building, per typology cluster,
-  per district and for the whole city.
-</p>
-
-<p>It is a <strong>local desktop application</strong>. Nothing is uploaded; the
-  simulation runs on your own machine and every file it produces stays there.</p>
-
-<div class="note">
-  <b>The honest one-line description</b>
-  A normative stock estimate whose HVAC component is simulated — verified
-  building-by-building against an independent author's own published EnergyPlus
-  model, and <em>not</em> validated against measured consumption.
-</div>
-
-<p>That sentence carries three claims, and each one is deliberate:</p>
-
-<ul>
-  <li><strong>Normative.</strong> Lighting, appliances and domestic hot water
-    come from Spanish CTE standard densities, not from measurements. Together
-    they are 90.1&nbsp;% of the reported energy (§8).</li>
-  <li><strong>Simulated HVAC.</strong> Heating and cooling are genuinely
-    computed by EnergyPlus from geometry, envelope, weather, shading and
-    occupancy — that is the remaining 9.9&nbsp;%.</li>
-  <li><strong>Verified, not validated.</strong> We reproduce a reference model
-    to within 1.5&nbsp;% (§9). Nobody has yet compared any of this to a utility
-    meter.</li>
-</ul>
-
-<p>
-  Read §6 and §7 before using a number in a paper or a decision. They are
-  short, and they are the part of this document that matters most.
-</p>
-
-<div class="toc">
-  <strong style="font-size:9pt;letter-spacing:1.4pt;text-transform:uppercase;color:var(--soft)">Contents</strong>
-  <ol>
-    <li>What this is — and what it is not</li>
-    <li>The three tabs at a glance</li>
-    <li>Files — the four authoritative inputs</li>
-    <li>Run — what happens to each building</li>
-    <li>Outputs — how to read every number</li>
-    <li>What the product can do</li>
-    <li>What it cannot do</li>
-    <li>Known limitations, measured</li>
-    <li>How to check we are not lying to you</li>
-    <li>Beyond the three tabs</li>
-    <li>Glossary</li>
-  </ol>
-</div>
-
-<!-- ══════════════════════════ 2 ══════════════════════════ -->
-<h2><span class="num">2</span>The three tabs at a glance</h2>
-
-<p>
-  The whole application is three screens, used in order. Everything else that
-  exists in the codebase is hidden from normal navigation (§10).
-</p>
-
-<table>
-  <thead><tr><th style="width:15%">Tab</th><th style="width:33%">What you do</th><th style="width:30%">What it produces</th><th>When you need it</th></tr></thead>
-  <tbody>
-    <tr>
-      <td><strong>Files</strong></td>
-      <td>Check that the four inputs are <code>ACTIVE</code>; upload replacements if you have newer data.</td>
-      <td>A frozen, hashed input set and a <code>RUN READY</code> state.</td>
-      <td>Once after installing, then only when data changes.</td>
-    </tr>
-    <tr>
-      <td><strong>Run</strong></td>
-      <td>Choose a scope, press <em>Run preflight</em>, read the counts, press <em>Start run</em>.</td>
-      <td>One EnergyPlus simulation per building, written to a durable ledger.</td>
-      <td>Every time you want new results.</td>
-    </tr>
-    <tr>
-      <td><strong>Outputs</strong></td>
-      <td>Select a finished run; read totals, compare clusters, search the ledger, open a building's files.</td>
-      <td>Aggregate figures, CSV table, signed evidence packages.</td>
-      <td>Whenever you are interpreting or reporting results.</td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="good">
-  <b>You can start at Outputs</b>
-  The distribution ships with a completed Benicalap run
-  (<code>benicalap_v8</code>: 967 buildings, 4.4&nbsp;GB of preserved EnergyPlus
-  output). You can explore every screen in §5 without simulating anything.
-</div>
-
-<!-- ══════════════════════════ 3 ══════════════════════════ -->
-<h2><span class="num">3</span>Files — the four authoritative inputs</h2>
-
-<p>
-  Everything the engine knows comes from four files. There are no hidden
-  databases and no online lookups. Each card on the Files screen shows
-  <code>ACTIVE</code> or <code>REQUIRED</code>, and the page header says
-  <code>RUN READY</code> only when all four resolve.
-</p>
-
-<h3>What each file contributes</h3>
-
-<table>
-  <thead><tr><th style="width:22%">Input</th><th style="width:40%">Fields the engine actually reads</th><th>What it decides</th></tr></thead>
-  <tbody>
-    <tr>
-      <td><strong>Building GIS</strong><br><small style="color:var(--soft)">Valencia cadastral layer</small></td>
-      <td><code>refparcela</code> · footprint geometry · <code>altura_max</code> · <code>cluster</code> · <code>pob_total</code> · <code>num_vivend</code> · district name</td>
-      <td>Which buildings exist, their shape and height, their typology, and how many people live in each.</td>
-    </tr>
-    <tr>
-      <td><strong>Tipo15 companion</strong><br><small style="color:var(--soft)">Cadastral dwelling records</small></td>
-      <td><code>31_pc</code> (parcel) · <code>252_planta</code> (floor) · <code>428_uso</code> (use) · <code>442_sup_Residencial</code> (area)</td>
-      <td>How much recorded dwelling area a parcel really has, and whether its ground floor is residential or commercial.</td>
-    </tr>
-    <tr>
-      <td><strong>Climate pair</strong><br><small style="color:var(--soft)">EPW + DDY, activated together</small></td>
-      <td>8,760 hourly rows and site location · winter and summer design days</td>
-      <td>The weather the year is simulated against, and the extreme days the heat pumps are sized on.</td>
-    </tr>
-    <tr>
-      <td><strong>PlantillaOS template</strong><br><small style="color:var(--soft)">OpenStudio library model</small></td>
-      <td>24 required roles: constructions, schedules and space types</td>
-      <td>Materials, occupancy and equipment schedules, thermostat setpoints — the physics library every model is assembled from.</td>
-    </tr>
-  </tbody>
-</table>
-
-<div class="warn">
-  <b>Nothing is invented when data is missing</b>
-  If a building has no Tipo15 record, the engine does not guess a dwelling area
-  — it falls back to geometry and records which source it used in that
-  building's row (<code>res_area_source</code>). If a file fails validation on
-  upload, it is rejected rather than partially accepted.
-</div>
-
-<h3>Why the hashes matter</h3>
-
-<p>
-  Each file is copied into managed storage and fingerprinted. A run resolves the
-  active set <em>once, at the moment it starts</em>, and stores those
-  fingerprints in every row it writes. Uploading a newer GIS file tomorrow
-  therefore cannot silently rewrite what yesterday's results mean — and a run
-  cannot be resumed against different inputs, because the identity would no
-  longer match (§4).
-</p>
-
-<!-- ══════════════════════════ 4 ══════════════════════════ -->
-<h2><span class="num">4</span>Run — what happens to each building</h2>
-
-<p>
-  This is the part that is usually invisible. For every single building in
-  scope, the engine performs the following chain and then runs a complete
-  8,760-hour EnergyPlus simulation. The coloured squares show which of the four
-  inputs each step consumes.
+<p class="lead">
+  Four files go in. Every building in scope gets its own model, its own annual
+  simulation and its own row on disk. The rows are then added up. Nothing else
+  happens.
 </p>
 
 <figure>
-  <svg viewBox="0 0 760 592" role="img" aria-label="The per-building pipeline, nine stages">
+  <svg viewBox="0 0 760 428" role="img" aria-label="End-to-end flow from four input files through the per-building loop to the aggregate totals">
     <g font-family="Helvetica,Arial">
-      <!-- legend -->
-      <g font-size="9.5">
-        <rect x="8" y="6" width="10" height="10" rx="2" fill="#1f4e79"/><text x="24" y="15" fill="#5a6875">Building GIS</text>
-        <rect x="112" y="6" width="10" height="10" rx="2" fill="#1d6b45"/><text x="128" y="15" fill="#5a6875">Tipo15</text>
-        <rect x="192" y="6" width="10" height="10" rx="2" fill="#8a5a12"/><text x="208" y="15" fill="#5a6875">Climate</text>
-        <rect x="272" y="6" width="10" height="10" rx="2" fill="#6b3f8c"/><text x="288" y="15" fill="#5a6875">Template</text>
-      </g>
+      <!-- ── FILES band ── -->
+      <rect x="4" y="6" width="600" height="66" rx="7" fill="#fbfcfd" stroke="#d8dee6"/>
+      <rect x="18" y="20" width="136" height="40" rx="5" fill="#e8f0f7" stroke="#1f4e79" stroke-width="1.3"/>
+      <text x="86" y="38" font-size="10.5" font-weight="700" fill="#1f4e79" text-anchor="middle">Building GIS</text>
+      <text x="86" y="52" font-size="8.5" fill="#5a6875" text-anchor="middle">26,452 parcels</text>
 
-      <!-- stages: y positions -->
-      <g>
-        <!-- 1 -->
-        <rect x="8" y="30" width="744" height="52" rx="6" fill="#fff" stroke="#d8dee6"/>
-        <rect x="8" y="30" width="4" height="52" rx="2" fill="#1f4e79"/>
-        <circle cx="34" cy="56" r="12" fill="#eef2f6"/><text x="34" y="60" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">1</text>
-        <text x="58" y="52" font-size="12" font-weight="700" fill="#16202c">Footprint</text>
-        <text x="58" y="70" font-size="10" fill="#5a6875">The cadastral polygon is simplified. If simplification would move its area too much, the building is excluded rather than distorted.</text>
-        <rect x="726" y="50" width="9" height="9" rx="2" fill="#1f4e79"/>
+      <rect x="164" y="20" width="136" height="40" rx="5" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.3"/>
+      <text x="232" y="38" font-size="10.5" font-weight="700" fill="#1d6b45" text-anchor="middle">Tipo15</text>
+      <text x="232" y="52" font-size="8.5" fill="#5a6875" text-anchor="middle">dwelling records</text>
 
-        <!-- 2 -->
-        <rect x="8" y="88" width="744" height="52" rx="6" fill="#e7f4ec" stroke="#1d6b45"/>
-        <rect x="8" y="88" width="4" height="52" rx="2" fill="#1d6b45"/>
-        <circle cx="34" cy="114" r="12" fill="#fff"/><text x="34" y="118" font-size="11" font-weight="700" fill="#1d6b45" text-anchor="middle">2</text>
-        <text x="58" y="110" font-size="12" font-weight="700" fill="#16202c">Storey count, capped by cadastral evidence</text>
-        <text x="58" y="128" font-size="10" fill="#3c4a57">Height comes from the GIS, but is limited to the storeys the recorded dwelling area can actually fill, plus one commercial ground floor.</text>
-        <rect x="714" y="108" width="9" height="9" rx="2" fill="#1f4e79"/>
-        <rect x="726" y="108" width="9" height="9" rx="2" fill="#1d6b45"/>
+      <rect x="310" y="20" width="136" height="40" rx="5" fill="#fdf3e3" stroke="#8a5a12" stroke-width="1.3"/>
+      <text x="378" y="38" font-size="10.5" font-weight="700" fill="#8a5a12" text-anchor="middle">Climate</text>
+      <text x="378" y="52" font-size="8.5" fill="#5a6875" text-anchor="middle">EPW + DDY</text>
 
-        <!-- 3 -->
-        <rect x="8" y="146" width="744" height="52" rx="6" fill="#fff" stroke="#d8dee6"/>
-        <rect x="8" y="146" width="4" height="52" rx="2" fill="#6b3f8c"/>
-        <circle cx="34" cy="172" r="12" fill="#eef2f6"/><text x="34" y="176" font-size="11" font-weight="700" fill="#6b3f8c" text-anchor="middle">3</text>
-        <text x="58" y="168" font-size="12" font-weight="700" fill="#16202c">Envelope by typology and period</text>
-        <text x="58" y="186" font-size="10" fill="#5a6875">The building's TABULA cluster selects its walls, roof and floor — layer by layer, from real materials in the template.</text>
-        <rect x="714" y="166" width="9" height="9" rx="2" fill="#1f4e79"/>
-        <rect x="726" y="166" width="9" height="9" rx="2" fill="#6b3f8c"/>
+      <rect x="456" y="20" width="134" height="40" rx="5" fill="#f0eaf6" stroke="#6b3f8c" stroke-width="1.3"/>
+      <text x="523" y="38" font-size="10.5" font-weight="700" fill="#6b3f8c" text-anchor="middle">Template</text>
+      <text x="523" y="52" font-size="8.5" fill="#5a6875" text-anchor="middle">PlantillaOS library</text>
 
-        <!-- 4 -->
-        <rect x="8" y="204" width="744" height="52" rx="6" fill="#fff" stroke="#d8dee6"/>
-        <rect x="8" y="204" width="4" height="52" rx="2" fill="#6b3f8c"/>
-        <circle cx="34" cy="230" r="12" fill="#eef2f6"/><text x="34" y="234" font-size="11" font-weight="700" fill="#6b3f8c" text-anchor="middle">4</text>
-        <text x="58" y="226" font-size="12" font-weight="700" fill="#16202c">Windows, frames and blinds</text>
-        <text x="58" y="244" font-size="10" fill="#5a6875">Discrete openings are placed per façade with balcony doors, aluminium frames, and Valencian <tspan font-style="italic">persianas</tspan> that close on high summer sun.</text>
-        <rect x="726" y="224" width="9" height="9" rx="2" fill="#6b3f8c"/>
+      <!-- tab rail: FILES -->
+      <rect x="620" y="6" width="136" height="66" rx="7" fill="#e8f0f7" stroke="#1f4e79" stroke-width="1.4"/>
+      <text x="688" y="33" font-size="9" font-weight="700" fill="#1f4e79" text-anchor="middle" letter-spacing="1.4">01 · FILES</text>
+      <text x="688" y="50" font-size="8.5" fill="#5a6875" text-anchor="middle">activate, validate,</text>
+      <text x="688" y="62" font-size="8.5" fill="#5a6875" text-anchor="middle">hash each file</text>
 
-        <!-- 5 -->
-        <rect x="8" y="262" width="744" height="52" rx="6" fill="#fff" stroke="#d8dee6"/>
-        <rect x="8" y="262" width="4" height="52" rx="2" fill="#1f4e79"/>
-        <circle cx="34" cy="288" r="12" fill="#eef2f6"/><text x="34" y="292" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">5</text>
-        <text x="58" y="284" font-size="12" font-weight="700" fill="#16202c">Neighbours: shading and party walls</text>
-        <text x="58" y="302" font-size="10" fill="#5a6875">Every real building within 50 m is loaded as shading mass; shared walls become adiabatic instead of losing heat to the street.</text>
-        <rect x="726" y="282" width="9" height="9" rx="2" fill="#1f4e79"/>
+      <line x1="304" y1="72" x2="304" y2="98" stroke="#93a3b3" stroke-width="1.6" marker-end="url(#ar)"/>
+      <text x="314" y="89" font-size="8.8" fill="#5a6875">resolved once per run, then fingerprinted</text>
 
-        <!-- 6 -->
-        <rect x="8" y="320" width="744" height="52" rx="6" fill="#fff" stroke="#d8dee6"/>
-        <rect x="8" y="320" width="4" height="52" rx="2" fill="#1f4e79"/>
-        <circle cx="34" cy="346" r="12" fill="#eef2f6"/><text x="34" y="350" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">6</text>
-        <text x="58" y="342" font-size="12" font-weight="700" fill="#16202c">Real occupancy from the population register</text>
-        <text x="58" y="360" font-size="10" fill="#5a6875">The registered resident count replaces the standard 20 m²/person norm — this changes both internal gains and hygienic ventilation.</text>
-        <rect x="714" y="340" width="9" height="9" rx="2" fill="#1f4e79"/>
-        <rect x="726" y="340" width="9" height="9" rx="2" fill="#6b3f8c"/>
+      <!-- ── prepared stock ── -->
+      <rect x="4" y="104" width="600" height="44" rx="7" fill="#fff" stroke="#d8dee6"/>
+      <text x="20" y="122" font-size="11" font-weight="700" fill="#16202c">Screened stock</text>
+      <text x="20" y="138" font-size="9" fill="#5a6875">Every parcel is tested against the engine's own gates; nothing is skipped silently.</text>
+      <rect x="470" y="112" width="120" height="28" rx="5" fill="#e7f4ec" stroke="#1d6b45"/>
+      <text x="530" y="124" font-size="9" fill="#1d6b45" text-anchor="middle" font-weight="700">967 in scope</text>
+      <text x="530" y="135" font-size="8" fill="#5a6875" text-anchor="middle">44 excluded · Benicalap</text>
 
-        <!-- 7 -->
-        <rect x="8" y="378" width="744" height="52" rx="6" fill="#fff" stroke="#d8dee6"/>
-        <rect x="8" y="378" width="4" height="52" rx="2" fill="#1f4e79"/>
-        <circle cx="34" cy="404" r="12" fill="#eef2f6"/><text x="34" y="408" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">7</text>
-        <text x="58" y="400" font-size="12" font-weight="700" fill="#16202c">Domestic hot water</text>
-        <text x="58" y="418" font-size="10" fill="#5a6875">A hot-water loop sized on the Spanish CTE figure of 28 litres per person per day — so it scales with the real residents, not with floor area.</text>
-        <rect x="714" y="398" width="9" height="9" rx="2" fill="#1f4e79"/>
-        <rect x="726" y="398" width="9" height="9" rx="2" fill="#6b3f8c"/>
+      <line x1="304" y1="148" x2="304" y2="172" stroke="#93a3b3" stroke-width="1.6" marker-end="url(#ar)"/>
+      <text x="314" y="164" font-size="8.8" fill="#5a6875">one building at a time</text>
 
-        <!-- 8 -->
-        <rect x="8" y="436" width="744" height="52" rx="6" fill="#fff" stroke="#d8dee6"/>
-        <rect x="8" y="436" width="4" height="52" rx="2" fill="#8a5a12"/>
-        <circle cx="34" cy="462" r="12" fill="#eef2f6"/><text x="34" y="466" font-size="11" font-weight="700" fill="#8a5a12" text-anchor="middle">8</text>
-        <text x="58" y="458" font-size="12" font-weight="700" fill="#16202c">Heat pumps, sized on design days</text>
-        <text x="58" y="476" font-size="10" fill="#5a6875">One packaged terminal heat pump per zone, autosized against the winter and summer design days from the DDY file.</text>
-        <rect x="726" y="456" width="9" height="9" rx="2" fill="#8a5a12"/>
+      <!-- ── per-building loop ── -->
+      <rect x="4" y="178" width="600" height="128" rx="7" fill="#fdf3e3" stroke="#a8620a" stroke-width="1.5"/>
+      <text x="20" y="197" font-size="10" font-weight="700" fill="#a8620a" letter-spacing="1.2">FOR EVERY BUILDING IN SCOPE</text>
 
-        <!-- 9 -->
-        <rect x="8" y="494" width="744" height="52" rx="6" fill="#e8f0f7" stroke="#1f4e79"/>
-        <rect x="8" y="494" width="4" height="52" rx="2" fill="#8a5a12"/>
-        <circle cx="34" cy="520" r="12" fill="#fff"/><text x="34" y="524" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">9</text>
-        <text x="58" y="516" font-size="12" font-weight="700" fill="#16202c">Annual simulation, then quality control</text>
-        <text x="58" y="534" font-size="10" fill="#3c4a57">8,760 hours of EnergyPlus. Afterwards the result is checked against the model's own geometry and the error file is scanned before the row is written.</text>
-        <rect x="726" y="514" width="9" height="9" rx="2" fill="#8a5a12"/>
-      </g>
+      <rect x="20" y="208" width="122" height="46" rx="5" fill="#fff" stroke="#a8620a"/>
+      <text x="81" y="228" font-size="10" font-weight="700" fill="#16202c" text-anchor="middle">Build model</text>
+      <text x="81" y="243" font-size="8.4" fill="#5a6875" text-anchor="middle">9 stages · §2</text>
 
-      <text x="8" y="568" font-size="9.5" fill="#5a6875">Each row is written to disk and flushed immediately — which is why a stopped run can always be resumed.</text>
-      <line x1="8" y1="578" x2="752" y2="578" stroke="#d8dee6"/>
+      <line x1="146" y1="231" x2="176" y2="231" stroke="#a8620a" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+      <rect x="180" y="208" width="122" height="46" rx="5" fill="#fff" stroke="#a8620a"/>
+      <text x="241" y="228" font-size="10" font-weight="700" fill="#16202c" text-anchor="middle">Simulate</text>
+      <text x="241" y="243" font-size="8.4" fill="#5a6875" text-anchor="middle">8,760 hours</text>
+
+      <line x1="306" y1="231" x2="336" y2="231" stroke="#a8620a" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+      <rect x="340" y="208" width="122" height="46" rx="5" fill="#fff" stroke="#a8620a"/>
+      <text x="401" y="228" font-size="10" font-weight="700" fill="#16202c" text-anchor="middle">Check</text>
+      <text x="401" y="243" font-size="8.4" fill="#5a6875" text-anchor="middle">geometry · errors</text>
+
+      <line x1="466" y1="231" x2="496" y2="231" stroke="#a8620a" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+      <rect x="500" y="208" width="90" height="46" rx="5" fill="#fff" stroke="#a8620a" stroke-width="1.4"/>
+      <text x="545" y="228" font-size="10" font-weight="700" fill="#a8620a" text-anchor="middle">Write row</text>
+      <text x="545" y="243" font-size="8.4" fill="#5a6875" text-anchor="middle">flushed to disk</text>
+
+      <path d="M545,258 v20 H81 v-20" fill="none" stroke="#a8620a" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+      <text x="313" y="292" font-size="8.8" fill="#a8620a" text-anchor="middle">next building — the row is already safe, so a stopped run resumes here</text>
+
+      <!-- tab rail: RUN -->
+      <rect x="620" y="104" width="136" height="202" rx="7" fill="#fdf3e3" stroke="#a8620a" stroke-width="1.4"/>
+      <text x="688" y="130" font-size="9" font-weight="700" fill="#a8620a" text-anchor="middle" letter-spacing="1.4">02 · RUN</text>
+      <text x="688" y="150" font-size="8.5" fill="#5a6875" text-anchor="middle">selected · district · city</text>
+      <text x="688" y="165" font-size="8.5" fill="#5a6875" text-anchor="middle">read preflight</text>
+      <text x="688" y="180" font-size="8.5" fill="#5a6875" text-anchor="middle">start · stop · resume</text>
+      <line x1="640" y1="192" x2="736" y2="192" stroke="#e0c69a"/>
+      <text x="688" y="212" font-size="8.5" fill="#5a6875" text-anchor="middle">counts come from</text>
+      <text x="688" y="225" font-size="8.5" fill="#5a6875" text-anchor="middle">the written ledger,</text>
+      <text x="688" y="238" font-size="8.5" fill="#5a6875" text-anchor="middle">not from memory</text>
+      <line x1="640" y1="250" x2="736" y2="250" stroke="#e0c69a"/>
+      <text x="688" y="270" font-size="8.5" fill="#5a6875" text-anchor="middle">Benicalap: 5.4 h</text>
+      <text x="688" y="285" font-size="8.5" fill="#5a6875" text-anchor="middle">on six processes</text>
+
+      <line x1="304" y1="306" x2="304" y2="332" stroke="#93a3b3" stroke-width="1.6" marker-end="url(#ar)"/>
+      <text x="314" y="323" font-size="8.8" fill="#5a6875">when the last row is written</text>
+
+      <!-- ── aggregate ── -->
+      <rect x="4" y="338" width="600" height="84" rx="7" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.5"/>
+      <text x="20" y="358" font-size="11" font-weight="700" fill="#16202c">Rows are summed — nothing is recomputed</text>
+      <text x="20" y="374" font-size="9" fill="#3c4a57">The totals you read are additions over the same rows you can open one by one.</text>
+
+      <rect x="20" y="384" width="134" height="28" rx="5" fill="#fff" stroke="#1d6b45"/>
+      <text x="87" y="402" font-size="9.5" fill="#1d6b45" text-anchor="middle">per building</text>
+      <rect x="162" y="384" width="134" height="28" rx="5" fill="#fff" stroke="#1d6b45"/>
+      <text x="229" y="402" font-size="9.5" fill="#1d6b45" text-anchor="middle">per cluster</text>
+      <rect x="304" y="384" width="134" height="28" rx="5" fill="#fff" stroke="#1d6b45"/>
+      <text x="371" y="402" font-size="9.5" fill="#1d6b45" text-anchor="middle">per district</text>
+      <rect x="446" y="384" width="144" height="28" rx="5" fill="#fff" stroke="#1d6b45"/>
+      <text x="518" y="402" font-size="9.5" fill="#1d6b45" text-anchor="middle">whole city</text>
+
+      <!-- tab rail: OUTPUTS -->
+      <rect x="620" y="338" width="136" height="84" rx="7" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.4"/>
+      <text x="688" y="364" font-size="9" font-weight="700" fill="#1d6b45" text-anchor="middle" letter-spacing="1.4">03 · OUTPUTS</text>
+      <text x="688" y="382" font-size="8.5" fill="#5a6875" text-anchor="middle">totals · ledger</text>
+      <text x="688" y="396" font-size="8.5" fill="#5a6875" text-anchor="middle">evidence files</text>
+      <text x="688" y="410" font-size="8.5" fill="#5a6875" text-anchor="middle">signed export</text>
+
+      <defs>
+        <marker id="ar2" markerWidth="8" markerHeight="8" refX="6.8" refY="2.9" orient="auto">
+          <path d="M0,0 L6.8,2.9 L0,5.8 z" fill="#a8620a"/>
+        </marker>
+      </defs>
     </g>
   </svg>
   <figcaption>
-    <b>The per-building pipeline.</b> Stage 2 is the one added most recently and
-    it is explained below; it is the difference between the model conditioning
-    2.76 and 3.84 million m² across this district.
+    <b>There is no typological shortcut in this chain.</b> A district result is
+    the sum of that many individual annual simulations — not one representative
+    building multiplied by a floor area.
   </figcaption>
 </figure>
 
-<h3>Stage 2 in detail: why storeys get capped</h3>
+<!-- ═════════════════════ 2 ═════════════════════ -->
+<h2><span class="num">2</span>Which source, which value, at every stage</h2>
 
-<p>
-  A model is built by extruding the footprint upward by the recorded height. On
-  a parcel that covers a whole city block those two numbers describe
-  <em>different things</em>: the footprint is the entire block, while the height
-  is that of its tallest corner. Multiplying them invents floor area that does
-  not exist.
+<p class="lead">
+  This is what happens inside <em>Build model</em>. Each stage names the file it
+  reads and the exact field it takes from it.
 </p>
 
 <figure>
-  <svg viewBox="0 0 760 248" role="img" aria-label="Storey cap example on parcel 3748901YJ2734H">
+  <svg viewBox="0 0 760 604" role="img" aria-label="Nine model-building stages, each labelled with the input file and the exact data field it consumes">
     <g font-family="Helvetica,Arial">
-      <text x="8" y="14" font-size="10" font-weight="700" fill="#5a6875" letter-spacing="1.2">EXAMPLE · PARCEL 3748901YJ2734H · BENICALAP</text>
-
-      <!-- before -->
-      <text x="70" y="40" font-size="11.5" font-weight="700" fill="#a32c2c">Before: extruded to full height</text>
-      <g>
-        <rect x="70" y="52" width="150" height="150" fill="#fbecec" stroke="#a32c2c" stroke-width="1.4"/>
-        <g stroke="#e0b4b4" stroke-width="1">
-          <line x1="70" y1="62" x2="220" y2="62"/><line x1="70" y1="72" x2="220" y2="72"/>
-          <line x1="70" y1="82" x2="220" y2="82"/><line x1="70" y1="92" x2="220" y2="92"/>
-          <line x1="70" y1="102" x2="220" y2="102"/><line x1="70" y1="112" x2="220" y2="112"/>
-          <line x1="70" y1="122" x2="220" y2="122"/><line x1="70" y1="132" x2="220" y2="132"/>
-          <line x1="70" y1="142" x2="220" y2="142"/><line x1="70" y1="152" x2="220" y2="152"/>
-          <line x1="70" y1="162" x2="220" y2="162"/><line x1="70" y1="172" x2="220" y2="172"/>
-          <line x1="70" y1="182" x2="220" y2="182"/><line x1="70" y1="192" x2="220" y2="192"/>
-        </g>
-        <text x="145" y="130" font-size="13" font-weight="700" fill="#a32c2c" text-anchor="middle">15 storeys</text>
-        <text x="145" y="220" font-size="11" fill="#16202c" text-anchor="middle">17,272 m² × 15 =</text>
-        <text x="145" y="234" font-size="11" font-weight="700" fill="#a32c2c" text-anchor="middle">259,000 m² conditioned</text>
+      <g font-size="9">
+        <rect x="8" y="4" width="9" height="9" rx="2" fill="#1f4e79"/><text x="22" y="12" fill="#5a6875">Building GIS</text>
+        <rect x="108" y="4" width="9" height="9" rx="2" fill="#1d6b45"/><text x="122" y="12" fill="#5a6875">Tipo15</text>
+        <rect x="184" y="4" width="9" height="9" rx="2" fill="#8a5a12"/><text x="198" y="12" fill="#5a6875">Climate</text>
+        <rect x="256" y="4" width="9" height="9" rx="2" fill="#6b3f8c"/><text x="270" y="12" fill="#5a6875">Template</text>
+        <text x="470" y="12" fill="#93a3b3" font-style="italic">field names below are the real column names in the data</text>
       </g>
 
-      <!-- arrow -->
-      <g>
-        <line x1="248" y1="128" x2="308" y2="128" stroke="#93a3b3" stroke-width="2" marker-end="url(#ar)"/>
-        <text x="278" y="118" font-size="9.5" fill="#5a6875" text-anchor="middle">cadastre</text>
-      </g>
+      <!-- 1 -->
+      <rect x="8" y="22" width="744" height="58" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <rect x="8" y="22" width="4" height="58" rx="2" fill="#1f4e79"/>
+      <circle cx="33" cy="51" r="12" fill="#eef2f6"/><text x="33" y="55" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">1</text>
+      <text x="56" y="45" font-size="11.5" font-weight="700" fill="#16202c">Footprint</text>
+      <text x="56" y="61" font-size="9.2" fill="#5a6875">The parcel polygon is simplified. If simplification moves its area too far, the building is excluded rather than distorted.</text>
+      <text x="56" y="74" font-size="8.6" fill="#1f4e79">GIS · polygon geometry, <tspan font-family="Menlo,monospace">refparcela</tspan></text>
 
-      <!-- after -->
-      <text x="336" y="40" font-size="11.5" font-weight="700" fill="#1d6b45">After: capped by what is recorded</text>
-      <g>
-        <rect x="336" y="152" width="150" height="50" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.4"/>
-        <g stroke="#a9d4bd" stroke-width="1">
-          <line x1="336" y1="164" x2="486" y2="164"/><line x1="336" y1="176" x2="486" y2="176"/>
-        </g>
-        <rect x="336" y="188" width="150" height="14" fill="#e8e2f0" stroke="#6b3f8c" stroke-width="1"/>
-        <text x="411" y="146" font-size="12" font-weight="700" fill="#1d6b45" text-anchor="middle">3 residential storeys</text>
-        <text x="411" y="199" font-size="8.5" fill="#6b3f8c" text-anchor="middle">+ commercial ground floor</text>
-        <text x="411" y="220" font-size="11" fill="#16202c" text-anchor="middle">342 dwellings · 38,158 m²</text>
-        <text x="411" y="234" font-size="11" font-weight="700" fill="#1d6b45" text-anchor="middle">the area the cadastre records</text>
-      </g>
+      <!-- 2 -->
+      <rect x="8" y="86" width="744" height="58" rx="6" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.3"/>
+      <rect x="8" y="86" width="4" height="58" rx="2" fill="#1d6b45"/>
+      <circle cx="33" cy="115" r="12" fill="#fff"/><text x="33" y="119" font-size="11" font-weight="700" fill="#1d6b45" text-anchor="middle">2</text>
+      <text x="56" y="109" font-size="11.5" font-weight="700" fill="#16202c">Storey count — capped by what the cadastre records</text>
+      <text x="56" y="125" font-size="9.2" fill="#3c4a57">Height sets the storeys, but they are limited to what the recorded dwelling area can fill, plus one commercial ground floor.</text>
+      <text x="56" y="138" font-size="8.6" fill="#1d6b45">GIS · <tspan font-family="Menlo,monospace">altura_max</tspan>  →  capped by Tipo15 · <tspan font-family="Menlo,monospace">442_sup_Residencial</tspan> summed over <tspan font-family="Menlo,monospace">31_pc</tspan></text>
 
-      <!-- side note -->
-      <g>
-        <rect x="520" y="52" width="232" height="150" rx="6" fill="#f4f6f9" stroke="#d8dee6"/>
-        <text x="536" y="74" font-size="10.5" font-weight="700" fill="#16202c">Across Benicalap</text>
-        <text x="536" y="96" font-size="10" fill="#5a6875">399 of 967 buildings were capped,</text>
-        <text x="536" y="111" font-size="10" fill="#5a6875">carrying 55 % of the district's energy.</text>
-        <text x="536" y="133" font-size="10" fill="#5a6875">521 buildings came out bit-for-bit</text>
-        <text x="536" y="148" font-size="10" fill="#5a6875">identical — they were already short,</text>
-        <text x="536" y="163" font-size="10" fill="#5a6875">or had no cadastral record to check</text>
-        <text x="536" y="178" font-size="10" fill="#5a6875">against.</text>
-      </g>
+      <!-- 3 -->
+      <rect x="8" y="150" width="744" height="58" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <rect x="8" y="150" width="4" height="58" rx="2" fill="#6b3f8c"/>
+      <circle cx="33" cy="179" r="12" fill="#eef2f6"/><text x="33" y="183" font-size="11" font-weight="700" fill="#6b3f8c" text-anchor="middle">3</text>
+      <text x="56" y="173" font-size="11.5" font-weight="700" fill="#16202c">Envelope, by typology and construction period</text>
+      <text x="56" y="189" font-size="9.2" fill="#5a6875">The building's TABULA class picks its walls, roof and floor — assembled layer by layer from real materials in the template.</text>
+      <text x="56" y="202" font-size="8.6" fill="#6b3f8c">GIS · <tspan font-family="Menlo,monospace">cluster</tspan> (21 classes)  →  Template · named constructions and materials</text>
+
+      <!-- 4 -->
+      <rect x="8" y="214" width="744" height="58" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <rect x="8" y="214" width="4" height="58" rx="2" fill="#6b3f8c"/>
+      <circle cx="33" cy="243" r="12" fill="#eef2f6"/><text x="33" y="247" font-size="11" font-weight="700" fill="#6b3f8c" text-anchor="middle">4</text>
+      <text x="56" y="237" font-size="11.5" font-weight="700" fill="#16202c">Windows, frames and blinds</text>
+      <text x="56" y="253" font-size="9.2" fill="#5a6875">Discrete openings per façade with balcony doors, aluminium frames and Valencian <tspan font-style="italic">persianas</tspan> that close on strong summer sun.</text>
+      <text x="56" y="266" font-size="8.6" fill="#6b3f8c">Template · glazing, frame and shading-control objects — placed on the geometry from stage 1</text>
+
+      <!-- 5 -->
+      <rect x="8" y="278" width="744" height="58" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <rect x="8" y="278" width="4" height="58" rx="2" fill="#1f4e79"/>
+      <circle cx="33" cy="307" r="12" fill="#eef2f6"/><text x="33" y="311" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">5</text>
+      <text x="56" y="301" font-size="11.5" font-weight="700" fill="#16202c">Neighbours — shading and party walls</text>
+      <text x="56" y="317" font-size="9.2" fill="#5a6875">Every real building within 50 m becomes shading mass; a shared wall becomes adiabatic instead of losing heat to the street.</text>
+      <text x="56" y="330" font-size="8.6" fill="#1f4e79">GIS · neighbouring polygons and their heights, read from the untouched cadastre</text>
+
+      <!-- 6 -->
+      <rect x="8" y="342" width="744" height="58" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <rect x="8" y="342" width="4" height="58" rx="2" fill="#1f4e79"/>
+      <circle cx="33" cy="371" r="12" fill="#eef2f6"/><text x="33" y="375" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">6</text>
+      <text x="56" y="365" font-size="11.5" font-weight="700" fill="#16202c">Occupancy — the people actually registered there</text>
+      <text x="56" y="381" font-size="9.2" fill="#5a6875">The registered resident count replaces the standard 20 m²/person norm, changing both internal gains and hygienic ventilation.</text>
+      <text x="56" y="394" font-size="8.6" fill="#1f4e79">GIS · <tspan font-family="Menlo,monospace">pob_total</tspan>, <tspan font-family="Menlo,monospace">num_vivend</tspan>  →  Template · CTE occupancy schedule kept unchanged</text>
+
+      <!-- 7 -->
+      <rect x="8" y="406" width="744" height="58" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <rect x="8" y="406" width="4" height="58" rx="2" fill="#1f4e79"/>
+      <circle cx="33" cy="435" r="12" fill="#eef2f6"/><text x="33" y="439" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">7</text>
+      <text x="56" y="429" font-size="11.5" font-weight="700" fill="#16202c">Domestic hot water</text>
+      <text x="56" y="445" font-size="9.2" fill="#5a6875">A hot-water loop sized on the Spanish CTE figure of 28 litres per person per day — so it follows the residents, not the floor area.</text>
+      <text x="56" y="458" font-size="8.6" fill="#1f4e79">GIS · <tspan font-family="Menlo,monospace">pob_total</tspan> × 28 l/day  →  Template · boiler and loop objects</text>
+
+      <!-- 8 -->
+      <rect x="8" y="470" width="744" height="58" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <rect x="8" y="470" width="4" height="58" rx="2" fill="#8a5a12"/>
+      <circle cx="33" cy="499" r="12" fill="#eef2f6"/><text x="33" y="503" font-size="11" font-weight="700" fill="#8a5a12" text-anchor="middle">8</text>
+      <text x="56" y="493" font-size="11.5" font-weight="700" fill="#16202c">Heat pumps, sized on design days</text>
+      <text x="56" y="509" font-size="9.2" fill="#5a6875">One packaged terminal heat pump per zone, autosized against the extreme winter and summer days rather than a rule of thumb.</text>
+      <text x="56" y="522" font-size="8.6" fill="#8a5a12">Climate · DDY winter + summer design days  →  Template · heat-pump performance curves</text>
+
+      <!-- 9 -->
+      <rect x="8" y="534" width="744" height="58" rx="6" fill="#e8f0f7" stroke="#1f4e79" stroke-width="1.3"/>
+      <rect x="8" y="534" width="4" height="58" rx="2" fill="#8a5a12"/>
+      <circle cx="33" cy="563" r="12" fill="#fff"/><text x="33" y="567" font-size="11" font-weight="700" fill="#1f4e79" text-anchor="middle">9</text>
+      <text x="56" y="557" font-size="11.5" font-weight="700" fill="#16202c">Annual simulation, then quality control</text>
+      <text x="56" y="573" font-size="9.2" fill="#3c4a57">8,760 hours. The result is then checked back against the model's own geometry and the error file is scanned before the row is written.</text>
+      <text x="56" y="586" font-size="8.6" fill="#8a5a12">Climate · EPW hourly year  →  checked against stages 1–4, then a row on disk</text>
     </g>
   </svg>
   <figcaption>
-    <b>342 dwellings × ~112 m² = 38,158 m²</b> — the cadastre is internally
-    consistent. Before the cap, this single building accounted for 5.6 % of the
-    district's total energy.
+    <b>Stage 2 is the one that changed most recently</b>, and it is the
+    difference between conditioning 2.76 and 3.84 million m² across this
+    district. It is drawn on the next page.
+  </figcaption>
+</figure>
+
+<!-- ═════════════════════ 3 ═════════════════════ -->
+<h2><span class="num">3</span>The four inputs, and the gate each must pass</h2>
+
+<figure>
+  <svg viewBox="0 0 760 366" role="img" aria-label="The four input files: what each contributes, which fields the engine reads, and the gate each must pass before activation">
+    <g font-family="Helvetica,Arial">
+      <!-- card 1 -->
+      <rect x="4" y="6" width="370" height="170" rx="7" fill="#fff" stroke="#1f4e79" stroke-width="1.4"/>
+      <path d="M11,6 h356 a7,7 0 0 1 7,7 v19 H4 V13 a7,7 0 0 1 7,-7 z" fill="#e8f0f7"/>
+      <text x="18" y="25" font-size="9" font-weight="700" fill="#1f4e79" letter-spacing="1.2">GEOMETRY + IDENTITY</text>
+      <text x="18" y="52" font-size="13" font-weight="700" fill="#16202c">Building GIS</text>
+      <text x="18" y="70" font-size="9.2" fill="#5a6875">The cadastre itself: one row per parcel, carrying the shape,</text>
+      <text x="18" y="83" font-size="9.2" fill="#5a6875">the height, the typology class and the people.</text>
+      <text x="18" y="104" font-size="8.6" font-weight="700" fill="#1f4e79">FIELDS THE ENGINE READS</text>
+      <text x="18" y="119" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">refparcela · altura_max · cluster</text>
+      <text x="18" y="132" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">pob_total · num_vivend · nombre · geometry</text>
+      <line x1="18" y1="142" x2="360" y2="142" stroke="#e3e9ef"/>
+      <text x="18" y="156" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
+      <text x="56" y="156" font-size="8.8" fill="#16202c">Required fields present, geometry readable,</text>
+      <text x="56" y="168" font-size="8.8" fill="#16202c">coordinate system recorded.</text>
+
+      <!-- card 2 -->
+      <rect x="386" y="6" width="370" height="170" rx="7" fill="#fff" stroke="#1d6b45" stroke-width="1.4"/>
+      <path d="M393,6 h356 a7,7 0 0 1 7,7 v19 H386 V13 a7,7 0 0 1 7,-7 z" fill="#e7f4ec"/>
+      <text x="400" y="25" font-size="9" font-weight="700" fill="#1d6b45" letter-spacing="1.2">RESIDENTIAL AREA + USE</text>
+      <text x="400" y="52" font-size="13" font-weight="700" fill="#16202c">Tipo15 companion</text>
+      <text x="400" y="70" font-size="9.2" fill="#5a6875">The cadastre's floor-by-floor record: how much dwelling</text>
+      <text x="400" y="83" font-size="9.2" fill="#5a6875">area exists, on which floor, for what use.</text>
+      <text x="400" y="104" font-size="8.6" font-weight="700" fill="#1d6b45">FIELDS THE ENGINE READS</text>
+      <text x="400" y="119" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">31_pc  (joins to refparcela)</text>
+      <text x="400" y="132" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">252_planta · 428_uso · 442_sup_Residencial</text>
+      <line x1="400" y1="142" x2="742" y2="142" stroke="#e3e9ef"/>
+      <text x="400" y="156" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
+      <text x="438" y="156" font-size="8.8" fill="#16202c">All four columns parseable; the join to parcel</text>
+      <text x="438" y="168" font-size="8.8" fill="#16202c">references is measured and reported, not assumed.</text>
+
+      <!-- card 3 -->
+      <rect x="4" y="190" width="370" height="170" rx="7" fill="#fff" stroke="#8a5a12" stroke-width="1.4"/>
+      <path d="M11,190 h356 a7,7 0 0 1 7,7 v19 H4 v-19 a7,7 0 0 1 7,-7 z" fill="#fdf3e3"/>
+      <text x="18" y="209" font-size="9" font-weight="700" fill="#8a5a12" letter-spacing="1.2">ANNUAL + SIZING WEATHER</text>
+      <text x="18" y="236" font-size="13" font-weight="700" fill="#16202c">Climate pair</text>
+      <text x="18" y="254" font-size="9.2" fill="#5a6875">Two files that must agree with each other: the year that is</text>
+      <text x="18" y="267" font-size="9.2" fill="#5a6875">simulated, and the extremes the equipment is sized on.</text>
+      <text x="18" y="288" font-size="8.6" font-weight="700" fill="#8a5a12">WHAT EACH ONE DRIVES</text>
+      <text x="18" y="303" font-size="8.8" fill="#16202c"><tspan font-family="Menlo,monospace">.epw</tspan> — every one of the 8,760 simulated hours</text>
+      <text x="18" y="316" font-size="8.8" fill="#16202c"><tspan font-family="Menlo,monospace">.ddy</tspan> — heat-pump capacity in stage 8</text>
+      <line x1="18" y1="326" x2="360" y2="326" stroke="#e3e9ef"/>
+      <text x="18" y="340" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
+      <text x="56" y="340" font-size="8.8" fill="#16202c">A complete 8,760-hour year; a winter and a summer</text>
+      <text x="56" y="352" font-size="8.8" fill="#16202c">design day. The two are cross-checked as one pair.</text>
+
+      <!-- card 4 -->
+      <rect x="386" y="190" width="370" height="170" rx="7" fill="#fff" stroke="#6b3f8c" stroke-width="1.4"/>
+      <path d="M393,190 h356 a7,7 0 0 1 7,7 v19 H386 v-19 a7,7 0 0 1 7,-7 z" fill="#f0eaf6"/>
+      <text x="400" y="209" font-size="9" font-weight="700" fill="#6b3f8c" letter-spacing="1.2">OPENSTUDIO SOURCE</text>
+      <text x="400" y="236" font-size="13" font-weight="700" fill="#16202c">PlantillaOS template</text>
+      <text x="400" y="254" font-size="9.2" fill="#5a6875">The library every model is assembled from. It carries no</text>
+      <text x="400" y="267" font-size="9.2" fill="#5a6875">geometry — the geometry is built per building.</text>
+      <text x="400" y="288" font-size="8.6" font-weight="700" fill="#6b3f8c">WHAT IT SUPPLIES</text>
+      <text x="400" y="303" font-size="8.8" fill="#16202c">constructions and materials · schedules · space types</text>
+      <text x="400" y="316" font-size="8.8" fill="#16202c">equipment definitions · thermostat set points</text>
+      <line x1="400" y1="326" x2="742" y2="326" stroke="#e3e9ef"/>
+      <text x="400" y="340" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
+      <text x="438" y="340" font-size="8.8" fill="#16202c">Every construction, schedule and space type the engine</text>
+      <text x="438" y="352" font-size="8.8" fill="#16202c">will ask for must already exist — and no geometry.</text>
+    </g>
+  </svg>
+  <figcaption>
+    <b>Nothing is hard-coded into the program.</b> A newer cadastre, a different
+    weather year or a modified template can be swapped in from this screen
+    without touching any code — provided it passes its gate.
+  </figcaption>
+</figure>
+
+<div class="note">
+  <b>Why every file is hashed</b>
+  Each file is copied into managed storage and its checksum recorded. A run
+  resolves the active set once and stamps those checksums into every result row
+  — so any row can later be traced to the exact bytes that produced it.
+</div>
+
+<!-- ═════════════════════ 4 ═════════════════════ -->
+<h2><span class="num">4</span>The two things that move the number most</h2>
+
+<h3>Stage 2 — a parcel is not always one building</h3>
+
+<figure>
+  <svg viewBox="0 0 760 250" role="img" aria-label="Before and after the storey cap on parcel 3748901YJ2734H: from 16 storeys and 276,366 square metres conditioned to 3 storeys and 51,819">
+    <g font-family="Helvetica,Arial">
+      <text x="8" y="13" font-size="9.5" font-weight="700" fill="#5a6875" letter-spacing="1.1">PARCEL 3748901YJ2734H · BENICALAP · BlocPluriP06 · altura_max = 15</text>
+
+      <!-- before -->
+      <text x="66" y="36" font-size="11" font-weight="700" fill="#a32c2c">Before — extruded to full height</text>
+      <rect x="66" y="46" width="148" height="150" fill="#fbecec" stroke="#a32c2c" stroke-width="1.4"/>
+      <g stroke="#e0b4b4" stroke-width="1">
+        <line x1="66" y1="56" x2="214" y2="56"/><line x1="66" y1="66" x2="214" y2="66"/>
+        <line x1="66" y1="76" x2="214" y2="76"/><line x1="66" y1="86" x2="214" y2="86"/>
+        <line x1="66" y1="96" x2="214" y2="96"/><line x1="66" y1="106" x2="214" y2="106"/>
+        <line x1="66" y1="116" x2="214" y2="116"/><line x1="66" y1="126" x2="214" y2="126"/>
+        <line x1="66" y1="136" x2="214" y2="136"/><line x1="66" y1="146" x2="214" y2="146"/>
+        <line x1="66" y1="156" x2="214" y2="156"/><line x1="66" y1="166" x2="214" y2="166"/>
+        <line x1="66" y1="176" x2="214" y2="176"/><line x1="66" y1="186" x2="214" y2="186"/>
+      </g>
+      <text x="140" y="126" font-size="12.5" font-weight="700" fill="#a32c2c" text-anchor="middle">16 storeys</text>
+      <text x="140" y="214" font-size="10" fill="#16202c" text-anchor="middle">17,273 m² footprint × 16</text>
+      <text x="140" y="230" font-size="10.5" font-weight="700" fill="#a32c2c" text-anchor="middle">276,366 m² conditioned</text>
+      <text x="140" y="244" font-size="9" fill="#5a6875" text-anchor="middle">5.6 % of the whole district's energy</text>
+
+      <!-- arrow -->
+      <line x1="242" y1="122" x2="300" y2="122" stroke="#93a3b3" stroke-width="2" marker-end="url(#ar)"/>
+      <text x="271" y="112" font-size="9" fill="#5a6875" text-anchor="middle">cadastre</text>
+      <text x="271" y="138" font-size="9" fill="#5a6875" text-anchor="middle">disagrees</text>
+
+      <!-- after -->
+      <text x="330" y="36" font-size="11" font-weight="700" fill="#1d6b45">After — capped by the recorded dwellings</text>
+      <rect x="330" y="150" width="148" height="32" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.4"/>
+      <line x1="330" y1="166" x2="478" y2="166" stroke="#a9d4bd"/>
+      <rect x="330" y="182" width="148" height="14" fill="#f0eaf6" stroke="#6b3f8c"/>
+      <text x="404" y="142" font-size="11.5" font-weight="700" fill="#1d6b45" text-anchor="middle">2 residential storeys</text>
+      <text x="404" y="193" font-size="8.2" fill="#6b3f8c" text-anchor="middle">+ commercial ground floor</text>
+      <text x="404" y="214" font-size="10" fill="#16202c" text-anchor="middle">342 dwellings · 38,158 m² recorded</text>
+      <text x="404" y="230" font-size="10.5" font-weight="700" fill="#1d6b45" text-anchor="middle">51,819 m² conditioned</text>
+      <text x="404" y="244" font-size="9" fill="#5a6875" text-anchor="middle">1.6 % of the district's energy</text>
+
+      <!-- side panel -->
+      <rect x="512" y="46" width="240" height="150" rx="6" fill="#f4f6f9" stroke="#d8dee6"/>
+      <text x="528" y="68" font-size="10" font-weight="700" fill="#16202c">Across Benicalap</text>
+      <text x="528" y="90" font-size="9.4" fill="#5a6875">399 of 967 buildings were capped.</text>
+      <text x="528" y="106" font-size="9.4" fill="#5a6875">They carry 55 % of the district's</text>
+      <text x="528" y="120" font-size="9.4" fill="#5a6875">energy after the correction.</text>
+      <text x="528" y="144" font-size="9.4" fill="#5a6875">521 buildings came out identical</text>
+      <text x="528" y="158" font-size="9.4" fill="#5a6875">to the bit — they were already</text>
+      <text x="528" y="172" font-size="9.4" fill="#5a6875">short enough.</text>
+      <text x="528" y="190" font-size="9.4" font-weight="700" fill="#a32c2c">District total: 138.15 → 109.76 GWh</text>
+    </g>
+  </svg>
+  <figcaption>
+    <b>The footprint is the whole city block; the height is that of its tallest
+    corner.</b> Multiplying them invents floor area that does not exist, so the
+    storeys are limited to what the cadastre can actually account for.
   </figcaption>
 </figure>
 
 <div class="warn">
   <b>What the cap does not fix</b>
-  A capped building becomes shorter but keeps the full block footprint, so its
-  shape is squat where the real building is a tower. Its surface-to-volume ratio
-  is therefore wrong. Since heating and cooling are only 8.6 % of the total and
-  lighting, appliances and hot water scale with area, the area correction
-  dominates and the shape error is second-order — but it is real, and it is
-  listed in §8.
+  A capped building gets the right <em>area</em> but keeps the full block
+  footprint, so it is squat where the real building is a tower and its
+  surface-to-volume ratio is wrong. Because heating and cooling are only 8.6 %
+  of the total, the area correction dominates and the shape error is
+  second-order — but it is real, and it stays on the list in §7.
 </div>
 
-<h3>Choosing a scope</h3>
-
-<table>
-  <thead><tr><th style="width:22%">Scope</th><th>Use it for</th><th class="n" style="width:22%">Benicalap example</th></tr></thead>
-  <tbody>
-    <tr><td><strong>Selected buildings</strong></td><td>Testing, or reproducing one specific cadastral reference exactly.</td><td class="n">seconds to minutes</td></tr>
-    <tr><td><strong>One district</strong></td><td>The normal working unit. Every eligible building in a named district.</td><td class="n">967 buildings · 5.4 h</td></tr>
-    <tr><td><strong>All Valencia</strong></td><td>Production runs. Requires an extra explicit acknowledgement.</td><td class="n">25,094 of 26,452</td></tr>
-  </tbody>
-</table>
-
-<h3>Reading the preflight</h3>
-
-<p>
-  <em>Run preflight</em> asks the engine itself — not an estimate — how many
-  buildings it can actually process, and why it is dropping the rest. Exclusions
-  are always given a reason:
-</p>
-
-<table>
-  <thead><tr><th style="width:38%">Reason</th><th style="width:12%" class="n">Benicalap</th><th>Plain meaning</th></tr></thead>
-  <tbody>
-    <tr><td><code>simplification_area_change…</code></td><td class="n">39</td><td>The outline is so intricate that simplifying it would change the floor area beyond tolerance. Excluded rather than distorted.</td></tr>
-    <tr><td><code>footprint_outside_range</code></td><td class="n">3</td><td>Smaller than 50 m² or larger than 20,000 m² — outside the range the single-zone-per-storey scheme is trusted in.</td></tr>
-    <tr><td><code>duplicate_refparcela</code></td><td class="n">1</td><td>The same reference appears twice in the source data.</td></tr>
-    <tr><td><code>interior_rings</code></td><td class="n">1</td><td>The polygon has a courtyard hole, which the extrusion cannot represent.</td></tr>
-  </tbody>
-</table>
-
-<div class="note">
-  <b>Count the loss by area, not by building</b>
-  In this district 45 of 1,012 buildings produced no result — 44 excluded up
-  front by the four reasons above and 1 that failed during simulation. That is
-  4.4 % by count, but only <strong>1.9 % by floor area</strong>. Exclusions concentrate in
-  unusual, often large-footprint buildings, so a headcount overstates the
-  coverage gap in one direction and understates its importance in the other.
-  Outputs always shows both.
-</div>
-
-<h3>Stopping and resuming</h3>
-
-<p>
-  Every building's row is written and flushed to disk the moment it finishes, so
-  the ledger is never behind the process. <em>Stop safely</em> lets the running
-  buildings finish and then halts. <em>Resume same run</em> skips everything
-  already completed and continues.
-</p>
-
-<p>
-  Resume refuses to continue if the inputs, the policy or the engine sources
-  have changed since the run started. That is deliberate: half a run computed
-  one way and half another is not a result, and the tool will not produce one.
-</p>
-
-<!-- ══════════════════════════ 5 ══════════════════════════ -->
-<h2><span class="num">5</span>Outputs — how to read every number</h2>
-
-<p>Select a finished run at the top of the screen. Six headline figures appear:</p>
-
-<div class="kpi">
-  <div><span>Total site energy</span><strong>109.76</strong><small>GWh/year · modelled subset</small></div>
-  <div><span>Geometric EUI</span><strong>46.9</strong><small>kWh/m² · modelled residential floor</small></div>
-  <div><span>Cadastral EUI</span><strong class="hi">50.9</strong><small>kWh/m² · Tipo15 dwelling area</small></div>
-  <div><span>Carbon</span><strong>34,723</strong><small>tCO₂/year · total site</small></div>
-  <div><span>Coverage</span><strong>95.6 %</strong><small>967 OK · 44 excluded</small></div>
-  <div><span>QA status</span><strong style="color:var(--green)">PASS</strong><small>0 QA failed · 0 unexplained severe</small></div>
-</div>
-
-<h3>The single most misread number: which floor area?</h3>
-
-<p>
-  Energy per square metre depends entirely on which square metres you divide by,
-  and this building stock offers three defensible answers. The Workbench shows
-  all three rather than picking one silently.
-</p>
+<h3>Which floor area is the number divided by?</h3>
 
 <figure>
-  <svg viewBox="0 0 760 268" role="img" aria-label="The three floor-area denominators">
+  <svg viewBox="0 0 760 208" role="img" aria-label="Three different floor-area denominators for the same district energy, giving three different intensities">
     <g font-family="Helvetica,Arial">
-      <!-- building -->
-      <text x="12" y="18" font-size="10" font-weight="700" fill="#5a6875" letter-spacing="1.2">ONE BUILDING, THREE WAYS TO COUNT ITS FLOOR</text>
+      <text x="8" y="14" font-size="9.5" fill="#5a6875">The same <tspan font-weight="700" fill="#16202c">109.76 GWh</tspan> divided three different ways. Every intensity in this product states which one it used.</text>
 
-      <g>
-        <!-- floors -->
-        <rect x="20" y="36" width="170" height="34" fill="#e8f0f7" stroke="#1f4e79"/>
-        <text x="105" y="58" font-size="10.5" fill="#16202c" text-anchor="middle">residential storey</text>
-        <rect x="20" y="70" width="170" height="34" fill="#e8f0f7" stroke="#1f4e79"/>
-        <text x="105" y="92" font-size="10.5" fill="#16202c" text-anchor="middle">residential storey</text>
-        <rect x="20" y="104" width="170" height="34" fill="#e8f0f7" stroke="#1f4e79"/>
-        <text x="105" y="126" font-size="10.5" fill="#16202c" text-anchor="middle">residential storey</text>
-        <rect x="20" y="138" width="170" height="34" fill="#e8f0f7" stroke="#1f4e79"/>
-        <text x="105" y="160" font-size="10.5" fill="#16202c" text-anchor="middle">residential storey</text>
-        <rect x="20" y="172" width="170" height="34" fill="#e8e2f0" stroke="#6b3f8c"/>
-        <text x="105" y="188" font-size="10.5" font-weight="700" fill="#6b3f8c" text-anchor="middle">commercial ground</text>
-        <text x="105" y="201" font-size="9" fill="#6b3f8c" text-anchor="middle">heated and lit, but not a dwelling</text>
-        <line x1="14" y1="208" x2="196" y2="208" stroke="#93a3b3" stroke-width="2"/>
-      </g>
+      <!-- 1 -->
+      <rect x="8" y="28" width="240" height="140" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <text x="24" y="48" font-size="10" font-weight="700" fill="#5a6875" letter-spacing="1">GEOMETRIC</text>
+      <rect x="24" y="58" width="120" height="46" fill="#eef2f6" stroke="#93a3b3"/>
+      <line x1="24" y1="73" x2="144" y2="73" stroke="#c6cfd8"/><line x1="24" y1="88" x2="144" y2="88" stroke="#c6cfd8"/>
+      <text x="24" y="122" font-size="9.2" fill="#5a6875">footprint × residential storeys</text>
+      <text x="24" y="139" font-size="9.2" fill="#5a6875">2,340,150 m²</text>
+      <text x="24" y="160" font-size="15" font-weight="700" fill="#16202c">46.9 <tspan font-size="9.5" font-weight="400" fill="#5a6875">kWh/m²</tspan></text>
 
-      <!-- brackets -->
-      <g stroke-width="1.6" fill="none">
-        <path d="M212,38 h10 v134 h-10" stroke="#1f4e79"/>
-        <path d="M368,38 h10 v134 h-10" stroke="#1d6b45"/>
-        <path d="M556,38 h10 v168 h-10" stroke="#8a5a12"/>
-      </g>
+      <!-- 2 -->
+      <rect x="260" y="28" width="240" height="140" rx="6" fill="#e7f4ec" stroke="#1d6b45" stroke-width="1.5"/>
+      <text x="276" y="48" font-size="10" font-weight="700" fill="#1d6b45" letter-spacing="1">CADASTRAL — HEADLINE</text>
+      <rect x="276" y="58" width="110" height="46" fill="#fff" stroke="#1d6b45"/>
+      <line x1="276" y1="73" x2="386" y2="73" stroke="#a9d4bd"/><line x1="276" y1="88" x2="386" y2="88" stroke="#a9d4bd"/>
+      <text x="276" y="122" font-size="9.2" fill="#3c4a57">the dwelling area the cadastre</text>
+      <text x="276" y="135" font-size="9.2" fill="#3c4a57">records — 2,157,843 m²</text>
+      <text x="276" y="160" font-size="15" font-weight="700" fill="#1d6b45">50.9 <tspan font-size="9.5" font-weight="400" fill="#5a6875">kWh/m²</tspan></text>
 
-      <!-- labels -->
-      <g>
-        <text x="232" y="52" font-size="11" font-weight="700" fill="#1f4e79">Geometric</text>
-        <text x="232" y="68" font-size="9.5" fill="#5a6875">the residential floor</text>
-        <text x="232" y="81" font-size="9.5" fill="#5a6875">the model built</text>
-        <text x="232" y="106" font-size="17" font-weight="700" fill="#1f4e79">46.9</text>
-        <text x="232" y="120" font-size="9" fill="#5a6875">kWh/m²</text>
+      <!-- 3 -->
+      <rect x="512" y="28" width="240" height="140" rx="6" fill="#fff" stroke="#d8dee6"/>
+      <text x="528" y="48" font-size="10" font-weight="700" fill="#5a6875" letter-spacing="1">CONDITIONED</text>
+      <rect x="528" y="58" width="120" height="46" fill="#eef2f6" stroke="#93a3b3"/>
+      <line x1="528" y1="73" x2="648" y2="73" stroke="#c6cfd8"/><line x1="528" y1="88" x2="648" y2="88" stroke="#c6cfd8"/>
+      <rect x="528" y="104" width="120" height="13" fill="#f0eaf6" stroke="#6b3f8c"/>
+      <text x="528" y="133" font-size="9.2" fill="#5a6875">everything the model heats,</text>
+      <text x="528" y="146" font-size="9.2" fill="#5a6875">shops included — 2,757,102 m²</text>
+      <text x="528" y="164" font-size="15" font-weight="700" fill="#16202c">42.2 <tspan font-size="9.5" font-weight="400" fill="#5a6875">kWh/m²</tspan></text>
 
-        <text x="388" y="52" font-size="11" font-weight="700" fill="#1d6b45">Cadastral</text>
-        <text x="388" y="68" font-size="9.5" fill="#5a6875">the dwelling area the</text>
-        <text x="388" y="81" font-size="9.5" fill="#5a6875">cadastre records (Tipo15)</text>
-        <text x="388" y="106" font-size="17" font-weight="700" fill="#1d6b45">50.9</text>
-        <text x="388" y="120" font-size="9" fill="#5a6875">kWh/m² — used for “Δ vs Rai”</text>
-
-        <text x="576" y="52" font-size="11" font-weight="700" fill="#8a5a12">Conditioned</text>
-        <text x="576" y="68" font-size="9.5" fill="#5a6875">every zone the engine</text>
-        <text x="576" y="81" font-size="9.5" fill="#5a6875">actually simulated</text>
-        <text x="576" y="106" font-size="17" font-weight="700" fill="#8a5a12">42.2</text>
-        <text x="576" y="120" font-size="9" fill="#5a6875">kWh/m² — the physical intensity</text>
-      </g>
-
-      <!-- explanation strip -->
-      <g>
-        <rect x="212" y="140" width="540" height="66" rx="6" fill="#fdf3e3" stroke="#a8620a"/>
-        <text x="228" y="160" font-size="10.5" font-weight="700" fill="#a8620a">Why the first two divide by residential area only</text>
-        <text x="228" y="177" font-size="9.8" fill="#3c4a57">The commercial ground floor is heated and lit, so its energy is in the numerator — but the reference study</text>
-        <text x="228" y="191" font-size="9.8" fill="#3c4a57">keeps it out of the denominator. We follow that convention so the comparison stays like-for-like.</text>
-      </g>
-
-      <g>
-        <text x="12" y="232" font-size="9.8" fill="#5a6875">Same building, same energy, three legitimate intensities. Always say which one you are quoting.</text>
-        <text x="12" y="250" font-size="9.8" fill="#5a6875">Benicalap totals: <tspan font-weight="700" fill="#16202c">2,340,150 m²</tspan> geometric · <tspan font-weight="700" fill="#16202c">2,157,843 m²</tspan> cadastral · <tspan font-weight="700" fill="#16202c">2,757,102 m²</tspan> conditioned.</text>
-      </g>
+      <text x="8" y="192" font-size="9.4" fill="#a8620a">▲ Same energy, three answers, a 20 % spread. A comparison that does not state the basis is not a comparison.</text>
     </g>
   </svg>
   <figcaption>
-    <b>Correction on record.</b> Until 8 August 2026 the published note described
-    the residential basis as “the floor the model actually conditions”. That was
-    false — the conditioned floor is a different and larger number — and the
-    wording has been withdrawn.
+    <b>The headline uses the cadastral basis</b> because that is the basis the
+    published reference study uses — which is what makes the “Δ vs Rai” column
+    on the Outputs screen a like-for-like comparison.
   </figcaption>
 </figure>
 
-<h3>The cluster table and “Δ vs Rai”</h3>
+<!-- ═════════════════════ 5 ═════════════════════ -->
+<h2><span class="num">5</span>Reading the Outputs screen</h2>
 
-<p>
-  Buildings are grouped into the 21 TABULA typology clusters (type × construction
-  period). For each, the table shows both denominators next to the published
-  reference intensity and the difference. Benicalap contains 18 of the 21:
+<p class="lead">
+  These are the six figures at the top of the screen, filled in with the
+  Benicalap run. The small print under each one is the basis — it is there
+  because it changes what the number means.
 </p>
 
-<table>
-  <thead><tr><th>Cluster</th><th class="n">Buildings</th><th class="n">Cadastral EUI</th><th class="n">Reference</th><th class="n">Δ</th></tr></thead>
-  <tbody>
-    <tr><td><code>BlocPluriP04</code></td><td class="n">460</td><td class="n">54.4</td><td class="n">46.6</td><td class="n">+16.9 %</td></tr>
-    <tr><td><code>BlocPluriP05</code></td><td class="n">209</td><td class="n">46.7</td><td class="n">46.6</td><td class="n">+0.2 %</td></tr>
-    <tr><td><code>BlocPluriP03</code></td><td class="n">83</td><td class="n">60.6</td><td class="n">51.7</td><td class="n">+17.2 %</td></tr>
-    <tr><td><code>VivUniP02</code></td><td class="n">55</td><td class="n">73.6</td><td class="n">55.8</td><td class="n">+31.9 %</td></tr>
-    <tr><td><code>BlocPluriP06</code></td><td class="n">33</td><td class="n">47.0</td><td class="n">45.0</td><td class="n">+4.4 %</td></tr>
-    <tr><td><code>EdiPluriP02</code></td><td class="n">24</td><td class="n">65.5</td><td class="n">52.0</td><td class="n">+26.0 %</td></tr>
-  </tbody>
-</table>
-
-<div class="warn">
-  <b>What Δ vs Rai is, and what it is not</b>
-  It is the distance between our per-building simulation and the constants
-  published in the reference doctoral thesis, which were produced by simulating
-  three representative geometries and assigning the result to every building in
-  a cluster. It is agreement <em>with another model</em>. It is not agreement
-  with measured consumption, and it cannot be used as evidence of accuracy.
+<div class="kpi">
+  <div><span>Total site energy</span><strong>109.76</strong><small>GWh / year · <b>modelled subset only</b>, never extrapolated to the buildings that were excluded</small></div>
+  <div><span>Geometric EUI</span><strong>46.9</strong><small>kWh/m² · divided by footprint × residential storeys</small></div>
+  <div><span>Cadastral EUI</span><strong class="hi">50.9</strong><small>kWh/m² · divided by recorded dwelling area — the comparable one</small></div>
+  <div><span>Carbon</span><strong>34,723</strong><small>tCO₂ / year · rests on an assumed fuel mix (see §7)</small></div>
+  <div><span>Coverage</span><strong>95.6 %</strong><small>967 simulated · 44 excluded · 1 failed — 98.1 % by footprint area</small></div>
+  <div><span>QA status</span><strong style="color:#1d6b45">PASS</strong><small>0 quality-check failures · 0 unexplained engine errors</small></div>
 </div>
-
-<h3>The building ledger</h3>
-
-<p>
-  Below the totals, every building is listed and searchable. Click a row to open
-  its evidence drawer. Beyond the obvious columns, these are the fields that
-  explain <em>why</em> a building came out the way it did:
-</p>
-
-<table>
-  <thead><tr><th style="width:34%">Field</th><th>What it tells you</th></tr></thead>
-  <tbody>
-    <tr><td><code>storey_cap_applied</code></td><td>Whether cadastral evidence actually reduced this building's geometry.</td></tr>
-    <tr><td><code>conditioned_to_cadastral_ratio</code></td><td>How much more floor the model conditions than the cadastre records. Near 1.0 is healthy; above 2 the result deserves scrutiny.</td></tr>
-    <tr><td><code>occupancy_plausibility</code></td><td>Flags implausible population density — for example 5.7 m² per person — without blocking the run.</td></tr>
-    <tr><td><code>large_footprint_single_zone</code></td><td>Marks buildings deep enough that one well-mixed zone per storey is a weak assumption.</td></tr>
-    <tr><td><code>res_area_source</code></td><td>Whether the dwelling area came from Tipo15 or fell back to geometry.</td></tr>
-    <tr><td><code>severes_unexplained</code></td><td>EnergyPlus severe messages that are <em>not</em> the one documented benign case. Anything here invalidates the row.</td></tr>
-    <tr><td><code>qa_all_passed</code></td><td>The post-simulation cross-check of area, glazing, zone count and unmet hours.</td></tr>
-  </tbody>
-</table>
-
-<h3>The files kept for every building</h3>
-
-<table>
-  <thead><tr><th style="width:26%">File</th><th>Open it when you want to…</th></tr></thead>
-  <tbody>
-    <tr><td><code>eplustbl.htm</code></td><td>see the full EnergyPlus report — end uses, surfaces, loads, sizing — in the same format as any other EnergyPlus study.</td></tr>
-    <tr><td><code>deep_layers.json</code></td><td>see what each stage of §4 did to this specific building, and the QA checks with the model value, the EnergyPlus value and the tolerance side by side.</td></tr>
-    <tr><td><code>model_python.osm</code></td><td>open the actual model in OpenStudio and inspect or modify it yourself.</td></tr>
-    <tr><td><code>eplusout.err</code></td><td>read every warning EnergyPlus raised for this building.</td></tr>
-    <tr><td><code>verified_profile.json</code></td><td>see the locked parameters and source checksums this particular building was simulated under.</td></tr>
-  </tbody>
-</table>
-
-<h3>Taking results out</h3>
-
-<ul>
-  <li><strong>Building CSV</strong> — the whole ledger as a table, for a spreadsheet or a statistics package.</li>
-  <li><strong>Signed building package</strong> — one building: its model, preserved outputs and ledger row.</li>
-  <li><strong>Full signed ZIP</strong> — the entire run. It first measures the real file count and size and asks you to confirm, then writes a ZIP64 archive with an Ed25519-signed manifest so a recipient can prove nothing was altered in transit.</li>
-</ul>
-
-<!-- ══════════════════════════ 6 / 7 ══════════════════════════ -->
-<h2><span class="num">6</span>What the product can do</h2>
-
-<ul>
-  <li><span class="pill can">CAN</span> Simulate a full year for <strong>each individual building</strong> in the Valencia cadastre — not a typological average scaled up.</li>
-  <li><span class="pill can">CAN</span> Use each building's <strong>real registered population</strong>, real footprint, real neighbours and real recorded dwelling area.</li>
-  <li><span class="pill can">CAN</span> Run one building, one district or the whole city through the same engine, with no change in method.</li>
-  <li><span class="pill can">CAN</span> Survive interruption: a stopped run resumes exactly where it left off, and refuses to resume under changed inputs.</li>
-  <li><span class="pill can">CAN</span> Show the same result on three floor-area bases so a comparison is never accidentally unlike-for-unlike.</li>
-  <li><span class="pill can">CAN</span> Preserve the complete EnergyPlus evidence for every building and export it signed.</li>
-  <li><span class="pill can">CAN</span> Accept newer input data — a newer cadastre, a different climate file, a modified template — without any code change.</li>
-  <li><span class="pill can">CAN</span> Prove its own integrity: it reconstructs an independent published building and scores itself against it (§9).</li>
-</ul>
-
-<h2><span class="num">7</span>What it cannot do</h2>
-
-<ul>
-  <li><span class="pill cant">CANNOT</span> <strong>Tell you what a building actually consumes.</strong> Nothing here has been calibrated against a meter. It reports what the standards and the physics imply, not what happened.</li>
-  <li><span class="pill cant">CANNOT</span> <strong>Give an uncertainty band.</strong> The sampling study exists but was run on an earlier configuration, so the current figures carry no confidence interval.</li>
-  <li><span class="pill cant">CANNOT</span> <strong>Evaluate retrofit scenarios from these three tabs.</strong> Scenario machinery exists in the codebase (§10) but is not part of this surface.</li>
-  <li><span class="pill cant">CANNOT</span> Split heating and cooling between the dwellings and the commercial ground floor. EnergyPlus meters them by end use, not by space type, so <code>residential_site_kwh</code> is an upper bound rather than a clean subtotal.</li>
-  <li><span class="pill cant">CANNOT</span> Represent a deep floor plate properly. Above the threshold each storey is one well-mixed zone with no core/perimeter distinction.</li>
-  <li><span class="pill cant">CANNOT</span> Model more than one weather year, or a warmed future climate — a single measured-year file is used throughout.</li>
-  <li><span class="pill cant">CANNOT</span> Justify its carbon figures. The fuel mix of the real stock is unconfirmed, so the tCO₂ number rests on an assumption nobody has verified.</li>
-  <li><span class="pill cant">CANNOT</span> Reconstruct the true shape of a capped block — it gets the area right and the massing approximately.</li>
-</ul>
-
-<!-- ══════════════════════════ 8 ══════════════════════════ -->
-<h2><span class="num">8</span>Known limitations, measured</h2>
-
-<p>
-  Every limitation below has been quantified rather than described. The point of
-  this table is that you can decide for yourself whether a given limitation
-  matters for your question.
-</p>
 
 <h3>Where the energy actually comes from</h3>
 
 <figure>
-  <svg viewBox="0 0 760 148" role="img" aria-label="Composition of total site energy">
+  <svg viewBox="0 0 760 152" role="img" aria-label="Composition of total site energy: 90.1 percent from standard densities, 9.9 percent from simulated physics">
     <g font-family="Helvetica,Arial">
-      <!-- bar -->
-      <g>
-        <rect x="8" y="30" width="286.5" height="42" fill="#4a7ba7"/>
-        <rect x="294.5" y="30" width="257.6" height="42" fill="#6f9bc2"/>
-        <rect x="552.1" y="30" width="140.6" height="42" fill="#9dbdd8"/>
-        <rect x="692.7" y="30" width="33.4" height="42" fill="#a8620a"/>
-        <rect x="726.1" y="30" width="31.9" height="42" fill="#c98b3d"/>
-        <rect x="8" y="30" width="750" height="42" fill="none" stroke="#16202c" stroke-width="1"/>
-      </g>
+      <rect x="8" y="28" width="283.2" height="42" fill="#4a7ba7"/>
+      <rect x="291.2" y="28" width="254.2" height="42" fill="#6f9bc2"/>
+      <rect x="545.4" y="28" width="139.2" height="42" fill="#9dbdd8"/>
+      <rect x="684.6" y="28" width="33.0" height="42" fill="#a8620a"/>
+      <rect x="717.6" y="28" width="31.5" height="42" fill="#c98b3d"/>
+      <rect x="749.1" y="28" width="9.5" height="42" fill="#e0b877"/>
+      <rect x="8" y="28" width="750.6" height="42" fill="none" stroke="#16202c"/>
+
       <g font-size="11" font-weight="700" fill="#fff" text-anchor="middle">
-        <text x="151" y="56">37.7 %</text>
-        <text x="423" y="56">33.9 %</text>
-        <text x="622" y="56">18.5 %</text>
+        <text x="150" y="54">37.7 %</text><text x="418" y="54">33.9 %</text><text x="615" y="54">18.5 %</text>
       </g>
-      <g font-size="10" fill="#5a6875" text-anchor="middle">
-        <text x="151" y="88">lighting</text>
-        <text x="423" y="88">appliances</text>
-        <text x="622" y="88">hot water</text>
-        <text x="709" y="88">heat</text>
-        <text x="742" y="88">cool</text>
-      </g>
-      <g font-size="9.5" fill="#16202c" text-anchor="middle">
-        <text x="709" y="100">4.4 %</text>
-        <text x="742" y="100">4.2 %</text>
+      <g font-size="9.5" fill="#5a6875" text-anchor="middle">
+        <text x="150" y="86">lighting</text><text x="418" y="86">appliances</text><text x="615" y="86">hot water</text>
       </g>
 
-      <!-- brackets -->
-      <g>
-        <path d="M8,110 v8 h684.7 v-8" fill="none" stroke="#4a7ba7" stroke-width="1.6"/>
-        <text x="350" y="134" font-size="11" font-weight="700" fill="#4a7ba7" text-anchor="middle">90.1 % — fixed standard densities, not simulated</text>
-        <path d="M692.7,110 v8 h65.3 v-8" fill="none" stroke="#a8620a" stroke-width="1.6"/>
-        <text x="725" y="134" font-size="10" font-weight="700" fill="#a8620a" text-anchor="middle">9.9 %</text>
+      <path d="M8,86 v8 h676.6 v-8" fill="none" stroke="#4a7ba7" stroke-width="1.6"/>
+      <text x="346" y="110" font-size="11" font-weight="700" fill="#4a7ba7" text-anchor="middle">90.1 % — fixed standard densities, not simulated</text>
+      <path d="M684.6,86 v8 h74 v-8" fill="none" stroke="#a8620a" stroke-width="1.6"/>
+      <text x="721" y="110" font-size="10" font-weight="700" fill="#a8620a" text-anchor="middle">9.9 % physics</text>
+
+      <!-- the three narrow segments, spelled out under their own bracket -->
+      <g font-size="9" fill="#16202c" text-anchor="end">
+        <text x="758" y="128">heat 4.4 %  ·  cool 4.2 %</text>
+        <text x="758" y="141">fans + pumps 1.3 %</text>
       </g>
     </g>
   </svg>
   <figcaption>
-    <b>This is the most important single fact about the result.</b> Lighting,
-    appliances and hot water follow Spanish standard densities and scale with
-    floor area and occupants. Only heating, cooling, fans and pumps are the
-    product of building physics. Work on insulation, shading or thermal bridges
-    therefore moves under a tenth of the headline number — which does not make
-    it worthless, but does tell you what the headline is sensitive to.
+    <b>This is the single most important fact about the result.</b> Only heating,
+    cooling, fans and pumps come out of building physics. Work on insulation,
+    shading or thermal bridges therefore moves under a tenth of the headline —
+    which does not make it worthless, but does tell you what the headline is
+    sensitive to.
   </figcaption>
 </figure>
 
 <table>
-  <thead><tr><th style="width:36%">Limitation</th><th style="width:20%" class="n">Measured size</th><th>Why it is still open</th></tr></thead>
+  <thead><tr><th style="width:24%">Below the KPIs</th><th>What it gives you</th></tr></thead>
   <tbody>
-    <tr>
-      <td>Lighting and appliances use a fixed standard density</td>
-      <td class="n">71.6 % of site energy</td>
-      <td>No real appliance survey exists for this stock. The reference study uses the same assumption, so comparisons stay consistent.</td>
-    </tr>
-    <tr>
-      <td>Heating/cooling cannot be attributed by space type</td>
-      <td class="n">8.6 %</td>
-      <td>EnergyPlus meters by end use. Splitting it needs an additional output table and a rerun.</td>
-    </tr>
-    <tr>
-      <td>Capped buildings keep a squat massing</td>
-      <td class="n">399 buildings</td>
-      <td>The true vertical shape of a block-covering parcel is not recorded anywhere in the source data.</td>
-    </tr>
-    <tr>
-      <td>The smallest model is ground + 1, so short buildings cannot shrink further</td>
-      <td class="n">74 buildings still &gt;2× cadastre</td>
-      <td>Changing the minimum touches the frozen builder that all historical results depend on.</td>
-    </tr>
-    <tr>
-      <td>One well-mixed zone per storey above the footprint threshold</td>
-      <td class="n">9 buildings · 8.0 % of energy</td>
-      <td>Flagged per building rather than silently applied, so the affected share is always visible.</td>
-    </tr>
-    <tr>
-      <td>Coverage of the district</td>
-      <td class="n">96 % by count<br>98 % by area</td>
-      <td>The excluded buildings are genuinely unrepresentable, not skipped for convenience.</td>
-    </tr>
-    <tr>
-      <td>Buildings with zero registered residents get zero hot water</td>
-      <td class="n">policy: <code>literal_zero</code></td>
-      <td>A deliberate choice matching the reference thesis. The alternative policy exists and can be selected.</td>
-    </tr>
-    <tr>
-      <td>Fuel mix of the real stock is unconfirmed</td>
-      <td class="n">all carbon figures</td>
-      <td>Waiting on information the research group has not yet supplied.</td>
-    </tr>
+    <tr><td><strong>Cluster totals</strong></td><td>One row per TABULA class, with <em>both</em> denominators side by side, the reference study's published intensity (“Rai reference”) and the percentage difference against it.</td></tr>
+    <tr><td><strong>Building ledger</strong></td><td>Every building as its own searchable row: status, cluster, intensity, energy, CO₂, occupancy plausibility, QA verdict. Filterable by <code>ok</code>, <code>failed</code> or <code>excluded</code>.</td></tr>
+    <tr><td><strong>Preserved files</strong></td><td>Opening one building gives five files kept from its own run: <code>eplustbl.htm</code> (the EnergyPlus results table), <code>deep_layers.json</code> (what each stage did to this building, plus its QA checks), <code>model_python.osm</code>, <code>eplusout.err</code> and <code>verified_profile.json</code>.</td></tr>
+    <tr><td><strong>Export</strong></td><td>The building table as CSV, or a signed package — one building or the whole run — with an Ed25519 manifest.</td></tr>
   </tbody>
 </table>
 
-<!-- ══════════════════════════ 9 ══════════════════════════ -->
-<h2><span class="num">9</span>How to check we are not lying to you</h2>
+<!-- ═════════════════════ 6 ═════════════════════ -->
+<h2><span class="num">6</span>How to check that we are not fooling ourselves</h2>
 
-<p>
-  A model that cannot be audited is an opinion. Four mechanisms make this one
-  checkable, and all of them are available to you rather than to us alone.
-</p>
-
-<h3>It scores itself against an independent building</h3>
-
-<p>
-  The tool reconstructs a building published by the reference author — from his
-  own reported surface areas — and compares thirteen quantities against his
-  numbers. Any failure makes the command exit non-zero.
+<p class="lead">
+  The tool rebuilds a building published by the reference author — from the
+  surface areas he reported — and scores itself against his own results on
+  thirteen quantities. Any failure makes the command exit non-zero.
 </p>
 
 <table>
-  <thead><tr><th>Quantity</th><th class="n">Ours</th><th class="n">Reference</th><th class="n">Difference</th></tr></thead>
+  <thead><tr><th>Quantity</th><th class="n">Ours</th><th class="n">Reference</th><th class="n">Difference</th><th class="n">Tolerance</th></tr></thead>
   <tbody>
-    <tr><td>Residential floor area (m²)</td><td class="n">954.800</td><td class="n">954.800</td><td class="n">0.00 %</td></tr>
-    <tr><td>Wall U-value (W/m²K)</td><td class="n">1.409</td><td class="n">1.409</td><td class="n">0.00 %</td></tr>
-    <tr><td>HVAC sensible heating (GJ)</td><td class="n">26.527</td><td class="n">27.300</td><td class="n">−2.83 %</td></tr>
-    <tr><td>HVAC sensible cooling (GJ)</td><td class="n">−68.403</td><td class="n">−65.030</td><td class="n">+5.19 %</td></tr>
-    <tr><td><strong>Total site energy (kWh/m²)</strong></td><td class="n"><strong>53.680</strong></td><td class="n"><strong>54.500</strong></td><td class="n"><strong>−1.50 %</strong></td></tr>
+    <tr><td>Residential floor area (m²)</td><td class="n">954.800</td><td class="n">954.800</td><td class="n">0.00 %</td><td class="n">0.5 %</td></tr>
+    <tr><td>Wall U-value (W/m²K)</td><td class="n">1.409</td><td class="n">1.409</td><td class="n">0.00 %</td><td class="n">1 %</td></tr>
+    <tr><td>Lighting (GJ)</td><td class="n">65.308</td><td class="n">65.320</td><td class="n">−0.02 %</td><td class="n">1 %</td></tr>
+    <tr><td>Hot water (GJ)</td><td class="n">36.057</td><td class="n">36.080</td><td class="n">−0.06 %</td><td class="n">1 %</td></tr>
+    <tr><td>HVAC sensible heating (GJ)</td><td class="n">26.527</td><td class="n">27.300</td><td class="n">−2.83 %</td><td class="n">5 %</td></tr>
+    <tr><td>HVAC sensible cooling (GJ)</td><td class="n">−68.403</td><td class="n">−65.030</td><td class="n">+5.19 %</td><td class="n">8 %</td></tr>
+    <tr><td><strong>Total site energy (kWh/m²)</strong></td><td class="n"><strong>53.680</strong></td><td class="n"><strong>54.500</strong></td><td class="n"><strong>−1.50 %</strong></td><td class="n">3 %</td></tr>
   </tbody>
 </table>
 
 <div class="warn">
   <b>Read this honestly</b>
-  The reconstruction shares the reference author's template and weather file,
-  and is built from the surface areas he reported. It therefore verifies the
-  <em>engine and the parameter set</em> — it does not independently confirm that
-  the typological abstraction, or the wider stock geometry, is right.
+  The reconstruction shares the reference author's template and weather file and
+  is built from the surface areas he reported. It verifies the <em>engine and
+  the parameter set</em>. It does not independently confirm that the typological
+  abstraction, or the wider stock geometry, is right.
 </div>
-
-<h3>The other three mechanisms</h3>
 
 <ul>
-  <li><strong>A profile fingerprint.</strong> Every locked parameter and the
-    checksum of every engine source file are hashed into one identifier
-    (<code>80b3d4dafcdb7190…</code>) that is written into every result row.</li>
-  <li><strong>A drift guard.</strong> If any engine source changes, runs stop
-    before starting and name the parameter that moved. A run therefore cannot
-    span two versions of the physics.</li>
-  <li><strong>Self-describing rows.</strong> Each building's row carries the
-    fingerprints of the inputs, the policy and the engine that produced it, so
-    a single row can be traced without the rest of the run.</li>
+  <li><strong>A profile fingerprint.</strong> Every locked parameter and the checksum of every engine source file are hashed into one identifier (<code>80b3d4dafcdb7190…</code>) written into every result row. When the engine is later corrected the fingerprint is retired: the old result stays valid and traceable, but reproducing it byte-for-byte means checking out the source state it points to, not the newest version.</li>
+  <li><strong>A drift guard.</strong> If any engine source changes, a run refuses to start and names the parameter that moved — so no single run can span two versions of the physics.</li>
+  <li><strong>Self-describing rows.</strong> Each row carries the fingerprints of the inputs, the policy and the engine that produced it, so one row can be traced without the rest of the run.</li>
 </ul>
 
-<div class="note">
-  <b>Reproducing an older run</b>
-  When the engine is later corrected the fingerprint is retired. A result
-  produced under a retired fingerprint stays valid and fully traceable — every
-  row still names its own origin — but reproducing it byte-for-byte means
-  checking out the source state that fingerprint points to, not the newest
-  version.
-</div>
+<!-- ═════════════════════ 7 ═════════════════════ -->
+<h2><span class="num">7</span>Where this stands — my own notes</h2>
 
-<!-- ══════════════════════════ 10 ══════════════════════════ -->
-<h2><span class="num">10</span>Beyond the three tabs</h2>
-
-<p>
-  The three-tab surface is deliberately small. Two other paths exist for anyone
-  who wants them, and neither is needed for normal use.
+<p class="lead">
+  I would rather you heard this from me than found it yourself. Everything below
+  is measured, not estimated, and the sizes are from the Benicalap run.
 </p>
 
+<div class="mynotes gapsA">
+  <h3><em>A</em> What I cannot do today</h3>
+  <ul>
+    <li><b>I cannot tell you what a building actually consumes.</b> Nothing here has been compared with a meter. I report what the standards and the physics imply — not what happened. <span class="sz">Affects every number in the product.</span></li>
+    <li><b>I cannot give you an uncertainty band.</b> The sampling study exists, but it was run on an earlier configuration of the engine, so the current figures carry no confidence interval. <span class="sz">A range would have to be re-derived before I could quote one.</span></li>
+    <li><b>I cannot split heating and cooling between the dwellings and the shops.</b> EnergyPlus meters by end use, not by space type, so the residential subtotal I report is an <em>upper bound</em> rather than a clean split. <span class="sz">Commercial ground floors are 10.0 % of site energy.</span></li>
+    <li><b>I cannot justify the carbon figure.</b> It rests on an assumed fuel mix for the real stock that nobody has confirmed for me yet. <span class="sz">34,723 tCO₂/yr — treat it as conditional.</span></li>
+    <li><b>I cannot recover the true shape of a capped block.</b> I get its area right and its massing only approximately; it stays squat where the real building is a tower. <span class="sz">399 buildings · 55 % of district energy.</span></li>
+    <li><b>I cannot resolve a deep floor plate properly.</b> Above a footprint threshold each storey is one well-mixed zone, with no core-versus-perimeter distinction. <span class="sz">9 buildings · 9.2 % of area · 8.0 % of energy — flagged per building, never silent.</span></li>
+    <li><b>I cannot model more than one weather year</b>, and I cannot model a warmed future climate. One measured year is used throughout. <span class="sz">A single EPW file.</span></li>
+    <li><b>My totals cover the modelled subset only, and that subset is not a neutral sample.</b> Exclusions concentrate in large buildings, and larger footprints tend to have lower intensity — so the intensity I report is biased slightly upward relative to the full stock. <span class="sz">95.6 % of buildings · 98.1 % of footprint area.</span></li>
+  </ul>
+</div>
+
+<div class="mynotes gapsB">
+  <h3><em>B</em> What could be better, but is not blocking</h3>
+  <ul>
+    <li><b>Lighting and appliances follow a fixed standard density.</b> That is 71.6 % of the site energy coming from a norm rather than a measurement. I keep it because the reference study uses the same assumption, which is what makes the comparison consistent — but consistency is not accuracy. <span class="sz">No appliance survey exists for this stock.</span></li>
+    <li><b>The smallest model I can build is ground plus one storey</b>, so very short buildings cannot shrink any further even when the cadastre says they should. <span class="sz">74 buildings still condition more than twice their recorded dwelling area.</span></li>
+    <li><b>A building with no registered residents gets no hot water at all.</b> This is deliberate and matches the reference thesis; the alternative policy is implemented and can be selected instead. <span class="sz">Policy is recorded in every row.</span></li>
+    <li><b>Some buildings have implausible population records</b> — far too many or too few people for their floor area. I flag them per building rather than correcting them, because the register is the source and I would rather you saw the anomaly than a quiet guess. <span class="sz">17 of 967 flagged in this district.</span></li>
+    <li><b>The envelope data covers only part of the stock.</b> The published reference models span roughly 31 % of Valencia's buildings; for the largest family — around 18,000 blocks, some 69 % of the stock — I am working from typological tables rather than a published model. I have asked Rai for the missing envelope definitions; that request is what closes this item.</li>
+  </ul>
+</div>
+
+<div class="mynotes gapsC">
+  <h3><em>C</em> What I am working on right now</h3>
+  <ul>
+    <li><b>The full-city run.</b> The engine already screens 25,094 of the 26,452 parcels as buildable. I am deliberately not launching it until the envelope question above is settled — a five-day run on an assumption I expect to change is a waste of five days.</li>
+    <li><b>Extending the envelope data</b>, which is the item that gates the full-city run.</li>
+    <li><b>Transferring the method to a second city.</b> A full-stock run on Lecco completed and verified itself internally, but it has no external validation, so I label it a transferability scenario rather than a result.</li>
+  </ul>
+</div>
+
+<div class="mynotes">
+  <h3><em>D</em> What comes next, in order</h3>
+  <ol>
+    <li><b>Settle the envelope question, then run the whole city.</b> Everything else is smaller than this.</li>
+    <li><b>Put an uncertainty band on the numbers</b> by re-running the sampling study against the current configuration. Until then every figure is a point estimate with no stated spread.</li>
+    <li><b>Separate HVAC by space type</b> so the residential subtotal becomes a real split rather than an upper bound. This needs an extra output table and a re-run.</li>
+    <li><b>Calibrate against measured consumption.</b> This is the one that would change the standing of everything else — until measured data arrives, no number here can be presented as real consumption, only as what the standards and the physics imply.</li>
+  </ol>
+</div>
+
+<h3>If you want to go past the three tabs</h3>
+
 <ul>
-  <li><strong>Command line, one building.</strong>
-    <code>python src/verified_model.py --refparcela &lt;REFERENCE&gt;</code>
-    runs the identical pipeline for a single building and writes the same
-    evidence directory. <code>--verify</code> reruns the thirteen checks in §9;
-    <code>--show-profile</code> prints every locked parameter.</li>
-  <li><strong>Earlier research screens.</strong> A geometry builder, a full
-    OpenStudio editor, scenario controls, the representative-cluster
-    neighbourhood and city pipelines and the sampling study are all still in the
-    application. They are hidden from navigation but reachable by direct URL.
-    They belong to the earlier method and are kept for reproducing historical
-    results, not for new work.</li>
+  <li><strong>One building from the command line.</strong>
+    <code>python src/verified_model.py --refparcela &lt;REFERENCE&gt;</code> runs the
+    identical pipeline for a single building. <code>--verify</code> re-runs the
+    thirteen checks in §6; <code>--show-profile</code> prints every locked parameter.</li>
+  <li><strong>Earlier research screens.</strong> A geometry builder, a full OpenStudio
+    editor, scenario controls, the representative-cluster pipelines and the sampling
+    study are all still in the application, hidden from navigation but reachable by
+    direct URL. They belong to the earlier method and are kept for reproducing
+    historical results, not for new work.</li>
 </ul>
 
-<!-- ══════════════════════════ 11 ══════════════════════════ -->
-<h2><span class="num">11</span>Glossary</h2>
-
 <table>
-  <thead><tr><th style="width:26%">Term</th><th>Meaning</th></tr></thead>
+  <thead><tr><th style="width:24%">Term</th><th>Meaning</th></tr></thead>
   <tbody>
-    <tr><td><code>refparcela</code></td><td>The cadastral reference that uniquely identifies a parcel. The primary key everywhere in this tool.</td></tr>
-    <tr><td>Cluster</td><td>A TABULA typology class combining building type (detached, small block, large block) with construction period P01–P07. 21 exist in Valencia.</td></tr>
-    <tr><td>EUI</td><td>Energy Use Intensity — annual energy divided by floor area, in kWh/m². Meaningless unless the floor area basis is stated.</td></tr>
-    <tr><td>Terciario</td><td>The tertiary/commercial space type used for ground floors. It is <em>not</em> a terrace or roof level.</td></tr>
+    <tr><td><code>refparcela</code></td><td>The cadastral reference identifying a parcel. The primary key everywhere in this tool.</td></tr>
+    <tr><td>Cluster</td><td>A TABULA class combining building type with construction period P01–P07. Twenty-one exist in Valencia.</td></tr>
+    <tr><td>EUI</td><td>Energy Use Intensity — annual energy over floor area, in kWh/m². Meaningless unless the basis is stated (§4).</td></tr>
     <tr><td>Tipo15</td><td>The cadastral companion file listing dwellings floor by floor: how many, what use, how much area.</td></tr>
-    <tr><td><code>pob_total</code></td><td>Registered residents per building, from the municipal population register (<em>padrón</em>) — actual residence, not design occupancy.</td></tr>
-    <tr><td><code>ConsumE</code></td><td>The reference study's published consumption intensity, one constant per cluster. The basis for the “Δ vs Rai” column.</td></tr>
+    <tr><td><code>pob_total</code></td><td>Registered residents per building, from the municipal register — actual residence, not design occupancy.</td></tr>
     <tr><td>EPW / DDY</td><td>The annual hourly weather file, and the extreme design days used to size equipment.</td></tr>
-    <tr><td>PTHP</td><td>Packaged Terminal Heat Pump — the heating and cooling unit modelled in each zone.</td></tr>
-    <tr><td>Preflight</td><td>A dry run in which the engine reports what it can and cannot process, before any simulation begins.</td></tr>
-    <tr><td>Ledger</td><td>The append-only file holding one row per building, flushed to disk immediately, which makes runs resumable and auditable.</td></tr>
   </tbody>
 </table>
 
-<hr style="margin:2.5em 0 1em; border:none; border-top:2.5px solid var(--blue)">
-<p style="font-size:9pt; color:var(--soft)">
-  Valencia Stock Energy Workbench · User Guide · Example run
+<hr style="margin:1.8em 0 .9em; border:none; border-top:2.5px solid var(--blue)">
+<p style="font-size:8.6pt; color:var(--soft)">
+  Valencia Stock Energy Workbench · Visual Guide · Example run
   <code>benicalap_v8</code> · Verified profile <code>80b3d4dafcdb7190…</code><br>
   Installation and updates: <code>docs/getting-started.md</code> ·
   Scientific scope and validation record: <code>docs/results/README.md</code>
