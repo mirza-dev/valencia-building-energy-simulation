@@ -59,6 +59,7 @@ import openstudio                                                 # noqa: E402
 
 import climate as cl                                              # noqa: E402
 import deep_building as db                                        # noqa: E402
+import microclimate as mcl                                        # noqa: E402
 import model_builder as mb                                        # noqa: E402
 import run_simulation as sim                                      # noqa: E402
 import verified_model as vm                                       # noqa: E402
@@ -134,7 +135,8 @@ def apply_italian_ground_slab(osm, target_u: float) -> dict:
 
 def simulate_lecco_building(reference: str, out_dir: Path, row, *,
                             stock_path: Path, climate, config,
-                            provenance: dict | None = None) -> tuple[dict, bool]:
+                            provenance: dict | None = None,
+                            event: dict | None = None) -> tuple[dict, bool]:
     """One building, mirroring `deep_building.simulate_deep_building` exactly.
 
     Every physics call below is the frozen one.  The single difference from the
@@ -169,18 +171,47 @@ def simulate_lecco_building(reference: str, out_dir: Path, row, *,
     stats["eu_net_floor_area_m2"] = row.get("eu_net_floor_area_m2")
     stats["res_area_source"] = "geometry: footprint x residential storeys"
 
+    # In an event run the weather file and the run period both come from the
+    # microclimate slice, and the annual QA thresholds no longer describe what
+    # is being simulated.  Everything else - geometry, envelope, occupancy,
+    # systems - is identical to the annual path.
+    epw_path = climate.epw_path
+    if event is not None:
+        epw_path = event["epw_path"]
+        stats["deep_layers"]["microclimate"] = {
+            "slice": event["slice_record"],
+            "delta_peak_k": event["delta_peak_k"],
+            "delta_base_k": event["delta_base_k"],
+            "sample_radius_m": event["sample_radius_m"],
+            "sample_cells": event["sample_cells"],
+            "run_period": mcl.apply_event_run_period(osm, event["window"]),
+            "event_epw": Path(epw_path).name,
+        }
+        mcl.request_outdoor_air_output(osm)
+
     run_dir = out_dir / f"{reference}_deep"
     if run_dir.exists():
         shutil.rmtree(run_dir)
-    sql_path = sim.run_energyplus(osm, run_dir, epw_path=climate.epw_path)
+    sql_path = sim.run_energyplus(osm, run_dir, epw_path=epw_path)
 
     err_stats = db.scan_err_deep(run_dir)
     results = db.read_end_uses_split(sql_path, stats["res_area_m2"],
                                      stats["total_conditioned_area_m2"])
-    checks = (sim.crosscheck_energyplus(sql_path, stats,
-                                        unmet_max=sim.QA_UNMET_HOURS_MAX_HVAC)
-              + sim.check_plausibility_cons(
-                  {"total_site_kwh_m2": results["total_site_kwh_m2"]}))
+    if event is not None:
+        results.update(mcl.read_site_energy_precise(sql_path, stats["res_area_m2"]))
+        checks = mcl.event_qa(
+            sim.crosscheck_energyplus(
+                sql_path, stats,
+                unmet_max=mcl.event_unmet_allowance(event["days"])),
+            results, days=event["days"], baseline=event.get("baseline"))
+        outdoor = mcl.observed_outdoor_air(sql_path)
+        if outdoor:
+            results.update(outdoor)
+    else:
+        checks = (sim.crosscheck_energyplus(sql_path, stats,
+                                            unmet_max=sim.QA_UNMET_HOURS_MAX_HVAC)
+                  + sim.check_plausibility_cons(
+                      {"total_site_kwh_m2": results["total_site_kwh_m2"]}))
     carbon = sim.carbon_from_enduses(
         {"cons_heating_gas_kwh_m2": results["space_heating_gas_kwh_m2"],
          "cons_heating_elec_kwh_m2": results["space_heating_elec_kwh_m2"],
@@ -204,7 +235,8 @@ def simulate_lecco_building(reference: str, out_dir: Path, row, *,
     return summary, qa_passed
 
 
-def _init_worker(stock_path: str, climate_path: str, out_dir: str) -> None:
+def _init_worker(stock_path: str, climate_path: str, out_dir: str,
+                 event_plan: str | None = None) -> None:
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     scratch = Path(out_dir) / "_scratch" / str(os.getpid())
     scratch.mkdir(parents=True, exist_ok=True)
@@ -215,6 +247,49 @@ def _init_worker(stock_path: str, climate_path: str, out_dir: str) -> None:
     _WORKER["stock_path"] = Path(stock_path)
     _WORKER["climate"] = cl.load_climate(climate_path)
     _WORKER["out_dir"] = Path(out_dir)
+    # The per-building offsets are computed once in the parent and handed to the
+    # workers as data.  Re-reading the rasters in every worker would open the
+    # same files six times and, worse, allow six subtly different samplings of
+    # one field to end up in one ledger.
+    _WORKER["event_plan"] = json.loads(event_plan) if event_plan else None
+
+
+def _window_days(window, frame) -> int:
+    """How many calendar days the run period actually spans in this file."""
+    import pandas as pd
+
+    month = pd.to_numeric(frame[1], errors="coerce").astype(int)
+    day = pd.to_numeric(frame[2], errors="coerce").astype(int)
+    key = month * 100 + day
+    begin, end = window[0] * 100 + window[1], window[2] * 100 + window[3]
+    return int(key[(key >= begin) & (key <= end)].nunique())
+
+
+def _event_for(reference: str) -> dict | None:
+    """This building's slot in the event plan, or `None` for an annual run.
+
+    A building the slice does not reach is refused rather than run at a zero
+    offset: zero is a measurement claiming the building sits exactly at the
+    domain average, and "no data" is not that claim.
+    """
+    plan = _WORKER.get("event_plan")
+    if plan is None:
+        return None
+    entry = plan["deltas"].get(str(reference))
+    if entry is None:
+        raise ValueError(
+            f"{reference} has no microclimate offset: the slice does not cover it")
+    # Coerced at the deserialisation boundary: the plan crosses a JSON round
+    # trip to reach this process, and a date that arrives as text compares
+    # unequal against every row in the weather file instead of failing loudly.
+    window = tuple(int(v) for v in plan["window"])
+    epw = mcl.write_event_epw(
+        Path(plan["base_epw"]), Path(plan["epw_dir"]),
+        delta_peak_k=entry["delta_peak_k"], delta_base_k=entry["delta_base_k"],
+        window=window)
+    return {"epw_path": epw, "window": window,
+            "days": plan["days"], "slice_record": plan["slice_record"],
+            **entry}
 
 
 def _run_one(reference: str) -> dict:
@@ -232,11 +307,22 @@ def _run_one(reference: str) -> dict:
             raise ValueError(f"{reference} not in {stock_path.name}")
         row = frame.iloc[0]
 
+        event = _event_for(reference)
         summary, qa_passed = simulate_lecco_building(
             reference, _WORKER["out_dir"] / "buildings", row,
             stock_path=stock_path, climate=climate,
             config=config_for(stock_path, climate, row),
-            provenance=vm.profile_record())
+            provenance=vm.profile_record(), event=event)
+        if event is not None:
+            summary.update({
+                "run_mode": "microclimate_event",
+                "microclimate_slice": event["slice_record"]["name"],
+                "microclimate_fingerprint": event["slice_record"]["fingerprint"],
+                "delta_peak_k": event["delta_peak_k"],
+                "delta_base_k": event["delta_base_k"],
+                "sample_radius_m": event["sample_radius_m"],
+                "event_days": event["days"],
+            })
         summary.update({
             "status": "ok", "qa_all_passed": bool(qa_passed),
             "cluster": row["cluster"], "period": row["period"],
@@ -434,7 +520,9 @@ def aggregate(records: list[dict]) -> dict:
 def run(stock_path: Path, climate_path: Path, out_dir: Path, *,
         per_cluster: int | None = 1, limit: int | None = None,
         references: list[str] | None = None, workers: int = 6,
-        resume: bool = False) -> int:
+        resume: bool = False, microclimate: Path | None = None,
+        height_token: str = mcl.DEFAULT_HEIGHT_TOKEN,
+        spinup_days: int = mcl.DEFAULT_SPINUP_DAYS) -> int:
     import geopandas as gpd
 
     # Refuse before spending hours if the frozen chain has drifted.
@@ -456,6 +544,38 @@ def run(stock_path: Path, climate_path: Path, out_dir: Path, *,
              (total_area - lost_area) / total_area * 100 if total_area else 0.0)
 
     runnable_set = set(runnable)
+
+    # A microclimate slice covers a piece of the city, not the city.  It is
+    # therefore a second, narrower gate on top of the footprint gate, and it is
+    # applied here so the reduced scope is visible in the plan rather than
+    # discovered as a wall of failures once the run is under way.
+    event_plan = None
+    if microclimate is not None:
+        slice_ = mcl.load_slice(microclimate, height_token=height_token)
+        deltas = mcl.sample_stock(slice_, stock)
+        covered = deltas[deltas["sample_status"] == "ok"]
+        header, frame = mcl.read_epw(climate.epw_path)
+        window = mcl.hottest_window(frame, spinup_days=spinup_days)
+        days = _window_days(window, frame)
+        runnable_set &= set(covered["refparcela"].astype(str))
+        outside = len(deltas) - len(covered)
+        log.info("[microclimate] %s: %d of %d buildings inside the slice, "
+                 "%d outside; event window %02d-%02d to %02d-%02d (%d days)",
+                 slice_.name, len(covered), len(deltas), outside,
+                 window[0], window[1], window[2], window[3], days)
+        event_plan = {
+            "slice_record": slice_.record(),
+            "base_epw": str(climate.epw_path),
+            "epw_dir": str(out_dir / "event_epw"),
+            "window": list(window), "days": days,
+            "deltas": {str(r.refparcela): {
+                "delta_peak_k": round(float(r.delta_peak_k), 4),
+                "delta_base_k": round(float(r.delta_base_k), 4),
+                "sample_radius_m": float(r.sample_radius_m),
+                "sample_cells": int(r.sample_cells)}
+                for r in covered.itertuples()},
+        }
+
     wanted = [reference for reference
               in select(stock[stock["refparcela"].isin(runnable_set)],
                         per_cluster=per_cluster, limit=limit,
@@ -493,9 +613,18 @@ def run(stock_path: Path, climate_path: Path, out_dir: Path, *,
         "profile_fingerprint": vm.profile_record()["fingerprint"],
         "stock": stock_path.name,
     }
+    if event_plan is not None:
+        identity |= {
+            "run_mode": "microclimate_event",
+            "microclimate_fingerprint": event_plan["slice_record"]["fingerprint"],
+            "microclimate_slice": event_plan["slice_record"]["name"],
+            "event_window": event_plan["window"],
+        }
     with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker,
                              initargs=(str(stock_path), str(climate_path),
-                                       str(out_dir))) as pool:
+                                       str(out_dir),
+                                       json.dumps(event_plan, default=str)
+                                       if event_plan else None)) as pool:
         futures = {pool.submit(_run_one, reference): reference for reference in todo}
         with ledger.open("a", encoding="utf-8") as handle:
             for future in as_completed(futures):
@@ -568,6 +697,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--references", nargs="*")
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--microclimate", type=Path,
+                        help="PALM slice directory; switches the run from an "
+                             "annual simulation to an event simulation over the "
+                             "weather file's hottest week, offset per building")
+    parser.add_argument("--height", default=mcl.DEFAULT_HEIGHT_TOKEN,
+                        help="which height slice to read (default 2m)")
+    parser.add_argument("--spinup-days", type=int, default=mcl.DEFAULT_SPINUP_DAYS,
+                        help="days of unmodified weather before the event")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -577,9 +714,11 @@ def main(argv: list[str] | None = None) -> int:
         return run(args.stock, args.climate, args.out_dir,
                    per_cluster=None if (args.all or args.references) else args.per_cluster,
                    limit=args.limit, references=args.references,
-                   workers=args.workers, resume=args.resume)
-    except (cl.ClimateError, vm.ProfileDrift, RunAlreadyActive, LedgerNotEmpty,
-            OSError) as exc:
+                   workers=args.workers, resume=args.resume,
+                   microclimate=args.microclimate, height_token=args.height,
+                   spinup_days=args.spinup_days)
+    except (cl.ClimateError, vm.ProfileDrift, mcl.MicroclimateError,
+            RunAlreadyActive, LedgerNotEmpty, OSError) as exc:
         print(f"REFUSED: {exc}")
         return 2
 
