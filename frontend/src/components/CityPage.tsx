@@ -99,8 +99,8 @@ export default function CityPage() {
   useEffect(() => {
     if (result?.qa.scientific_status === 'INVALID') setPanel('evidence')
     else if (selectedRunId) setPanel((current) => current === 'setup' ? null : current)
-    else if (!jobId && !history.isLoading && !history.data?.length) setPanel('setup')
-  }, [history.data, history.isLoading, jobId, result?.qa.scientific_status, selectedRunId])
+    else if (!jobId && history.isSuccess && !history.data.length) setPanel('setup')
+  }, [history.data, history.isSuccess, jobId, result?.qa.scientific_status, selectedRunId])
 
   const start = useMutation({
     mutationFn: (payload: StockRunRequest) => api.createCityRun(payload),

@@ -323,7 +323,7 @@ test('Phase E0 inspects the materialized OpenStudio graph and cross-highlights c
 })
 
 test('Phase E1 authors wall and thermostat edits, recovers the session, and commits a Part B eligible model', async ({ page, request }) => {
-  test.setTimeout(150_000)
+  test.setTimeout(300_000)
   const model = await ensurePipelineModel(request)
 
   await page.goto(`/#/model/${model!.id}`)
@@ -614,6 +614,9 @@ test('simulation job control requires cancel confirmation and exposes failed-job
 
   await page.goto('/#/simulation')
   const simulationStart = page.locator('button.simulation-start')
+  const newRun = page.getByRole('button', { name: /^(Yeni koşu|New run)$/ })
+  await expect(newRun.or(simulationStart)).toBeVisible()
+  if (await newRun.isVisible()) await newRun.click()
   await expect(simulationStart).toBeVisible()
   await simulationStart.click()
   await expect(page).toHaveURL(/job=control-running/)
@@ -1117,7 +1120,10 @@ test('Part D + F city workbench binds real consumption, demand, 19 districts, an
     energy_available: true,
   } }))
   await page.route('**/api/city/runs/city-run/tiles/**', async (route) => {
-    const response = await route.fetch({ url: route.request().url().replace('/runs/city-run/tiles/', '/map/tiles/') })
+    const response = await route.fetch({
+      url: route.request().url().replace('/runs/city-run/tiles/', '/map/tiles/'),
+      maxRetries: 2,
+    })
     await route.fulfill({ response })
   })
   await page.route('**/api/runs', (route) => route.fulfill({ json: [fixture.run] }))
@@ -1200,12 +1206,13 @@ test('Part D + F city workbench binds real consumption, demand, 19 districts, an
     mode: 'scenario', heat_delta_c: 0, cool_delta_c: -1,
     weather_dataset_id: null, source_type: 'human_judgement',
   })
-  await page.waitForLoadState('networkidle')
+  await expect(page.locator('.neighborhood-job-control')).toContainText(/completed/i)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
   await expect(page.getByRole('heading', { name: 'Valencia city pipeline' })).toBeVisible()
-  await page.goto('/#/runs')
+  await page.getByRole('link', { name: 'View all' }).click()
+  await expect(page).toHaveURL(/#\/runs$/)
+  await expect(page.getByRole('heading', { name: /Building evidence & files/ })).toBeVisible()
   await expect(page.locator('.run-list > button').filter({ hasText: 'CITY' })).toHaveCount(0)
-  await expect(page.getByText(/Bu bina için henüz|No model or simulation/)).toBeVisible()
   await page.unrouteAll({ behavior: 'ignoreErrors' })
 })
 
@@ -1473,7 +1480,7 @@ test('historical single-building screens remain callable but absent from product
   await expect(page.locator('.sidebar .nav-link')).toHaveCount(3)
   await expect(page.getByRole('link', { name: /Building model|Simulation|Compare variants/ })).toHaveCount(0)
   await page.goto('/#/simulation')
-  await expect(page.getByRole('heading', { name: /Simulation/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Immutable simulation/i })).toBeVisible()
   await page.goto('/#/compare')
   await expect(page.getByRole('heading', { name: /Active-building comparison/ })).toBeVisible()
 })

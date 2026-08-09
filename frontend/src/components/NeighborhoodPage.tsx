@@ -51,7 +51,7 @@ export default function NeighborhoodPage() {
     enabled: Boolean(selectedRunId), staleTime: 30_000,
   })
   const selectedRun = selectedRunQuery.data
-  const needsSetupData = panel === 'setup' || (!history.isLoading && !history.data?.length)
+  const needsSetupData = panel === 'setup' || (history.isSuccess && !history.data.length)
   const options = useQuery({ queryKey: ['neighborhood-options'], queryFn: api.neighborhoodOptions, enabled: ready && needsSetupData, staleTime: 30_000 })
   const preflight = useQuery({ queryKey: ['neighborhood-preflight', preflightDistrict], queryFn: () => api.neighborhoodPreflight(preflightDistrict), enabled: ready && needsSetupData, staleTime: 60_000 })
   const result = selectedRun?.result
@@ -113,8 +113,8 @@ export default function NeighborhoodPage() {
   useEffect(() => {
     if (result?.qa.scientific_status === 'INVALID') setPanel('evidence')
     else if (selectedRunId) setPanel((current) => current === 'setup' ? null : current)
-    else if (!jobId && !history.isLoading && !history.data?.length) setPanel('setup')
-  }, [history.data, history.isLoading, jobId, result?.qa.scientific_status, selectedRunId])
+    else if (!jobId && history.isSuccess && !history.data.length) setPanel('setup')
+  }, [history.data, history.isSuccess, jobId, result?.qa.scientific_status, selectedRunId])
 
   const start = useMutation({
     mutationFn: (payload: NeighborhoodRunRequest) => api.createNeighborhoodRun(payload),

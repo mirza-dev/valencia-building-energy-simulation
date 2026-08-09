@@ -94,6 +94,10 @@ export default function SimulationPage() {
     if (!requestedModelId) return
     const requested = allAvailableParents?.find((item) => item.id === requestedModelId)
     if (requested && requested.refparcela !== activeBuilding) setActiveBuilding(requested.refparcela)
+    if (requested) {
+      setSelectedRunId('')
+      setPanel('setup')
+    }
   }, [activeBuilding, allAvailableParents, requestedModelId, setActiveBuilding])
   useEffect(() => {
     const jobReference = job.data?.refparcela ?? scenarioJob.data?.refparcela
@@ -138,11 +142,7 @@ export default function SimulationPage() {
     }
   }, [job.error, jobId, notify, scenarioJob.error, scenarioJobId, setJobRoutes, t])
   useEffect(() => {
-    if (requestedModelId && !jobId && !scenarioJobId && !selectedRunId) {
-      const matching = buildingHistory.find((item) => item.parent?.id === requestedModelId)
-      if (matching) setSelectedRunId(matching.id)
-      return
-    }
+    if (requestedModelId && !jobId && !scenarioJobId) return
     const recovering = !requestedModelId && !jobId && !scenarioJobId && (
       activeJob.isPending || activeScenario.isPending || Boolean(activeJob.data?.job) || Boolean(activeScenario.data?.job)
     )
@@ -181,9 +181,9 @@ export default function SimulationPage() {
       setPanel((current) => current === 'setup' ? current : null)
     } else if (!selectedRunId) {
       previousSelectedRunId.current = ''
-      if (!jobId && !scenarioJobId && !history.isLoading && !buildingHistory.length) setPanel('setup')
+      if (!jobId && !scenarioJobId && history.isSuccess && !buildingHistory.length) setPanel('setup')
     }
-  }, [buildingHistory.length, history.isLoading, jobId, scenarioJobId, selectedResult?.qa.scientific_status, selectedRunId])
+  }, [buildingHistory.length, history.isSuccess, jobId, scenarioJobId, selectedResult?.qa.scientific_status, selectedRunId])
 
   const start = useMutation<JobRecord | SimulationPairResponse, Error, void>({
     mutationFn: () => selectedParent?.provenance === 'authored'
