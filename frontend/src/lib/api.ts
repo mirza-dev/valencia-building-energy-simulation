@@ -160,7 +160,7 @@ export const api = {
   stockDistricts: () => request<{ districts: string[] }>('/api/stock/districts'),
   stockPreflight: (payload: {
     scope: 'all' | 'district' | 'references'; district?: string; references?: string[];
-    keep?: 'full' | 'summary'; workers?: number
+    keep?: 'full' | 'summary'; workers?: number; run_mode?: 'annual' | 'microclimate_event'
   }) => request<ProductPreflight>('/api/stock/preflight', {
     method: 'POST', body: JSON.stringify(payload),
   }),
@@ -169,6 +169,7 @@ export const api = {
   startStockRun: (payload: {
     name: string; scope: 'all' | 'district' | 'references'; district?: string;
     references?: string[]; keep?: 'full' | 'summary'; workers?: number; resume?: boolean
+    run_mode?: 'annual' | 'microclimate_event'
   }) => request<{ started: { run: string; pid: number; started_at: number }; estimate: ProductPreflight }>('/api/stock/runs', {
     method: 'POST', body: JSON.stringify(payload),
   }),

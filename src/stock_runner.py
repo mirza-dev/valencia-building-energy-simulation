@@ -343,11 +343,18 @@ def screen_geometry(stock: gpd.GeoDataFrame) -> tuple[list[str], list[dict]]:
         if geom is None or geom.is_empty:
             excluded.append({"refparcela": ref, "reason": "empty_geometry"})
             continue
-        if geom.geom_type != "Polygon":
+        # Ask the engine's own normaliser rather than restating its rule.  This
+        # used to refuse every MultiPolygon outright, but `clean_polygon`
+        # unwraps a single-part one and simulates it happily - and a source that
+        # writes its footprints that way (the EU building database does) had its
+        # whole stock excluded as "unsupported geometry".  Multi-part shapes,
+        # holes and invalid rings are still refused; the difference is that the
+        # decision is now taken where it is enforced.
+        if geom.geom_type not in ("Polygon", "MultiPolygon"):
             excluded.append({"refparcela": ref,
                              "reason": f"unsupported_geometry_{geom.geom_type}"})
             continue
-        if len(geom.interiors) > 0:
+        if geom.geom_type == "Polygon" and len(geom.interiors) > 0:
             excluded.append({"refparcela": ref,
                              "reason": f"interior_rings_{len(geom.interiors)}"})
             continue
@@ -428,6 +435,58 @@ def link_model(run_dir: Path, refparcela: str, cluster: str | None,
     return str(target)
 
 
+def _config_for(refparcela: str):
+    """This building's BuildConfig, with its own envelope pinned if it has one.
+
+    `deep_building.config_for_building` resolves an unpinned envelope through
+    `model_config.TABULA_ES` - the Spanish IVE table - and that is exactly how a
+    building outside Spain would end up with Spanish walls.  The same function
+    states the way out: "a caller that has already pinned the envelope means
+    it".  A stock carrying measured U-values is such a caller.
+
+    Returns the shared config untouched when the stock states no envelope, so
+    the Valencia path is byte-identical to what it has always been.
+    """
+    shared = _WORKER.get("config")
+    envelope = _WORKER.get("envelopes", {}).get(refparcela)
+    if not envelope:
+        return shared
+    base = shared if shared is not None else mb.DEFAULT_BUILD_CONFIG
+    return base.model_copy(deep=True).with_legacy_params({
+        "wall_u": float(envelope["wall_u"]),
+        "roof_u": float(envelope["roof_u"]),
+        "window_u": float(envelope["window_u"]),
+    })
+
+
+def _event_for(refparcela: str) -> dict | None:
+    """This building's slot in the microclimate plan, or None for an annual run.
+
+    A building the slice does not reach is refused rather than run at a zero
+    offset: zero is a measurement claiming the building sits exactly at the
+    domain average, and "no data" is not that claim.
+    """
+    plan = _WORKER.get("event_plan")
+    if plan is None:
+        return None
+    import microclimate as mcl
+
+    entry = plan["deltas"].get(str(refparcela))
+    if entry is None:
+        raise ValueError(
+            f"{refparcela} has no microclimate offset: the slice does not cover it")
+    # Coerced at the deserialisation boundary: the plan crosses a process
+    # boundary to reach this worker, and a date that arrives as text compares
+    # unequal against every row in the weather file instead of failing loudly.
+    window = tuple(int(v) for v in plan["window"])
+    epw = mcl.write_event_epw(
+        Path(plan["base_epw"]), Path(plan["epw_dir"]),
+        delta_peak_k=entry["delta_peak_k"], delta_base_k=entry["delta_base_k"],
+        window=window)
+    return {"epw_path": epw, "window": window, "days": plan["days"],
+            "slice_record": plan["slice_record"], **entry}
+
+
 def run_one(task: tuple[str, str | None] | str) -> dict:
     """Simulate one building. Never raises: a failure is a ledger row too."""
     refparcela, cluster = task if isinstance(task, tuple) else (task, None)
@@ -438,13 +497,17 @@ def run_one(task: tuple[str, str | None] | str) -> dict:
     base = {"refparcela": refparcela, "cluster": cluster,
             **{key: _WORKER[key] for key in IDENTITY_FIELDS}}
     try:
+        envelope = _WORKER.get("envelopes", {}).get(refparcela)
         summary, qa_passed = vm.simulate_verified_building(
             refparcela, out_dir,
             zero_policy=_WORKER["zero_policy"],
             gis_path=Path(_WORKER["prepared_gis"]),
             neighbors_path=Path(_WORKER["context_gis"]),
+            floor_u=None if envelope is None else envelope.get("floor_u"),
+            event=_event_for(refparcela),
             climate=_WORKER.get("climate"),
-            config=_WORKER.get("config"))
+            config=_config_for(refparcela),
+        )
     except Exception as exc:                       # noqa: BLE001 - isolation is the point
         return {**base, "status": "failed",
                 "reason": type(exc).__name__,
@@ -737,8 +800,12 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
         # cluster/district attributes are parcel-level metadata, so collapse
         # that lookup before mapping it onto the one-row-per-reference ledger.
         # Joining the raw, non-unique index would duplicate energy totals.
+        # `nombre` is Valencia's administrative district.  A stock from a city
+        # that names no districts simply has no such column, and demanding one
+        # would refuse the whole aggregate over a field nothing needs.
+        attributes = [name for name in ("cluster", "nombre") if name in stock.columns]
         lookup = (
-            stock[["refparcela", "cluster", "nombre"]]
+            stock[["refparcela", *attributes]]
             .drop_duplicates(subset=["refparcela"], keep="first")
             .set_index("refparcela")
         )
@@ -746,7 +813,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
         # either shape from the exact prepared stock without creating pandas'
         # overlapping-column error or replacing a value already frozen on the
         # ledger row.
-        for column in ("cluster", "nombre"):
+        for column in attributes:
             fallback = frame["refparcela"].map(lookup[column])
             if column in frame.columns:
                 frame[column] = frame[column].where(frame[column].notna(), fallback)
@@ -1048,8 +1115,66 @@ class _StallWatchdog:
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
+def _window_days(window, frame) -> int:
+    """How many calendar days the event run period spans in this weather file."""
+    month = pd.to_numeric(frame[1], errors="coerce").astype(int)
+    day = pd.to_numeric(frame[2], errors="coerce").astype(int)
+    key = month * 100 + day
+    begin, end = window[0] * 100 + window[1], window[2] * 100 + window[3]
+    return int(key[(key >= begin) & (key <= end)].nunique())
+
+
+PINNED_ENVELOPE_COLUMNS = ("wall_u", "roof_u", "window_u")
+
+
+def envelopes_by_reference(stock: gpd.GeoDataFrame) -> dict[str, dict]:
+    """Per-building envelopes, for a stock that states its own.
+
+    Empty for a stock that does not, which is what keeps the Valencia path on
+    the cluster/TABULA_ES route it was verified on.  `floor_u` travels with the
+    envelope because it is the same kind of statement about the same building,
+    but it is optional: a stock may price its walls and not its slab.
+    """
+    if not set(PINNED_ENVELOPE_COLUMNS) <= set(stock.columns):
+        return {}
+    columns = list(PINNED_ENVELOPE_COLUMNS)
+    if "floor_u" in stock.columns:
+        columns.append("floor_u")
+    envelopes: dict[str, dict] = {}
+    for row in stock[["refparcela", *columns]].itertuples(index=False):
+        values = {name: getattr(row, name) for name in columns}
+        if any(pd.isna(values[name]) for name in PINNED_ENVELOPE_COLUMNS):
+            continue                     # unusable: let the engine refuse it loudly
+        if "floor_u" in values and pd.isna(values["floor_u"]):
+            values.pop("floor_u")
+        envelopes[str(row.refparcela)] = values
+    return envelopes
+
+
+def load_prepared_stock(stock_path: Path) -> tuple[gpd.GeoDataFrame, dict]:
+    """A stock file that already carries what the engine reads.
+
+    The cadastre policy is deliberately not run over it: the policy exists to
+    derive these fields from a raw cadastre plus a dwelling ledger, and a file
+    that states them has nothing to derive.
+    """
+    stock = gpd.read_file(stock_path)
+    counters = {
+        "policy_fingerprint": "prepared_stock",
+        "stock_source_fingerprint": file_sha256(Path(stock_path)),
+        "gis_path": str(stock_path),
+        "tipo15_path": None,
+        "imputed_floor_buildings": 0,
+        "residential_area_proxy_buildings": 0,
+        "duplicate_parcel_rows": int(
+            len(stock) - stock["refparcela"].astype(str).nunique()),
+    }
+    return stock, counters
+
+
 def run_stock(*, scope: str, out_dir: Path, workers: int,
-              gis_path: Path, tipo15_path: Path, var_dir: Path,
+              gis_path: Path | None = None, tipo15_path: Path | None = None,
+              stock_path: Path | None = None, var_dir: Path,
               zero_policy: str = "literal_zero", keep: str = "full",
               district: str | None = None, references: list[str] | None = None,
               resume: bool = False, retry_failed: bool = False,
@@ -1058,6 +1183,9 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
               policy_path: Path | None = None,
               template_path: Path | None = None,
               eu_path: Path | None = None,
+              microclimate_path: Path | None = None,
+              height_token: str | None = None,
+              spinup_days: int | None = None,
               slow_seconds: float = 900.0) -> dict:
     # a drifted profile must stop the run before a single building is written
     vm.assert_profile_intact()
@@ -1084,14 +1212,33 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
         log.info("[template] %s | %s aliases | normalised=%s", template.name,
                  len(template.aliases), template.normalised)
 
-    prepared_gis, stock, counters = prepare_stock_file(
-        gis_path, tipo15_path, policy, var_dir)
+    if stock_path is not None:
+        prepared_gis = Path(stock_path)
+        stock, counters = load_prepared_stock(prepared_gis)
+        # The stock is its own shading context: there is no separate raw
+        # cadastre behind it to read neighbours from.
+        context_gis = prepared_gis
+    else:
+        if gis_path is None or tipo15_path is None:
+            raise InputMismatch(
+                "REFUSED: a run needs either --stock (a prepared file) or both "
+                "--gis and --tipo15 (a cadastre and its dwelling ledger).")
+        prepared_gis, stock, counters = prepare_stock_file(
+            gis_path, tipo15_path, policy, var_dir)
+        context_gis = Path(gis_path)
     # key names come from stock_input_policy.prepare_stock; getting them wrong
     # printed "None" for both counts instead of failing, so the banner quietly
     # stopped reporting the data-quality numbers it claims to report
     for key in ("imputed_floor_buildings", "residential_area_proxy_buildings",
                 "duplicate_parcel_rows"):
         assert key in counters, f"stock counter '{key}' is gone - fix the banner"
+
+    # A stock that prices its own construction is telling the engine not to
+    # consult the Spanish table.  Empty for the cadastre path.
+    envelopes = envelopes_by_reference(stock)
+    if envelopes:
+        log.info("[envelope] %s buildings carry their own U-values | the Spanish "
+                 "TABULA table is not consulted for them", len(envelopes))
     log.info("[stock] %s buildings after policy | floors imputed %s | area proxy %s "
              "| duplicate rows %s",
              len(stock), counters["imputed_floor_buildings"],
@@ -1110,10 +1257,56 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
                  "flag only, no physics changes",
                  Path(eu_path).name, multi, 100.0 * multi / max(len(eu_flags), 1))
 
+    # A microclimate slice covers a piece of the city, not the city.  It is
+    # therefore a second, narrower gate applied before the scope is fixed, so
+    # the reduced coverage is visible in the plan rather than discovered as a
+    # wall of failures once the run is under way.
+    event_plan = None
+    if microclimate_path is not None:
+        import microclimate as mcl
+
+        slice_ = mcl.load_slice(Path(microclimate_path),
+                                height_token=height_token or mcl.DEFAULT_HEIGHT_TOKEN)
+        deltas = mcl.sample_stock(slice_, stock)
+        covered = deltas[deltas["sample_status"] == "ok"]
+        _, frame = mcl.read_epw(climate.epw_path)
+        window = mcl.hottest_window(
+            frame, spinup_days=(spinup_days if spinup_days is not None
+                                else mcl.DEFAULT_SPINUP_DAYS))
+        days = _window_days(window, frame)
+        inside = set(covered["refparcela"].astype(str))
+        stock = stock[stock["refparcela"].astype(str).isin(inside)]
+        log.info("[microclimate] %s: %s of %s buildings inside the slice; "
+                 "event window %02d-%02d to %02d-%02d (%s days)",
+                 slice_.name, len(covered), len(deltas),
+                 window[0], window[1], window[2], window[3], days)
+        event_plan = {
+            "slice_record": slice_.record(),
+            "base_epw": str(climate.epw_path),
+            "epw_dir": str(out_dir / "event_epw"),
+            "window": list(window), "days": days,
+            "deltas": {str(r.refparcela): {
+                "delta_peak_k": round(float(r.delta_peak_k), 4),
+                "delta_base_k": round(float(r.delta_base_k), 4),
+                "sample_radius_m": float(r.sample_radius_m),
+                "sample_cells": int(r.sample_cells)}
+                for r in covered.itertuples()},
+        }
+
     scoped = select_scope(stock, scope, district=district, references=references)
     runnable, excluded = screen_geometry(scoped)
     if limit:
-        runnable = runnable[:limit]
+        # Deterministically shuffled before truncating.  A stock arrives in the
+        # order its source was assembled, which tracks location and therefore
+        # building type; taking a prefix of that makes a limited run a biased
+        # sample of the city - and a long run WILL be read before it finishes.
+        # With a fixed seed every prefix is an unbiased random sample and the
+        # selection is still reproducible.
+        import random
+
+        shuffled = list(runnable)
+        random.Random(42).shuffle(shuffled)
+        runnable = shuffled[:limit]
 
     fingerprints = input_fingerprints(
         climate, template, counters["policy_fingerprint"],
@@ -1148,8 +1341,11 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
         "out_dir": str(out_dir / "runs"),
         "models_root": str(out_dir / "models"),
         "prepared_gis": str(prepared_gis),
-        # the raw cadastre stays the shading context on purpose
-        "context_gis": str(gis_path),
+        # For the cadastre path the raw shapefile stays the shading context on
+        # purpose: the prepared file's imputed floor counts would otherwise give
+        # 1 641 buildings a shadow they do not cast.  A prepared stock has no
+        # such second file and is its own context.
+        "context_gis": str(context_gis),
         "zero_policy": zero_policy,
         "keep": keep,
         "tmp_root": str(Path(var_dir) / "stock_tmp"),
@@ -1160,6 +1356,8 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
         "climate": climate,
         "config": config,
         "eu_flags": eu_flags,
+        "envelopes": envelopes,
+        "event_plan": event_plan,
         **fingerprints,
     }
     # the worker config carries live objects; the record on disk carries their
@@ -1168,7 +1366,16 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
     # record on disk carries their descriptions, so a finished run can be read
     # back without them and run_config.json stays a page long
     recorded_config = {key: value for key, value in worker_config.items()
-                       if key not in ("climate", "config", "eu_flags")}
+                       if key not in ("climate", "config", "eu_flags", "envelopes",
+                                      "event_plan")}
+    if event_plan is not None:
+        # The per-building offsets are bulky; the slice's identity is what a
+        # reader needs to know which field produced these numbers.
+        recorded_config["microclimate"] = {
+            "slice": event_plan["slice_record"],
+            "window": event_plan["window"], "days": event_plan["days"],
+            "buildings_covered": len(event_plan["deltas"]),
+        }
     recorded_config["eu_source"] = (
         {"path": str(eu_path), "fingerprint": euf.source_fingerprint(Path(eu_path)),
          "rule_version": euf.RULE_VERSION, "annotated_references": len(eu_flags)}
@@ -1300,9 +1507,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--references-file", type=Path)
     parser.add_argument("--out-dir", type=Path, default=Path("out/stock/run"))
     parser.add_argument("--workers", type=int, default=6)
-    parser.add_argument("--gis", type=Path, default=Path(mb.NEIGHBORS_SHP))
+    # No defaults on the building inputs.  They used to point at the Valencia
+    # cadastre and its dwelling ledger, which meant that forgetting to pass a
+    # city's own files did not fail - it ran Valencia under that city's name.
+    parser.add_argument("--gis", type=Path,
+                        help="raw cadastre; requires --tipo15 alongside it")
     parser.add_argument("--tipo15", type=Path,
-                        default=Path(mb._project_root()) / "data/reference/Tipo15_soloV(in).csv")
+                        help="dwelling ledger that goes with --gis")
+    parser.add_argument("--stock", type=Path,
+                        help="a prepared stock file that already carries the "
+                             "fields the engine reads; replaces --gis/--tipo15")
+    parser.add_argument("--microclimate", type=Path,
+                        help="PALM slice directory; switches the run from an "
+                             "annual simulation to an event simulation over the "
+                             "weather file's hottest week, offset per building")
+    parser.add_argument("--height", help="which microclimate height slice to read")
+    parser.add_argument("--spinup-days", type=int,
+                        help="days of unmodified weather before a microclimate event")
     parser.add_argument("--var-dir", type=Path,
                         default=Path(mb._project_root()) / "var")
     parser.add_argument("--zero-policy", default="literal_zero",
@@ -1339,7 +1560,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.aggregate:
         rows = read_ledger(args.aggregate)
-        stock = gpd.read_file(args.gis) if args.gis.exists() else None
+        source = args.stock or args.gis
+        stock = gpd.read_file(source) if source and source.exists() else None
         if stock is not None:
             stock["refparcela"] = stock["refparcela"].astype(str).str.strip()
         report = aggregate(rows, stock)
@@ -1363,12 +1585,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         report = run_stock(
             scope=args.scope, out_dir=args.out_dir, workers=args.workers,
-            gis_path=args.gis, tipo15_path=args.tipo15, var_dir=args.var_dir,
+            gis_path=args.gis, tipo15_path=args.tipo15, stock_path=args.stock,
+            var_dir=args.var_dir,
             zero_policy=args.zero_policy, keep=args.keep, district=args.district,
             references=references or None, resume=args.resume,
             retry_failed=args.retry_failed, limit=args.limit,
             climate_path=args.climate, policy_path=args.policy,
             template_path=args.template, eu_path=args.eu,
+            microclimate_path=args.microclimate, height_token=args.height,
+            spinup_days=args.spinup_days,
             slow_seconds=args.slow_seconds)
     except vm.ProfileDrift as drift:
         print(f"REFUSED: {drift}", file=sys.stderr)

@@ -74,34 +74,72 @@ _EXPORT_LOCK = threading.Lock()
 
 @dataclass(frozen=True)
 class InputSet:
-    """The four files a stock run reads.  Resolved once, reported as one thing."""
+    """The files a stock run reads.  Resolved once, reported as one thing.
 
-    gis: Path | None
-    tipo15: Path | None
+    Two shapes of building input are supported and they demand different
+    companions:
+
+    * `gis` - a raw cadastre, which cannot say how much of a building is
+      housing, so a Tipo15 ledger is **required** alongside it and the input
+      policy derives the stock from the pair.  This is the Valencia path and it
+      behaves exactly as it always has.
+    * `stock` - a prepared, self-describing file that already carries the fields
+      the engine reads.  There is no companion to require, and the policy step
+      is skipped: the file already is the prepared stock.
+
+    Whichever is active, `climate` and `template` are always required.  That is
+    not a convenience: with no climate the frozen engine falls back to Valencia's
+    design days, barometric pressure, ground temperature and mains temperature
+    (`deep_building` lines 919-923), which would put Valencia's site inside
+    another city's results without anybody being told.
+    """
+
+    gis: Path | None = None
+    tipo15: Path | None = None
     climate: Path | None = None
     template: Path | None = None
+    stock: Path | None = None
+    microclimate: Path | None = None
+
+    @property
+    def prepared(self) -> bool:
+        """Is the building input already in the shape the engine reads?"""
+        return self.stock is not None
 
     def missing(self) -> list[str]:
-        absent = []
-        for label, path in (
-            ("gis", self.gis), ("tipo15", self.tipo15),
+        required: list[tuple[str, Path | None]] = [
             ("climate", self.climate), ("template", self.template),
-        ):
-            if path is None or not Path(path).exists():
-                absent.append(label)
-        return absent
+        ]
+        if self.prepared:
+            required.append(("stock", self.stock))
+        else:
+            required += [("gis", self.gis), ("tipo15", self.tipo15)]
+        return [label for label, path in required
+                if path is None or not Path(path).exists()]
 
 
 @lru_cache(maxsize=8)
-def _managed_climate(epw: str, ddy: str, climate_root: str) -> Path:
-    """Build once per immutable input pair; managed uploads are content-addressed."""
+def _managed_climate(epw: str, ddy: str, climate_root: str,
+                     ground_c: float | None, mains_c: float | None) -> Path:
+    """Build once per immutable input pair; managed uploads are content-addressed.
+
+    The two declared site temperatures are part of the cache key because they
+    are part of the bundle, and therefore of `climate_fingerprint`: changing a
+    declaration must produce a different climate identity, not silently reuse
+    the one built from the previous answer.
+    """
     path, _ = file_inputs.build_climate_bundle(
-        Path(epw), Path(ddy), Path(climate_root))
+        Path(epw), Path(ddy), Path(climate_root),
+        ground_temperature_c=ground_c, water_mains_temperature_c=mains_c)
     return path
 
 
 def default_inputs() -> InputSet:
-    """Resolve the six active dataset records into the runner's four inputs."""
+    """Resolve the active dataset records into the inputs a run reads.
+
+    A prepared stock, when one is active, replaces the cadastre+Tipo15 pair
+    rather than joining it: it is already the shape the engine reads.
+    """
     import model_builder as mb
     root = Path(mb._project_root())
     try:
@@ -112,17 +150,31 @@ def default_inputs() -> InputSet:
             item = db.get_dataset(str(dataset_id)) if dataset_id else None
             return Path(item["path"]) if item else None
 
+        stock = selected("stock_dataset_id")
         gis = selected("building_dataset_id")
         tipo15 = selected("tipo15_dataset_id")
         template = selected("template_dataset_id")
+        microclimate = selected("microclimate_dataset_id")
         epw = selected("weather_dataset_id")
         ddy = selected("ddy_dataset_id")
         climate_path = None
         if epw is not None and ddy is not None and epw.exists() and ddy.exists():
             var_root = Path(os.environ.get("WORKBENCH_VAR_DIR", PROJECT / "var"))
+            ground = settings.get("ground_temperature_c")
+            mains = settings.get("water_mains_temperature_c")
             climate_path = _managed_climate(
-                str(epw.resolve()), str(ddy.resolve()), str((var_root / "climates").resolve()))
-        return InputSet(gis=gis, tipo15=tipo15, climate=climate_path, template=template)
+                str(epw.resolve()), str(ddy.resolve()),
+                str((var_root / "climates").resolve()),
+                None if ground is None else float(ground),
+                None if mains is None else float(mains))
+        if stock is not None:
+            # A prepared stock is self-describing; the cadastre pair it replaces
+            # is deliberately dropped so a leftover Valencia registration cannot
+            # travel into another city's run.
+            return InputSet(stock=stock, climate=climate_path, template=template,
+                            microclimate=microclimate)
+        return InputSet(gis=gis, tipo15=tipo15, climate=climate_path,
+                        template=template, microclimate=microclimate)
     except (RuntimeError, OSError, sqlite3.Error):
         # Direct CLI/import use before Workbench bootstrap keeps the historical
         # project defaults.  The UI path always has a database and never guesses.
@@ -149,8 +201,20 @@ def profile() -> dict[str, Any]:
 # Preflight - what a run would do, before it does any of it
 # ---------------------------------------------------------------------------
 def district_options(inputs: InputSet | None = None) -> list[str]:
+    """Administrative areas this stock can be scoped by, if it names any.
+
+    A district column is Valencia's; Lecco's stock has none.  Reading it
+    unconditionally crashed the whole preflight for such a city, so its absence
+    is answered with "no districts to choose from" - which is the truth - and
+    the scope option disappears rather than the page failing.
+    """
     inputs = inputs or default_inputs()
-    stock = gpd.read_file(inputs.gis)
+    source = inputs.stock or inputs.gis
+    if source is None:
+        return []
+    stock = gpd.read_file(source)
+    if "nombre" not in stock.columns:
+        return []
     return sorted(stock["nombre"].dropna().astype(str).unique().tolist())
 
 
@@ -171,10 +235,16 @@ def preflight(scope: str, *, district: str | None = None,
     if absent:
         return {"ok": False, "missing_inputs": absent}
 
-    policy = policy or sip.StockInputPolicy()
     var_dir = Path(var_dir or (PROJECT / "var"))
-    _, stock, counters = sr.prepare_stock_file(
-        Path(inputs.gis), Path(inputs.tipo15), policy, var_dir)
+    if inputs.prepared:
+        # Already the shape the engine reads: running the cadastre policy over it
+        # would be re-deriving fields it was built to state.
+        stock = gpd.read_file(inputs.stock)
+        counters = {"stock_source_fingerprint": sr.file_sha256(Path(inputs.stock))}
+    else:
+        policy = policy or sip.StockInputPolicy()
+        _, stock, counters = sr.prepare_stock_file(
+            Path(inputs.gis), Path(inputs.tipo15), policy, var_dir)
 
     scoped = sr.select_scope(stock, scope, district=district, references=references)
     runnable, exclusions = sr.screen_geometry(scoped)
@@ -226,9 +296,21 @@ def start_run(name: str, scope: str, *, district: str | None = None,
               inputs: InputSet | None = None,
               workers: int = 6, keep: str = "full",
               resume: bool = False,
+              run_mode: str = "annual",
               log_dir: Path | None = None) -> dict[str, Any]:
     """Launch the runner as a subprocess and return what is needed to follow it."""
     inputs = inputs or default_inputs()
+    absent = inputs.missing()
+    if absent:
+        # Refuse rather than launch a run that would fill in the gap from the
+        # project's own Valencia defaults.  A missing climate is the worst of
+        # these: the engine would silently use Valencia's design days, pressure
+        # and site temperatures for whatever city this is.
+        raise ValueError(
+            f"cannot start a run without {', '.join(absent)}: the engine would "
+            "fall back to the values this project was verified on, which belong "
+            "to Valencia and not to the city being run"
+        )
     out_dir = run_directory(name)
     out_dir.mkdir(parents=True, exist_ok=True)
     log_dir = Path(log_dir or (PROJECT / "var"))
@@ -239,13 +321,22 @@ def start_run(name: str, scope: str, *, district: str | None = None,
             "--scope", scope,
             "--out-dir", str(out_dir),
             "--workers", str(workers),
-            "--keep", keep,
-            "--gis", str(inputs.gis),
-            "--tipo15", str(inputs.tipo15)]
+            "--keep", keep]
+    if inputs.prepared:
+        argv += ["--stock", str(inputs.stock)]
+    else:
+        argv += ["--gis", str(inputs.gis), "--tipo15", str(inputs.tipo15)]
     if inputs.climate is not None:
         argv += ["--climate", str(inputs.climate)]
     if inputs.template is not None:
         argv += ["--template", str(inputs.template)]
+    if run_mode == "microclimate_event":
+        if inputs.microclimate is None:
+            raise ValueError(
+                "a microclimate event run needs an activated slice; without one "
+                "there is no offset to apply and the run would just be annual"
+            )
+        argv += ["--microclimate", str(inputs.microclimate)]
     if district:
         argv += ["--district", district]
     if references:

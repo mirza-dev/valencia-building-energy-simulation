@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Building2, CheckCircle2, Clock3, MapPinned, Play, RotateCcw, Square, TerminalSquare } from 'lucide-react'
 import { api } from '../lib/api'
@@ -7,6 +7,7 @@ import type { ProductPreflight } from '../lib/types'
 import { useFeedback } from './FeedbackProvider'
 
 type Scope = 'references' | 'district' | 'all'
+type RunMode = 'annual' | 'microclimate_event'
 
 function initialRunName() {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')
@@ -17,8 +18,9 @@ export default function RunPage() {
   const queryClient = useQueryClient()
   const { notify } = useFeedback()
   const [scope, setScope] = useState<Scope>('references')
-  const [district, setDistrict] = useState('BENICALAP')
-  const [referencesText, setReferencesText] = useState('4252702YJ2745A')
+  const [runMode, setRunMode] = useState<RunMode>('annual')
+  const [district, setDistrict] = useState('')
+  const [referencesText, setReferencesText] = useState('')
   const [name, setName] = useState(initialRunName)
   const [confirmedAll, setConfirmedAll] = useState(false)
   const [preflight, setPreflight] = useState<ProductPreflight | null>(null)
@@ -37,10 +39,25 @@ export default function RunPage() {
     refetchInterval: detail.data?.running ? 2_000 : false,
   })
 
+  const settings = useQuery({ queryKey: ['project-settings'], queryFn: api.projectSettings })
+  const cityLabel = settings.data?.city_name?.trim() || 'buildings'
+  const hasDistricts = (districts.data?.districts.length ?? 0) > 0
+  const microclimateReady = Boolean(settings.data?.microclimate_dataset_id)
+  // A district scope with no districts available cannot be preflighted; fall
+  // back rather than leave the page in a state whose button does nothing.
+  useEffect(() => {
+    if (scope === 'district' && !hasDistricts) setScope('references')
+    if (!microclimateReady && runMode !== 'annual') setRunMode('annual')
+  }, [scope, hasDistricts, microclimateReady, runMode])
+  useEffect(() => {
+    if (!district && hasDistricts) setDistrict(districts.data!.districts[0])
+  }, [district, hasDistricts, districts.data])
+
   const references = useMemo(() => referencesText.split(/[\s,;]+/).map((item) => item.trim()).filter(Boolean), [referencesText])
   const payload = () => ({
     scope, district: scope === 'district' ? district : undefined,
     references: scope === 'references' ? references : undefined,
+    run_mode: runMode,
     keep: 'full' as const, workers: 6,
   })
 
@@ -89,13 +106,28 @@ export default function RunPage() {
         <header><span>NEW RUN</span><h2>1. Choose scope</h2></header>
         <div className="scope-grid" role="radiogroup" aria-label="Run scope">
           {([
-            ['references', Building2, 'Selected buildings', 'Test or reproduce exact cadastral references.'],
-            ['district', MapPinned, 'One district', 'Run every eligible building in a named district.'],
-            ['all', AlertTriangle, 'All Valencia', 'Long-running full-stock production run.'],
+            ['references', Building2, 'Selected buildings', 'Test or reproduce exact building references.'],
+            // A stock that names no administrative areas has nothing to scope
+            // by, so the option disappears instead of offering an empty list.
+            ...(hasDistricts
+              ? [['district', MapPinned, 'One district', 'Run every eligible building in a named district.'] as const]
+              : []),
+            ['all', AlertTriangle, `All ${cityLabel}`, 'Long-running full-stock production run.'],
           ] as const).map(([value, Icon, title, copy]) => <button type="button" role="radio" aria-checked={scope === value} className={scope === value ? 'active' : ''} key={value} onClick={() => { setScope(value); setPreflight(null) }}>
             <Icon size={20} /><span><strong>{title}</strong><small>{copy}</small></span>
           </button>)}
         </div>
+
+        {microclimateReady && <div className="run-mode-choice" role="radiogroup" aria-label="Run mode">
+          {([
+            ['annual', 'Annual', 'A full year on the uploaded weather file.'],
+            ['microclimate_event', 'Microclimate event', 'The weather file’s hottest week, offset per building from the active slice.'],
+          ] as const).map(([value, title, copy]) => <button type="button" role="radio" aria-checked={runMode === value}
+            className={runMode === value ? 'active' : ''} key={value}
+            onClick={() => { setRunMode(value); setPreflight(null) }}>
+            <strong>{title}</strong><small>{copy}</small>
+          </button>)}
+        </div>}
 
         <div className="run-form-grid">
           {scope === 'references' && <label className="run-field wide"><span>CADASTRAL REFERENCES</span><textarea rows={4} value={referencesText} onChange={(event) => { setReferencesText(event.target.value); setPreflight(null) }} placeholder="One or more refparcela values" /></label>}

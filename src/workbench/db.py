@@ -15,7 +15,7 @@ from typing import Any
 PROJECT = Path(__file__).resolve().parents[2]
 VAR_DIR = Path(os.environ.get("WORKBENCH_VAR_DIR", PROJECT / "var"))
 DB_PATH = Path(os.environ.get("WORKBENCH_DB_PATH", VAR_DIR / "workbench.sqlite3"))
-LATEST_SCHEMA_VERSION = 8
+LATEST_SCHEMA_VERSION = 9
 
 
 class _ClosingConnection(sqlite3.Connection):
@@ -58,9 +58,16 @@ CREATE TABLE IF NOT EXISTS project_settings (
     template_dataset_id TEXT,
     weather_dataset_id TEXT,
     ddy_dataset_id TEXT,
+    stock_dataset_id TEXT,
+    microclimate_dataset_id TEXT,
+    city_name TEXT,
+    ground_temperature_c REAL,
+    water_mains_temperature_c REAL,
     initialized INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(project_id) REFERENCES projects(id),
+    FOREIGN KEY(stock_dataset_id) REFERENCES datasets(id),
+    FOREIGN KEY(microclimate_dataset_id) REFERENCES datasets(id),
     FOREIGN KEY(building_dataset_id) REFERENCES datasets(id),
     FOREIGN KEY(neighbor_dataset_id) REFERENCES datasets(id),
     FOREIGN KEY(tipo15_dataset_id) REFERENCES datasets(id),
@@ -292,6 +299,24 @@ def _migration_8(con: sqlite3.Connection) -> None:
     _ensure_column(con, "project_settings", "ddy_dataset_id", "TEXT")
 
 
+def _migration_9(con: sqlite3.Connection) -> None:
+    """Let the product describe a city instead of assuming Valencia.
+
+    Nothing is rewritten: an existing installation keeps its cadastre + Tipo15
+    inputs and simply gains the columns that let a different city be activated.
+    `city_name` is left NULL rather than defaulted to Valencia, because a NULL
+    reads as "never stated" while a default would be an assertion nobody made.
+    """
+    _ensure_column(con, "project_settings", "stock_dataset_id", "TEXT")
+    _ensure_column(con, "project_settings", "microclimate_dataset_id", "TEXT")
+    _ensure_column(con, "project_settings", "city_name", "TEXT")
+    # The two values no weather file can supply.  Stored per project so an
+    # activated climate for a new city records what was declared for it rather
+    # than inheriting the values verified for Valencia.
+    _ensure_column(con, "project_settings", "ground_temperature_c", "REAL")
+    _ensure_column(con, "project_settings", "water_mains_temperature_c", "REAL")
+
+
 def init_db() -> None:
     VAR_DIR.mkdir(parents=True, exist_ok=True)
     with connect() as probe:
@@ -323,6 +348,8 @@ def init_db() -> None:
             _migration_7(con)
         if current < 8:
             _migration_8(con)
+        if current < 9:
+            _migration_9(con)
         con.execute(f"PRAGMA user_version={LATEST_SCHEMA_VERSION}")
         con.execute(
             "INSERT OR IGNORE INTO projects(id,name,locale,created_at) VALUES(?,?,?,?)",
@@ -466,7 +493,8 @@ def update_project_settings(values: dict[str, str | None]) -> dict[str, Any]:
     allowed = {
         "building_dataset_id", "neighbor_dataset_id",
         "tipo15_dataset_id", "template_dataset_id", "weather_dataset_id",
-        "ddy_dataset_id",
+        "ddy_dataset_id", "stock_dataset_id", "microclimate_dataset_id",
+        "city_name", "ground_temperature_c", "water_mains_temperature_c",
     }
     unknown = set(values) - allowed
     if unknown:

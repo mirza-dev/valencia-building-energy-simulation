@@ -434,10 +434,162 @@ def _source_sha256(filename: str) -> str:
 # ---------------------------------------------------------------------------
 # The one entry point for running a building
 # ---------------------------------------------------------------------------
+# Downward heat flow through a ground-contact slab: inside surface film only,
+# since the ground side has no air film.  Matches the convention the frozen
+# builder uses for its own calibrated assemblies.
+GROUND_FILM_R = 0.17
+
+
+def apply_stated_ground_slab(osm, target_u: float) -> dict:
+    """Give the ground-contact floors the U-value the stock states.
+
+    Without this the slab keeps whatever the template's construction set holds -
+    for the Spanish template, `Solera con aislante` at U 0.501 W/m2K, a value
+    measured for Valencia.  A stock that carries its own `floor_u` has a real
+    measurement for this element, and discarding it in favour of a foreign
+    default puts a Valencia number underneath another city's buildings.
+
+    Built the way the frozen builder builds its walls and roofs: real template
+    materials with one calibration layer whose thickness is solved to hit the
+    target U.  Applied after the build, which is the pattern
+    `deep_building.apply_rai_ground_regime` already uses on this very surface.
+    """
+    slab = mb._assemble_calibrated(
+        osm, f"Solera stated (U={target_u:.3f})", target_u, GROUND_FILM_R,
+        [mb._clone_template_material(osm, "Solera Hormigon Referencia"),
+         mb._clone_template_material(osm, "Mortero de cemento referencia")],
+        mb._clone_template_material(osm, "Aislante Solera Referencia B"),
+        insert_at=1)
+
+    applied = 0
+    for surface in osm.getSurfaces():
+        if (surface.surfaceType() == "Floor"
+                and surface.outsideBoundaryCondition() == "Ground"):
+            surface.setConstruction(slab)
+            applied += 1
+    if not applied:
+        raise RuntimeError("no ground-contact floor surface found to apply the slab to")
+    return {"ground_slab_construction": slab.nameString(),
+            "ground_slab_target_u": round(target_u, 4),
+            "ground_slab_surfaces": applied,
+            "source": "floor_u stated by the stock file"}
+
+
+def _simulate_with_stated_ground(refparcela: str, out_dir: Path, *,
+                                 zero_policy: db.ZeroPolicy,
+                                 gis_path: Path | None,
+                                 neighbors_path: Path | None,
+                                 provenance: dict,
+                                 climate, config,
+                                 floor_u: float | None,
+                                 event: dict | None) -> tuple[dict, bool]:
+    """`simulate_deep_building`, with the two things it has no parameter for.
+
+    Every physics call below is the frozen one, in the frozen order.  The two
+    additions are the only places a stock can say something the frozen chain
+    cannot express:
+
+    * a stated ground-slab U, applied between build and run;
+    * a microclimate event, which replaces the weather file and the run period
+      and moves the QA thresholds from annual to event.
+
+    Written here rather than added to `deep_building` because that module is
+    hash-locked: a parameter there would drift the verified profile and cost a
+    re-verification of every published number, for a branch Valencia never
+    takes.  This is the single copy in the codebase - it replaces the one that
+    used to live in the second city's own runner, now retired.
+    """
+    import shutil
+
+    import run_simulation as sim
+
+    row = db.load_building_row(refparcela, gis_path=gis_path)
+    median_ppd = None
+    if zero_policy == "cluster_median_impute":
+        median_ppd = db.cluster_people_per_dwelling(row.get("cluster"), gis_path=gis_path)
+    occupants, occupants_source = db.resolve_occupants(
+        row.get("pob_total"), row.get("num_vivend"), median_ppd, zero_policy)
+
+    neighbour_source = db.resolve_neighbour_source(gis_path, neighbors_path)
+    geom = mb.clean_polygon(row.geometry)
+    neighbours = mb.load_neighbors(geom, refparcela, neighbour_source)
+    party = mb.find_party_walls(geom, refparcela, neighbour_source, neighbors=neighbours)
+
+    osm, stats = db.build_deep_model(row, party, occupants, neighbors=neighbours,
+                                     climate=climate, config=config)
+    stats["occupants_source"] = occupants_source
+
+    if floor_u is not None:
+        stats["deep_layers"]["ground_slab"] = apply_stated_ground_slab(osm, float(floor_u))
+
+    epw_path = climate.epw_path if climate is not None else None
+    if event is not None:
+        import microclimate as mcl
+
+        epw_path = event["epw_path"]
+        stats["deep_layers"]["microclimate"] = {
+            "slice": event["slice_record"],
+            "delta_peak_k": event["delta_peak_k"],
+            "delta_base_k": event["delta_base_k"],
+            "sample_radius_m": event["sample_radius_m"],
+            "sample_cells": event["sample_cells"],
+            "run_period": mcl.apply_event_run_period(osm, event["window"]),
+            "event_epw": Path(epw_path).name,
+        }
+        mcl.request_outdoor_air_output(osm)
+
+    run_dir = Path(out_dir) / f"{refparcela}_deep"
+    if run_dir.exists():
+        shutil.rmtree(run_dir)
+    sql_path = sim.run_energyplus(osm, run_dir, epw_path=epw_path)
+
+    err_stats = db.scan_err_deep(run_dir)
+    results = db.read_end_uses_split(sql_path, stats["res_area_m2"],
+                                     stats["total_conditioned_area_m2"])
+    if event is not None:
+        import microclimate as mcl
+
+        results.update(mcl.read_site_energy_precise(sql_path, stats["res_area_m2"]))
+        checks = mcl.event_qa(
+            sim.crosscheck_energyplus(
+                sql_path, stats, unmet_max=mcl.event_unmet_allowance(event["days"])),
+            results, days=event["days"], baseline=event.get("baseline"))
+        outdoor = mcl.observed_outdoor_air(sql_path)
+        if outdoor:
+            results.update(outdoor)
+    else:
+        checks = (sim.crosscheck_energyplus(sql_path, stats,
+                                            unmet_max=sim.QA_UNMET_HOURS_MAX_HVAC)
+                  + sim.check_plausibility_cons(
+                      {"total_site_kwh_m2": results["total_site_kwh_m2"]}))
+    carbon = sim.carbon_from_enduses(
+        {"cons_heating_gas_kwh_m2": results["space_heating_gas_kwh_m2"],
+         "cons_heating_elec_kwh_m2": results["space_heating_elec_kwh_m2"],
+         "cons_cooling_kwh_m2": results["cooling_kwh_m2"],
+         "cons_fans_kwh_m2": results["fans_kwh_m2"],
+         "site_gas_kwh_m2": results["site_gas_kwh_m2"],
+         "site_elec_kwh_m2": results["site_elec_kwh_m2"]},
+        stats["res_area_m2"])
+
+    qa_passed = all(check["passed"] for check in checks)
+    summary = {"refparcela": refparcela,
+               **{k: v for k, v in stats.items()
+                  if k not in ("facade_qa", "deep_layers")},
+               **results, **carbon, **err_stats, "qa_all_passed": qa_passed,
+               "verified_profile": provenance}
+    (run_dir / "deep_layers.json").write_text(
+        json.dumps({"layers": stats["deep_layers"], "results": results,
+                    "carbon": carbon, "qa": checks, "summary": summary},
+                   ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    return summary, qa_passed
+
+
 def simulate_verified_building(refparcela: str, out_dir: Path, *,
                                zero_policy: db.ZeroPolicy = "literal_zero",
                                gis_path: Path | None = None,
                                neighbors_path: Path | None = None,
+                               floor_u: float | None = None,
+                               event: dict | None = None,
                                climate=None, config=None) -> tuple[dict, bool]:
     """Run one building with the frozen, verified model.
 
@@ -460,10 +612,19 @@ def simulate_verified_building(refparcela: str, out_dir: Path, *,
     """
     assert_profile_intact()
     record = profile_record(climate=climate, config=config)
-    summary, qa_passed = db.simulate_deep_building(
-        refparcela, Path(out_dir), zero_policy=zero_policy, gis_path=gis_path,
-        neighbors_path=neighbors_path, provenance=record,
-        climate=climate, config=config)
+    if floor_u is None and event is None:
+        # The default path, untouched.  Delegating to the frozen chain rather
+        # than to a local copy of it is what keeps every published Valencia
+        # number reproducible from this function.
+        summary, qa_passed = db.simulate_deep_building(
+            refparcela, Path(out_dir), zero_policy=zero_policy, gis_path=gis_path,
+            neighbors_path=neighbors_path, provenance=record,
+            climate=climate, config=config)
+    else:
+        summary, qa_passed = _simulate_with_stated_ground(
+            refparcela, Path(out_dir), zero_policy=zero_policy, gis_path=gis_path,
+            neighbors_path=neighbors_path, provenance=record,
+            climate=climate, config=config, floor_u=floor_u, event=event)
     run_dir = Path(out_dir) / f"{refparcela}_deep"
     if run_dir.exists():
         (run_dir / "verified_profile.json").write_text(

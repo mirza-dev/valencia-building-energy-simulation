@@ -25,8 +25,8 @@ buildings Spanish walls.  The same function states the way out:
 
     a caller that has already pinned the envelope means it
 
-so `lecco_run.py` pins each building's own U-values and this module supplies
-them.  `model_config.py` is hash-locked; adding an Italian table to it would
+so `stock_runner` pins each building's own U-values from the columns this
+module writes.  `model_config.py` is hash-locked; adding an Italian table to it would
 drift the verified Valencia profile, and Lecco is not worth that.
 
 What is measured, and what is assumed
@@ -223,8 +223,16 @@ def storeys_from_height(height_m: float | None) -> tuple[int, bool]:
 
 def extract(db_path: Path, out_path: Path, *,
             population: int = LECCO_POPULATION,
+            crs: str = LECCO_CRS,
             include_mixed: bool = False) -> gpd.GeoDataFrame:
-    """Read the database, derive the engine's columns, write the GeoPackage."""
+    """Read the database, derive the engine's columns, write the GeoPackage.
+
+    `population` and `crs` are arguments rather than constants because nothing
+    in the translation below is specific to one city: the EU building database
+    has the same shape wherever it covers, and what changes between cities is
+    the resident total to allocate and the metric projection to measure in.
+    Lecco's values remain the defaults so existing callers are unaffected.
+    """
     db_path, out_path = Path(db_path), Path(out_path)
     tabula = load_tabula_it(db_path)
 
@@ -252,7 +260,7 @@ def extract(db_path: Path, out_path: Path, *,
     if stock.empty:
         raise LeccoStockError("no residential buildings found")
 
-    stock = stock.to_crs(LECCO_CRS)
+    stock = stock.to_crs(crs)
     stock["footprint_m2"] = stock.geometry.area
 
     stock["refparcela"] = stock["building_id"].astype(str)
@@ -381,13 +389,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path,
                         default=Path("data/gis/lecco/lecco_stock.gpkg"))
     parser.add_argument("--population", type=int, default=LECCO_POPULATION)
+    parser.add_argument("--crs", default=LECCO_CRS,
+                        help="metric CRS to measure in (UTM zone for the city)")
     parser.add_argument("--include-mixed", action="store_true")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
         stock = extract(args.db, args.out, population=args.population,
-                        include_mixed=args.include_mixed)
+                        crs=args.crs, include_mixed=args.include_mixed)
     except (LeccoStockError, OSError) as exc:
         print(f"REFUSED: {exc}")
         return 2

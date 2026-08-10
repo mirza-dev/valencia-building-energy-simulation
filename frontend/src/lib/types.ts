@@ -110,6 +110,7 @@ export interface GeometryResult {
 export interface DatasetRecord {
   id: string
   kind: 'gis' | 'template' | 'weather' | 'companion' | 'tipo15' | 'ddy'
+    | 'stock' | 'eu_database' | 'microclimate'
   name: string
   path: string
   sha256: string
@@ -127,6 +128,11 @@ export interface DatasetRecord {
     field_mapping?: Record<string, string | null>
     inspection_error?: string
     contract?: string
+    buildings?: number
+    envelope_source?: 'pinned' | 'tabula_es'
+    has_district_column?: boolean
+    slice_name?: string
+    coverage_note?: string
     weather_site?: string
     annual_rows?: number
     winter_design_days?: number
@@ -293,13 +299,25 @@ export interface ProjectSettings {
   weather_dataset_id: string | null
   tipo15_dataset_id: string | null
   ddy_dataset_id: string | null
+  stock_dataset_id: string | null
+  microclimate_dataset_id: string | null
+  city_name: string | null
+  // The two site values no weather file can supply.  Held per project so an
+  // activated climate records what was declared for this city rather than
+  // inheriting the values verified for Valencia.
+  ground_temperature_c: number | null
+  water_mains_temperature_c: number | null
   updated_at: string
   datasets: Record<string, DatasetRecord | null>
 }
 
 export interface ProductProfile {
   profile: { fingerprint: string; source_hashes: Record<string, string> }
-  inputs: { gis: string | null; tipo15: string | null; climate: string | null; template: string | null }
+  inputs: {
+    gis: string | null; tipo15: string | null; stock: string | null
+    microclimate: string | null; climate: string | null; template: string | null
+  }
+  prepared_stock?: boolean
   missing_inputs: string[]
   entrypoints: Record<string, boolean>
 }

@@ -47,6 +47,12 @@ export default function OutputsPage() {
   const rejected = summary
     ? summary.buildings_failed + summary.buildings_failed_qa
     : 0
+  // The published per-cluster reference exists for Valencia only.  Showing the
+  // column for another city would print an empty comparison next to real
+  // numbers, which reads as "we measured zero difference" rather than "there is
+  // nothing here to compare against".
+  const hasReference = (summary?.by_cluster ?? []).some(
+    (row) => row.rai_consume_kwh_m2 != null)
   const exportPlanMutation = useMutation({
     mutationFn: () => api.stockExportPlan(selected),
     onSuccess: (value) => { setExportPlan(value); setExportConfirmed(false) },
@@ -84,9 +90,9 @@ export default function OutputsPage() {
         </section> : null}
 
         <section className="output-section">
-          <header><div><BarChart3 size={17} /><span><strong>Cluster totals</strong><small>Both geometric and cadastral denominators remain visible.</small></span></div></header>
-          <div className="product-table-scroll"><table className="product-table cluster-table"><thead><tr><th>Cluster</th><th>Buildings</th><th>Site energy</th><th>Geometric EUI</th><th>Cadastral EUI</th><th>Rai reference</th><th>Δ vs Rai</th></tr></thead><tbody>
-            {summary.by_cluster.map((row) => <tr key={row.cluster}><td><code>{row.cluster}</code></td><td>{row.buildings.toLocaleString()}</td><td>{number(row.total_site_gwh)} GWh</td><td>{number(row.area_weighted_kwh_m2, 1)}</td><td>{number(row.cadastral_kwh_m2, 1)}</td><td>{number(row.rai_consume_kwh_m2, 1)}</td><td className={(row.vs_rai_pct ?? 0) > 50 ? 'warn-value' : ''}>{number(row.vs_rai_pct, 1)}%</td></tr>)}
+          <header><div><BarChart3 size={17} /><span><strong>Cluster totals</strong><small>{hasReference ? 'Both geometric and cadastral denominators remain visible.' : 'No published reference exists for this stock, so no comparison column is shown.'}</small></span></div></header>
+          <div className="product-table-scroll"><table className="product-table cluster-table"><thead><tr><th>Cluster</th><th>Buildings</th><th>Site energy</th><th>Geometric EUI</th><th>Cadastral EUI</th>{hasReference && <><th>Rai reference</th><th>Δ vs Rai</th></>}</tr></thead><tbody>
+            {summary.by_cluster.map((row) => <tr key={row.cluster}><td><code>{row.cluster}</code></td><td>{row.buildings.toLocaleString()}</td><td>{number(row.total_site_gwh)} GWh</td><td>{number(row.area_weighted_kwh_m2, 1)}</td><td>{number(row.cadastral_kwh_m2, 1)}</td>{hasReference && <><td>{number(row.rai_consume_kwh_m2, 1)}</td><td className={(row.vs_rai_pct ?? 0) > 50 ? 'warn-value' : ''}>{number(row.vs_rai_pct, 1)}%</td></>}</tr>)}
           </tbody></table></div>
         </section>
       </> : <section className="output-pending"><AlertTriangle size={24} /><strong>{detail.data?.running ? 'Aggregate pending while the run continues' : 'No aggregate is available for this run'}</strong><p>The building ledger remains inspectable below.</p></section>}

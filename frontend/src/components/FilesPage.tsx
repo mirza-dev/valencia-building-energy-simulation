@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Box, CheckCircle2, CloudSun, Database, FileSpreadsheet, Fingerprint, Upload } from 'lucide-react'
+import { AlertTriangle, Box, CheckCircle2, CloudSun, Database, FileSpreadsheet, Fingerprint, Thermometer, Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
 import { api } from '../lib/api'
 import type { DatasetRecord, ProjectSettings } from '../lib/types'
@@ -8,7 +9,8 @@ import { useFeedback } from './FeedbackProvider'
 
 type SettingKey = keyof Pick<ProjectSettings,
   'building_dataset_id' | 'neighbor_dataset_id' | 'tipo15_dataset_id' |
-  'template_dataset_id' | 'weather_dataset_id' | 'ddy_dataset_id'>
+  'template_dataset_id' | 'weather_dataset_id' | 'ddy_dataset_id' |
+  'stock_dataset_id' | 'microclimate_dataset_id'>
 
 type IconType = ComponentType<SVGProps<SVGSVGElement> & { size?: number; strokeWidth?: number }>
 
@@ -21,6 +23,10 @@ function EvidenceRows({ dataset }: { dataset: DatasetRecord | null | undefined }
     {meta.rows != null && <div><dt>Rows</dt><dd>{meta.rows.toLocaleString('en-GB')}</dd></div>}
     {meta.annual_rows != null && <div><dt>Annual rows</dt><dd>{meta.annual_rows.toLocaleString('en-GB')}</dd></div>}
     {meta.crs && <div><dt>CRS</dt><dd>{meta.crs}</dd></div>}
+    {meta.buildings != null && <div><dt>Buildings</dt><dd>{meta.buildings.toLocaleString('en-GB')}</dd></div>}
+    {meta.envelope_source && <div><dt>Envelope from</dt><dd>{meta.envelope_source === 'pinned'
+      ? 'this file’s own U-values' : 'cluster → Spanish TABULA table'}</dd></div>}
+    {meta.slice_name && <div><dt>Slice</dt><dd>{meta.slice_name}</dd></div>}
     <div className="file-path-row"><dt>Managed path</dt><dd title={dataset.path}>{dataset.path}</dd></div>
   </dl>
 }
@@ -58,14 +64,16 @@ function DatasetControl({
   </div>
 }
 
-function FileCard({ icon: Icon, eyebrow, title, description, status, children }: {
-  icon: IconType; eyebrow: string; title: string; description: string; status: boolean; children: ReactNode
+function FileCard({ icon: Icon, eyebrow, title, description, status, optional, children }: {
+  icon: IconType; eyebrow: string; title: string; description: string; status: boolean
+  optional?: boolean; children: ReactNode
 }) {
-  return <article className={`file-card ${status ? 'ready' : 'missing'}`}>
+  const state = status ? 'ACTIVE' : optional ? 'NOT SET' : 'REQUIRED'
+  return <article className={`file-card ${status ? 'ready' : optional ? 'optional' : 'missing'}`}>
     <header>
       <div className="file-card-icon"><Icon size={20} strokeWidth={1.6} /></div>
       <div><span>{eyebrow}</span><h2>{title}</h2><p>{description}</p></div>
-      <div className="file-state">{status ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}{status ? 'ACTIVE' : 'REQUIRED'}</div>
+      <div className="file-state">{status ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}{state}</div>
     </header>
     {children}
   </article>
@@ -113,10 +121,34 @@ export default function FilesPage() {
   const upload = (kind: DatasetRecord['kind'], setting: SettingKey, file: File) =>
     uploadMutation.mutate({ kind, setting, file })
 
+  const usingPrepared = Boolean(active.stock_dataset_id)
+  const clearPrepared = () => activateMutation.mutate({ stock_dataset_id: null })
+  const cityName = settings.data?.city_name ?? ''
+  const [cityDraft, setCityDraft] = useState(cityName)
+  const [groundDraft, setGroundDraft] = useState('')
+  const [mainsDraft, setMainsDraft] = useState('')
+  // Server state is the source of truth; the drafts exist so typing does not
+  // fire a write per keystroke.  Re-sync whenever the server value changes.
+  useEffect(() => { setCityDraft(settings.data?.city_name ?? '') }, [settings.data?.city_name])
+  useEffect(() => {
+    setGroundDraft(settings.data?.ground_temperature_c?.toString() ?? '')
+    setMainsDraft(settings.data?.water_mains_temperature_c?.toString() ?? '')
+  }, [settings.data?.ground_temperature_c, settings.data?.water_mains_temperature_c])
+  // The pair this project was verified on keeps its measured site temperatures;
+  // stating them again would only risk changing the identity every published
+  // Valencia run resumes and compares against.
+  const usingReferenceClimate = active.weather_dataset_id?.metadata?.weather_site?.includes('VALENCIA')
+    ?? false
+  const commitTemperature = (field: 'ground_temperature_c' | 'water_mains_temperature_c', raw: string) => {
+    const current = settings.data?.[field] ?? null
+    const next = raw.trim() === '' ? null : Number(raw)
+    if (next !== null && Number.isNaN(next)) { notify('Enter a temperature in °C.', 'error'); return }
+    if (next !== current) activateMutation.mutate({ [field]: next } as Partial<ProjectSettings>)
+  }
   const ready = profile.data?.missing_inputs.length === 0 && Object.values(profile.data?.entrypoints ?? {}).every(Boolean)
   return <div className="product-page files-page">
     <header className="product-page-header">
-      <div><span>01 / INPUT CONTROL</span><h1>Files</h1><p>Validate, register and activate the four authoritative inputs used by every stock run.</p></div>
+      <div><span>01 / INPUT CONTROL</span><h1>Files</h1><p>Validate, register and activate the inputs every stock run reads. The active set decides which city is being modelled.</p></div>
       <div className={`product-readiness ${ready ? 'ready' : 'blocked'}`}>
         <span className="status-dot" />
         <div><strong>{ready ? 'RUN READY' : 'INPUTS REQUIRED'}</strong><small>{profile.data?.missing_inputs.join(', ') || 'All engine entry points and inputs resolved'}</small></div>
@@ -128,23 +160,82 @@ export default function FilesPage() {
         <Fingerprint size={18} /><div><strong>Verified profile</strong><code>{profile.data?.profile.fingerprint ?? 'loading…'}</code></div>
         <p>Files are copied into managed, content-addressed storage. A run resolves the active set once and records its fingerprints.</p>
       </section>
+
+      <section className="city-band">
+        <div className="city-identity">
+          <label>
+            <span>Active city</span>
+            <input type="text" value={cityDraft} placeholder="Name this city" disabled={busy}
+              onChange={(event) => setCityDraft(event.target.value)}
+              onBlur={() => { if (cityDraft !== cityName) activateMutation.mutate({ city_name: cityDraft || null }) }} />
+          </label>
+          <p>Runs are labelled with this name. Every run also records the stock and climate
+            fingerprints it read, so results from two cities can never be mistaken for each other.</p>
+        </div>
+        <div className="site-temperatures">
+          <span className="eyebrow">Site conditions this weather file cannot supply</span>
+          <div className="site-temperature-fields">
+            <label>
+              <span>Ground in contact with the slab (°C)</span>
+              <input type="number" step="0.1" value={groundDraft} disabled={busy}
+                placeholder={usingReferenceClimate ? '18.0 (verified)' : 'declare'}
+                onChange={(event) => setGroundDraft(event.target.value)}
+                onBlur={() => commitTemperature('ground_temperature_c', groundDraft)} />
+            </label>
+            <label>
+              <span>Water mains (°C)</span>
+              <input type="number" step="0.1" value={mainsDraft} disabled={busy}
+                placeholder={usingReferenceClimate ? '10.0 (verified)' : 'derived from the EPW'}
+                onChange={(event) => setMainsDraft(event.target.value)}
+                onBlur={() => commitTemperature('water_mains_temperature_c', mainsDraft)} />
+            </label>
+          </div>
+          <p>Neither can be read from an EPW. The ground figure follows the indoor regime, not the
+            weather; the mains figure is derived from this file's own ground temperature at 2 m
+            unless you state otherwise. Leaving them blank is only valid for the climate this
+            project was verified on — any other climate must declare them rather than inherit
+            values measured for Valencia.</p>
+        </div>
+      </section>
       <div className="file-card-grid">
-        <FileCard icon={Database} eyebrow="GEOMETRY + IDENTITY" title="Building GIS" description="Valencia cadastral footprints, reference IDs, storeys, cluster and district." status={Boolean(active.building_dataset_id)}>
-          <DatasetControl label="Active GIS" kind="gis" accept=".gpkg,.shp,.geojson,.zip" active={active.building_dataset_id} datasets={all} setting="building_dataset_id" activate={activate} upload={upload} busy={busy} />
-          <EvidenceRows dataset={active.building_dataset_id} />
+        <FileCard icon={Database} eyebrow="GEOMETRY + IDENTITY" title="Building stock"
+          description={usingPrepared
+            ? 'A prepared file that already carries what the engine reads: identity, storeys, occupancy, dwellings and construction.'
+            : 'A raw cadastre. It cannot say how much of a building is housing, so it needs the dwelling ledger below.'}
+          status={Boolean(active.stock_dataset_id ?? active.building_dataset_id)}>
+          <div className="stock-source-choice" role="group" aria-label="Building stock source">
+            <button type="button" className={usingPrepared ? '' : 'active'} disabled={busy}
+              onClick={() => clearPrepared()}>Cadastre + ledger</button>
+            <button type="button" className={usingPrepared ? 'active' : ''} disabled={busy}
+              onClick={() => { if (!usingPrepared) notify('Upload or select a prepared stock file to switch.', 'info') }}>Prepared stock</button>
+          </div>
+          {usingPrepared
+            ? <>
+                <DatasetControl label="Active stock" kind="stock" accept=".gpkg,.geojson,.json" active={active.stock_dataset_id} datasets={all} setting="stock_dataset_id" activate={activate} upload={upload} busy={busy} />
+                <EvidenceRows dataset={active.stock_dataset_id} />
+              </>
+            : <>
+                <DatasetControl label="Active cadastre" kind="gis" accept=".gpkg,.shp,.geojson,.zip" active={active.building_dataset_id} datasets={all} setting="building_dataset_id" activate={activate} upload={upload} busy={busy} />
+                <DatasetControl label="Or a prepared stock" kind="stock" accept=".gpkg,.geojson,.json" active={active.stock_dataset_id} datasets={all} setting="stock_dataset_id" activate={activate} upload={upload} busy={busy} />
+                <EvidenceRows dataset={active.building_dataset_id} />
+              </>}
         </FileCard>
-        <FileCard icon={FileSpreadsheet} eyebrow="RESIDENTIAL AREA + USE" title="Tipo15 companion" description="Cadastral 31_pc, floor, use and residential-area records joined by parcel reference." status={Boolean(active.tipo15_dataset_id)}>
-          <DatasetControl label="Active Tipo15" kind="tipo15" accept=".csv" active={active.tipo15_dataset_id} datasets={all} setting="tipo15_dataset_id" activate={activate} upload={upload} busy={busy} />
+        {!usingPrepared && <FileCard icon={FileSpreadsheet} eyebrow="RESIDENTIAL AREA + USE" title="Dwelling ledger" description="Per-dwelling floor, use and residential area, joined to the cadastre by parcel reference. Required only for a raw cadastre." status={Boolean(active.tipo15_dataset_id)}>
+          <DatasetControl label="Active ledger" kind="tipo15" accept=".csv" active={active.tipo15_dataset_id} datasets={all} setting="tipo15_dataset_id" activate={activate} upload={upload} busy={busy} />
           <EvidenceRows dataset={active.tipo15_dataset_id} />
-        </FileCard>
+        </FileCard>}
         <FileCard icon={CloudSun} eyebrow="ANNUAL + SIZING WEATHER" title="Climate pair" description="A full annual EPW plus winter and summer DDY design days; activated and validated as one pair." status={Boolean(active.weather_dataset_id && active.ddy_dataset_id)}>
           <DatasetControl label="Annual EPW" kind="weather" accept=".epw" active={active.weather_dataset_id} datasets={all} setting="weather_dataset_id" activate={activate} upload={upload} busy={busy} />
           <DatasetControl label="Design days (DDY)" kind="ddy" accept=".ddy" active={active.ddy_dataset_id} datasets={all} setting="ddy_dataset_id" activate={activate} upload={upload} busy={busy} />
           <div className="climate-evidence-grid"><EvidenceRows dataset={active.weather_dataset_id} /><EvidenceRows dataset={active.ddy_dataset_id} /></div>
         </FileCard>
-        <FileCard icon={Box} eyebrow="OPENSTUDIO SOURCE" title="PlantillaOS template" description="The authoritative library model with all required constructions, schedules and space types." status={Boolean(active.template_dataset_id)}>
+        <FileCard icon={Box} eyebrow="OPENSTUDIO SOURCE" title="PlantillaOS template" description="The library model holding every required construction, schedule and space type. Its schedules and thermostats are the operating regime the results describe." status={Boolean(active.template_dataset_id)}>
           <DatasetControl label="Active template" kind="template" accept=".osm" active={active.template_dataset_id} datasets={all} setting="template_dataset_id" activate={activate} upload={upload} busy={busy} />
           <EvidenceRows dataset={active.template_dataset_id} />
+        </FileCard>
+        <FileCard icon={Thermometer} eyebrow="OPTIONAL · EVENT RUNS" title="Microclimate slice" description="A PALM temperature field. With one active, a run can be an event over the weather file's hottest week, offset per building." status={Boolean(active.microclimate_dataset_id)} optional>
+          <DatasetControl label="Active slice" kind="microclimate" accept=".zip" active={active.microclimate_dataset_id} datasets={all} setting="microclimate_dataset_id" activate={activate} upload={upload} busy={busy} />
+          <EvidenceRows dataset={active.microclimate_dataset_id} />
         </FileCard>
       </div>
     </div>

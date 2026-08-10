@@ -70,8 +70,138 @@ def test_a_climate_we_do_not_ship_is_named_after_its_own_site(tmp_path: Path):
 
     other_ddy = tmp_path / "other.ddy"
     other_ddy.write_text(DDY.read_text(encoding="latin-1") + "\n! edited\n", encoding="latin-1")
-    other = file_inputs.climate_bundle_spec(EPW, other_ddy)
+    # No longer the pair this project was verified on, so the site temperatures
+    # have to be stated rather than inherited - see the declaration tests below.
+    other = file_inputs.climate_bundle_spec(
+        EPW, other_ddy, ground_temperature_c=18.0)
     assert other["name"].startswith("managed_")
+
+
+LECCO_STOCK = PROJECT / "data/gis/lecco/lecco_stock_v2.gpkg"
+LECCO_EPW = PROJECT / "data/weather/lecco/ITA_LM_Milano-Bergamo.Intl.AP.160760_TMYx.2009-2023.epw"
+LECCO_DDY = PROJECT / "data/weather/lecco/ITA_LM_Milano-Bergamo.Intl.AP.160760_TMYx.2009-2023.ddy"
+
+
+def _stock_frame(**overrides):
+    """A minimal contract-satisfying stock, in metres, belonging to no country."""
+    import geopandas as gpd
+    from shapely.geometry import Polygon
+
+    columns = {
+        "refparcela": ["A1", "A2"],
+        "altura_max": [3, 4],
+        "pob_total": [8, 11],
+        "num_vivend": [4, 5],
+        "wall_u": [1.1, 1.2],
+        "roof_u": [1.8, 1.9],
+        "window_u": [3.2, 3.2],
+    }
+    columns.update(overrides)
+    geometry = [
+        Polygon([(0, 0), (14, 0), (14, 14), (0, 14)]),
+        Polygon([(30, 0), (44, 0), (44, 14), (30, 14)]),
+    ]
+    return gpd.GeoDataFrame(columns, geometry=geometry, crs="EPSG:32633")
+
+
+def _write_stock(tmp_path: Path, name: str = "stock.gpkg", **overrides) -> Path:
+    path = tmp_path / name
+    _stock_frame(**overrides).to_file(path, driver="GPKG")
+    return path
+
+
+@pytest.mark.skipif(not LECCO_STOCK.exists(), reason="Lecco stock not present")
+def test_a_foreign_stock_is_accepted_on_its_own_terms():
+    """Lecco carries a pinned envelope and no Spanish district column."""
+    report = file_inputs.inspect_stock(LECCO_STOCK)
+    assert report["contract"] == "stock-v1"
+    assert report["envelope_source"] == "pinned"
+    assert report["has_district_column"] is False
+    assert report["crs"] == "EPSG:32632"
+
+
+def test_the_valencia_cadastre_still_satisfies_the_same_contract():
+    report = file_inputs.inspect_stock(PROJECT / "data/gis/DatosRai_ciudadValencia.shp")
+    assert report["envelope_source"] == "tabula_es"
+    assert report["has_district_column"] is True
+
+
+def test_a_stock_in_degrees_is_refused_rather_than_silently_empty(tmp_path: Path):
+    """Areas in square degrees fail the footprint gate for every building.
+
+    Without this check the run reports "no usable buildings in this city",
+    which reads as a data problem rather than as a projection mistake.
+    """
+    path = tmp_path / "degrees.gpkg"
+    _stock_frame().to_crs("EPSG:4326").to_file(path, driver="GPKG")
+    with pytest.raises(ValueError, match="planar measurements in metres"):
+        file_inputs.inspect_stock(path)
+
+
+def test_a_half_pinned_envelope_is_refused(tmp_path: Path):
+    """This is the exact path to Spanish walls on a building outside Spain."""
+    frame = _stock_frame().drop(columns=["window_u"])
+    path = tmp_path / "half.gpkg"
+    frame.to_file(path, driver="GPKG")
+    with pytest.raises(ValueError, match="Spanish TABULA table"):
+        file_inputs.inspect_stock(path)
+
+
+def test_a_stock_stating_no_envelope_source_at_all_is_refused(tmp_path: Path):
+    frame = _stock_frame().drop(columns=["wall_u", "roof_u", "window_u"])
+    path = tmp_path / "bare.gpkg"
+    frame.to_file(path, driver="GPKG")
+    with pytest.raises(ValueError, match="neither a usable 'cluster'"):
+        file_inputs.inspect_stock(path)
+
+
+def test_a_stock_missing_an_engine_field_names_it(tmp_path: Path):
+    frame = _stock_frame().drop(columns=["num_vivend"])
+    path = tmp_path / "short.gpkg"
+    frame.to_file(path, driver="GPKG")
+    with pytest.raises(ValueError, match="num_vivend"):
+        file_inputs.inspect_stock(path)
+
+
+@pytest.mark.skipif(not LECCO_EPW.exists(), reason="Lecco climate not present")
+def test_mains_temperature_is_derived_from_the_uploaded_weather_file():
+    """The number must come out of this city's own EPW, not out of Valencia.
+
+    13.7 C is the value the hand-written Lecco bundle states, derived by this
+    method; reproducing it proves the derivation rather than asserting it.
+    """
+    proposal = file_inputs.propose_site_temperatures(LECCO_EPW)
+    assert proposal["water_mains_temperature_c"] == 13.7
+    assert proposal["undisturbed_ground_c"]["2.0"] == 13.66
+    # Not derivable from weather at all: it follows the indoor regime.
+    assert proposal["ground_temperature_c"] is None
+
+
+@pytest.mark.skipif(not LECCO_EPW.exists(), reason="Lecco climate not present")
+def test_a_new_city_cannot_inherit_the_verified_ground_temperature_silently():
+    with pytest.raises(ValueError, match="ground_temperature_c must be declared"):
+        file_inputs.climate_bundle_spec(LECCO_EPW, LECCO_DDY)
+
+    declared = file_inputs.climate_bundle_spec(
+        LECCO_EPW, LECCO_DDY, ground_temperature_c=18.0)
+    assert declared["ground_temperature_c"] == 18.0
+    assert declared["water_mains_temperature_c"] == 13.7
+    assert declared["name"].startswith("managed_")
+
+
+def test_the_reference_pair_keeps_its_verified_site_temperatures():
+    """Deriving these for Valencia would break every published run.
+
+    This EPW's own 2 m ground temperature averages 17.2 C.  Writing that into a
+    re-upload of the pair the project was verified on would change
+    `climate_fingerprint`, and the shipped Benicalap run could then neither
+    resume nor compare against an uploaded copy of its own climate.
+    """
+    assert file_inputs.propose_site_temperatures(EPW)["water_mains_temperature_c"] == 17.2
+
+    spec = file_inputs.climate_bundle_spec(EPW, DDY)
+    assert spec["water_mains_temperature_c"] == 10.0
+    assert spec["ground_temperature_c"] == 18.0
 
 
 def test_tipo15_and_ddy_uploads_are_verified_and_activatable():

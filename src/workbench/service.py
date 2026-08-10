@@ -1602,7 +1602,90 @@ def _inspect_uploaded_dataset(kind: str, source: Path) -> dict[str, Any]:
             "bound_roles": len(report["found"]),
             "missing_optional_roles": [item["role"] for item in report["missing"]],
         }
+    if kind == "stock":
+        return file_inputs.inspect_stock(source)
+    if kind == "microclimate":
+        return _inspect_microclimate(source)
     return {}
+
+
+def _inspect_microclimate(source: Path) -> dict[str, Any]:
+    """Validate a PALM slice with the loader that will actually read it.
+
+    `microclimate.load_slice` is already fail-closed - it demands the metadata,
+    exactly one `ta_max`/`ta_min` raster, a declared CRS and a matching grid -
+    so it is called here rather than restated.  A slice arrives as a directory
+    or a zip of one; both are reduced to the directory the loader wants.
+    """
+    import microclimate as mcl
+
+    directory = source
+    if source.is_file() and source.suffix.lower() == ".zip":
+        staged = IMPORT_ROOT / f".microclimate-{uuid.uuid4().hex}"
+        try:
+            with zipfile.ZipFile(source) as archive:
+                for member in archive.namelist():
+                    resolved = (staged / member).resolve()
+                    if staged.resolve() not in resolved.parents and resolved != staged.resolve():
+                        raise ValueError(f"microclimate archive escapes its directory: {member}")
+                archive.extractall(staged)
+            directory = _slice_root(staged)
+            slice_ = mcl.load_slice(directory)
+        finally:
+            shutil.rmtree(staged, ignore_errors=True)
+    else:
+        slice_ = mcl.load_slice(directory)
+    record = slice_.record()
+    return {
+        "contract": "palm-slice-v1",
+        "slice_name": record.get("name"),
+        "slice_fingerprint": record.get("fingerprint"),
+        "crs": record.get("crs"),
+        "coverage_note": record.get("coverage_note"),
+    }
+
+
+def ingest_eu_database(dataset_id: str, name: str, *, population: int,
+                       crs: str, include_mixed: bool = False) -> dict[str, Any]:
+    """Turn a registered EU building database into a registered stock file.
+
+    The translation itself is `lecco_stock.extract`, which is a data adapter and
+    not a second pipeline: it maps one source's shape onto the fields the engine
+    reads.  Wiring it here is what lets a city be brought in from the interface
+    instead of from a terminal, and the product of one step becomes the input of
+    the next - the stock it writes is registered exactly like an uploaded one and
+    goes through the same contract.
+    """
+    import lecco_stock
+
+    source = db.get_dataset(dataset_id)
+    if source is None or source.get("kind") != "eu_database":
+        raise ValueError(f"{dataset_id} is not a registered EU building database")
+
+    target_dir = IMPORT_ROOT / f"derived-{dataset_id}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    out_path = target_dir / f"{Path(str(source['path'])).stem}_stock.gpkg"
+    if out_path.exists():
+        out_path.chmod(0o644)
+        out_path.unlink()
+    lecco_stock.extract(Path(str(source["path"])), out_path,
+                        population=population, crs=crs,
+                        include_mixed=include_mixed)
+    out_path.chmod(0o444)
+
+    # Registered through the same door as an upload, so the stock contract is
+    # enforced on a derived file exactly as on one somebody hands us.
+    return import_dataset("stock", name, out_path, original_name=out_path.name)
+
+
+def _slice_root(staged: Path) -> Path:
+    """A zip made from a folder nests everything one level down; accept both."""
+    if (staged / "meta.json").is_file():
+        return staged
+    children = [child for child in staged.iterdir() if child.is_dir()]
+    if len(children) == 1 and (children[0] / "meta.json").is_file():
+        return children[0]
+    return staged
 
 
 def import_dataset(kind: str, name: str, source: Path, *, original_name: str | None = None) -> dict[str, Any]:

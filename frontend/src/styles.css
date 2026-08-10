@@ -1545,6 +1545,38 @@ button:disabled { opacity: .5; }
 .file-card { min-width: 0; background: #fafbf8; border: 1px solid var(--line-strong); box-shadow: 0 3px 10px rgba(29,43,36,.035); }
 .file-card.ready { border-top: 3px solid #648b73; }
 .file-card.missing { border-top: 3px solid var(--amber); }
+/* Optional inputs must not read as something the run is waiting for. */
+.file-card.optional { border-top: 3px solid var(--line-strong); }
+.file-card.optional .file-state { color: #7f8f89; }
+
+/* Which city the active files describe, and the two site values no weather
+   file can supply.  Both sit above the cards because they qualify all of them. */
+.city-band { margin-bottom: 12px; padding: 13px; display: grid; grid-template-columns: minmax(240px,.85fr) 1fr; gap: 16px; background: #fafbf8; border: 1px solid var(--line-strong); border-left: 3px solid #245e64; }
+.city-band p { margin: 6px 0 0; color: #6d7f79; font-size: 10px; line-height: 1.45; }
+.city-identity label { display: grid; gap: 4px; }
+.city-identity label > span { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: #6d7f79; }
+.city-identity input { padding: 6px 8px; font-size: 12px; border: 1px solid var(--line-strong); background: white; }
+.site-temperatures .eyebrow { font-size: 9px; letter-spacing: .07em; text-transform: uppercase; color: #6d7f79; }
+.site-temperature-fields { margin-top: 6px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.site-temperature-fields label { display: grid; gap: 4px; }
+.site-temperature-fields span { font-size: 9.5px; color: #45564f; line-height: 1.3; }
+.site-temperature-fields input { padding: 6px 8px; font-size: 12px; border: 1px solid var(--line-strong); background: white; }
+
+/* Which shape the building input takes; the two are alternatives, not a pair. */
+.stock-source-choice { margin: 0 14px 10px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.stock-source-choice button { padding: 6px 8px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: #45564f; background: #f0f3ee; border: 1px solid var(--line-strong); cursor: pointer; }
+.stock-source-choice button.active { color: white; background: #245e64; border-color: #245e64; }
+
+.run-mode-choice { margin-bottom: 12px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.run-mode-choice button { padding: 9px 11px; display: grid; gap: 2px; text-align: left; background: #fafbf8; border: 1px solid var(--line-strong); cursor: pointer; }
+.run-mode-choice button.active { background: #17302f; border-color: #17302f; }
+.run-mode-choice button.active strong, .run-mode-choice button.active small { color: #eef3ec; }
+.run-mode-choice strong { font-size: 11px; }
+.run-mode-choice small { color: #6d7f79; font-size: 9.5px; line-height: 1.35; }
+
+@media (max-width: 1100px) {
+  .city-band { grid-template-columns: 1fr; }
+}
 .file-card > header { min-height: 106px; padding: 14px; display: grid; grid-template-columns: 36px 1fr auto; align-items: start; gap: 10px; border-bottom: 1px solid var(--line); }
 .file-card-icon { width: 34px; height: 34px; display: grid; place-items: center; color: white; background: #245e64; }
 .file-card > header > div:nth-child(2) { display: grid; gap: 3px; }

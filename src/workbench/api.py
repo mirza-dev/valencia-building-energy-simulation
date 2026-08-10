@@ -79,6 +79,7 @@ from workbench.service import (
     commit_preview,
     export_run,
     import_dataset,
+    ingest_eu_database as service_ingest_eu_database,
     get_project_settings,
     normalize_gis_dataset,
     preview_detail,
@@ -313,7 +314,10 @@ def datasets():
 
 @app.post("/api/datasets")
 async def upload_dataset(
-    kind: Literal["gis", "tipo15", "template", "weather", "ddy"] = Form(...),
+    kind: Literal[
+        "gis", "tipo15", "template", "weather", "ddy",
+        "stock", "eu_database", "microclimate",
+    ] = Form(...),
     name: str = Form(...),
     file: UploadFile = File(...),
 ):
@@ -330,6 +334,11 @@ async def upload_dataset(
         "template": {".osm"},
         "weather": {".epw"},
         "ddy": {".ddy"},
+        # A stock file is self-describing: it carries the fields the engine
+        # reads, so no companion ledger is required alongside it.
+        "stock": {".gpkg", ".geojson", ".json"},
+        "eu_database": {".db", ".sqlite", ".sqlite3", ".gpkg"},
+        "microclimate": {".zip"},
     }
     if suffix not in allowed[kind]:
         raise HTTPException(status_code=422, detail=f"Unsupported {kind} file type: {suffix}")
@@ -1496,11 +1505,38 @@ def stock_profile():
             "inputs": {
                 "gis": str(inputs.gis) if inputs.gis else None,
                 "tipo15": str(inputs.tipo15) if inputs.tipo15 else None,
+                "stock": str(inputs.stock) if inputs.stock else None,
+                "microclimate": str(inputs.microclimate) if inputs.microclimate else None,
                 "climate": str(inputs.climate) if inputs.climate else None,
                 "template": str(inputs.template) if inputs.template else None,
             },
+            "prepared_stock": inputs.prepared,
             "missing_inputs": inputs.missing(),
             "entrypoints": stock_adapter.entrypoints_present()}
+
+
+@app.post("/api/datasets/{dataset_id}/ingest")
+def ingest_dataset(dataset_id: str, payload: dict):
+    """Derive an engine-ready stock file from a registered source database."""
+    population = payload.get("population")
+    crs = str(payload.get("crs") or "").strip()
+    if not isinstance(population, int) or population <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="a resident population is required: it is allocated across the "
+                   "stock, so the city total decides every building's occupancy")
+    if not crs:
+        raise HTTPException(
+            status_code=422,
+            detail="a metric CRS is required: footprint area, party-wall overlap "
+                   "and the neighbour radius are planar measurements in metres")
+    try:
+        return service_ingest_eu_database(
+            dataset_id, str(payload.get("name") or f"stock from {dataset_id}"),
+            population=population, crs=crs,
+            include_mixed=bool(payload.get("include_mixed")))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/stock/districts")
@@ -1565,13 +1601,17 @@ def stock_start(payload: dict):
         if not capacity["allowed"]:
             raise _stock_bad_request(
                 f"not enough protected disk for this run: {capacity['reason']}")
+        run_mode = str(payload.get("run_mode") or "annual")
+        if run_mode not in ("annual", "microclimate_event"):
+            raise _stock_bad_request(f"unknown run mode: {run_mode!r}")
         started = stock_adapter.start_run(
             name, scope,
             district=payload.get("district"),
             references=payload.get("references") or None,
             workers=int(payload.get("workers") or 6),
             keep=str(payload.get("keep") or "full"),
-            resume=bool(payload.get("resume")))
+            resume=bool(payload.get("resume")),
+            run_mode=run_mode)
     except ValueError as exc:
         raise _stock_bad_request(str(exc)) from exc
     return {"started": started, "estimate": estimate}
