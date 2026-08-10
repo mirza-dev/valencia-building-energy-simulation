@@ -27,8 +27,12 @@ export function summarizeDiffValue(field: string, value: unknown): string {
     if (!value.length) return 'No authored edits'
     const operations = new Map<string, number>()
     for (const item of value) {
-      const op = typeof item === 'object' && item && 'op' in item
-        ? String((item as { op?: unknown }).op ?? 'unknown') : 'unknown'
+      const record = typeof item === 'object' && item ? item as {
+        op?: unknown
+        patch?: { op?: unknown }
+        report?: { op?: unknown }
+      } : null
+      const op = String(record?.op ?? record?.patch?.op ?? record?.report?.op ?? 'unknown')
       operations.set(op, (operations.get(op) ?? 0) + 1)
     }
     const breakdown = [...operations.entries()].map(([op, count]) => `${op} × ${count}`).join(' · ')
