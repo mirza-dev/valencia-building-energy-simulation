@@ -57,6 +57,7 @@ import pandas as pd
 
 import climate as cl
 import deep_building as db
+import eu_footprint_flags as euf
 import model_builder as mb
 import stock_input_policy as sip
 import template_contract as tpl
@@ -469,6 +470,10 @@ def run_one(task: tuple[str, str | None] | str) -> dict:
     row = {**base, "status": status, "seconds": round(time.time() - started, 1),
            "pruned_bytes": freed, "model_osm": model_path}
     row.update({key: summary.get(key) for key in LEDGER_METRICS if key in summary})
+    # Geometric annotation, not a simulation result: it was computed before the
+    # run started and reaches the row without passing through the model.  Off
+    # unless --eu was given, so a ledger written without it is unchanged.
+    row.update(_WORKER.get("eu_flags", {}).get(refparcela, {}))
     return row
 
 
@@ -717,6 +722,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
                                           if r.get("status") == "excluded"),
                 "coverage": coverage_block(rows, ok, stock),
                 "zoning": zoning_block(pd.DataFrame(ok)),
+                "fragmentation": euf.fragmentation_block(pd.DataFrame(ok)),
                 "qa_failed": 0,
                 "unexplained_severes": 0,
                 "implausible_occupancy": 0,
@@ -852,6 +858,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
         "buildings_excluded": sum(1 for r in rows if r.get("status") == "excluded"),
         "coverage": coverage_block(rows, ok, stock),
         "zoning": zoning_block(frame),
+        "fragmentation": euf.fragmentation_block(frame),
         "qa_failed": int((~frame["qa_all_passed"].astype(bool)).sum())
         if "qa_all_passed" in frame else 0,
         "unexplained_severes": int(frame.get("severes_unexplained",
@@ -1033,6 +1040,7 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
               climate_path: Path | None = None,
               policy_path: Path | None = None,
               template_path: Path | None = None,
+              eu_path: Path | None = None,
               slow_seconds: float = 900.0) -> dict:
     # a drifted profile must stop the run before a single building is written
     vm.assert_profile_intact()
@@ -1072,6 +1080,18 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
              len(stock), counters["imputed_floor_buildings"],
              counters["residential_area_proxy_buildings"],
              counters["duplicate_parcel_rows"])
+
+    # Geometric annotation only.  Computed once here, handed to the workers as
+    # data, and merged into the ledger row after the simulation has already
+    # returned - it cannot reach the model.  Absent unless asked for, so the
+    # distributed product (which ships no EU file) runs exactly as before.
+    eu_flags: dict[str, dict] = {}
+    if eu_path is not None:
+        eu_flags = euf.flags_by_reference(stock, Path(eu_path))
+        multi = sum(1 for f in eu_flags.values() if f.get("eu_multi_footprint"))
+        log.info("[eu] %s | %s parcels carry >=2 EU footprints (%.2f %%) | "
+                 "flag only, no physics changes",
+                 Path(eu_path).name, multi, 100.0 * multi / max(len(eu_flags), 1))
 
     scoped = select_scope(stock, scope, district=district, references=references)
     runnable, excluded = screen_geometry(scoped)
@@ -1122,12 +1142,20 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
         # files 26 452 times
         "climate": climate,
         "config": config,
+        "eu_flags": eu_flags,
         **fingerprints,
     }
     # the worker config carries live objects; the record on disk carries their
     # descriptions, so a finished run can always be read back without them
+    # the worker config carries 26 452 flag dicts and two live objects; the
+    # record on disk carries their descriptions, so a finished run can be read
+    # back without them and run_config.json stays a page long
     recorded_config = {key: value for key, value in worker_config.items()
-                       if key not in ("climate", "config")}
+                       if key not in ("climate", "config", "eu_flags")}
+    recorded_config["eu_source"] = (
+        {"path": str(eu_path), "fingerprint": euf.source_fingerprint(Path(eu_path)),
+         "rule_version": euf.RULE_VERSION, "annotated_references": len(eu_flags)}
+        if eu_path is not None else None)
     (out_dir / "run_config.json").write_text(
         json.dumps({"scope": scope, "district": district, "workers": workers,
                     "zero_policy": zero_policy, "keep": keep,
@@ -1216,6 +1244,13 @@ def _print_report(report: dict) -> None:
             print(f"  cadastral area  {totals.get('tipo15_residential_area_m2', 0):,.0f} m² | "
                   f"area-weighted {totals['cadastral_total_site_kwh_m2']} kWh/m² "
                   f"(Rai's basis - what vs-Rai uses)")
+    frag = report.get("fragmentation") or {}
+    if frag.get("buildings_measured"):
+        print(f"  multi-mass parcels {frag['buildings']} "
+              f"({frag['buildings_pct']}% of buildings, "
+              f"{frag['residential_area_pct']}% of area, "
+              f"{frag['total_site_pct']}% of site energy) "
+              f"- flag only, measured on {frag['buildings_measured']}")
     if report.get("seconds_per_building"):
         spb = report["seconds_per_building"]
         print(f"  per building: median {spb['median']}s | mean {spb['mean']}s | max {spb['max']}s")
@@ -1262,6 +1297,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="stock input policy JSON (column names and rules)")
     parser.add_argument("--template", type=Path,
                         help="template .osm, or a JSON spec with an alias map")
+    parser.add_argument("--eu", type=Path,
+                        help="EU building footprints (category-1 GeoPackage); "
+                             "adds the sub-footprint fragmentation FLAG to every "
+                             "ledger row.  Changes no physics - omit it and the "
+                             "run is byte-identical to one without this option")
     parser.add_argument("--slow-seconds", type=float, default=900.0,
                         help="warn when a building has been running this long "
                              "(0 disables); reporting only, nothing is killed")
@@ -1311,11 +1351,13 @@ def main(argv: list[str] | None = None) -> int:
             references=references or None, resume=args.resume,
             retry_failed=args.retry_failed, limit=args.limit,
             climate_path=args.climate, policy_path=args.policy,
-            template_path=args.template, slow_seconds=args.slow_seconds)
+            template_path=args.template, eu_path=args.eu,
+            slow_seconds=args.slow_seconds)
     except vm.ProfileDrift as drift:
         print(f"REFUSED: {drift}", file=sys.stderr)
         return 2
-    except (cl.ClimateError, tpl.TemplateError, sip.StockPolicyError) as bad_input:
+    except (cl.ClimateError, tpl.TemplateError, sip.StockPolicyError,
+            euf.EuSourceError) as bad_input:
         print(f"REFUSED: {bad_input}", file=sys.stderr)
         return 2
     except InputMismatch as mismatch:
