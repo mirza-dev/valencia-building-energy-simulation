@@ -300,10 +300,13 @@ def reference_ratio(report: dict, aggregate_path: Path) -> dict:
     ours = sum(b["total_site_gwh"] for b in covered) * 1e6
     theirs = sum(b["rai_consume_kwh_m2"] * b["cadastral_area_m2"] for b in covered)
     lo, hi = report["energy"]["band_pct"]
+    # Against the aggregate's own total, not the report's: the report may have
+    # excluded proxied buildings, and dividing by that subset would read as
+    # more than 100 % coverage.
+    district = sum(b["total_site_gwh"] for b in aggregate["by_cluster"]) * 1e6
     return {
         "clusters_covered": len(covered),
-        "share_of_district_energy_pct": round(
-            100.0 * ours / (report["energy"]["total_gwh"] * 1e6), 1),
+        "share_of_district_energy_pct": round(100.0 * ours / district, 1),
         "reference_gwh": round(theirs / 1e6, 4),
         "published_ratio": round(ours / theirs, 4),
         "ratio_without_rounding_excess": [round(ours * (1 - hi / 100) / theirs, 4),
