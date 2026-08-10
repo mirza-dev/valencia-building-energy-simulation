@@ -223,7 +223,14 @@ SETTING_KINDS = {
     "template_dataset_id": "template",
     "weather_dataset_id": "weather",
     "ddy_dataset_id": "ddy",
+    "stock_dataset_id": "stock",
+    "microclimate_dataset_id": "microclimate",
 }
+
+# Settings that describe the city rather than point at a file.  They go through
+# the same endpoint because they qualify every run in the same way, but they
+# must not be looked up in the dataset table.
+SETTING_VALUES = ("city_name", "ground_temperature_c", "water_mains_temperature_c")
 
 
 def get_project_settings() -> dict[str, Any]:
@@ -235,8 +242,31 @@ def get_project_settings() -> dict[str, Any]:
     return settings
 
 
+def _is_metric_crs(crs_text: str) -> bool:
+    """Does this CRS measure in metres?
+
+    Asked of the declaration rather than of one particular EPSG code: Valencia
+    is 25830, Lecco 32632, and a third city is its own UTM zone.  What the
+    engine needs is planar metres, not Spain.
+    """
+    if not crs_text:
+        return False
+    try:
+        from pyproj import CRS
+
+        crs = CRS.from_user_input(crs_text)
+    except Exception:                      # noqa: BLE001 - unparseable is not metric
+        return False
+    if crs.is_geographic:
+        return False
+    units = {axis.unit_name for axis in crs.axis_info}
+    return bool(units) and units <= {"metre", "meter"}
+
+
 def set_project_settings(values: dict[str, str | None]) -> dict[str, Any]:
     for field, dataset_id in values.items():
+        if field in SETTING_VALUES:
+            continue
         if field not in SETTING_KINDS:
             raise ValueError(f"Unknown project setting: {field}")
         if dataset_id is None:
@@ -258,8 +288,14 @@ def set_project_settings(values: dict[str, str | None]) -> dict[str, Any]:
                 raise ValueError(
                     f"GIS dataset must be normalized before activation; missing {', '.join(sorted(missing))}"
                 )
-            if "25830" not in str(metadata.get("crs", "")):
-                raise ValueError("Active GIS datasets must use EPSG:25830; normalize the dataset first")
+            crs_text = str(metadata.get("crs", ""))
+            if not _is_metric_crs(crs_text):
+                raise ValueError(
+                    f"Active GIS datasets must be in a projected CRS whose unit is "
+                    f"the metre; this one declares {crs_text or 'no CRS'}. Footprint "
+                    f"area, party-wall overlap and the neighbour radius are planar "
+                    f"measurements, so a geographic CRS silently excludes every "
+                    f"building. Reproject to the city's UTM zone.")
     resolved = db.project_settings() | values
     weather_id = resolved.get("weather_dataset_id")
     ddy_id = resolved.get("ddy_dataset_id")
@@ -268,7 +304,12 @@ def set_project_settings(values: dict[str, str | None]) -> dict[str, Any]:
         ddy = db.get_dataset(str(ddy_id))
         if weather is None or ddy is None:
             raise KeyError(weather_id if weather is None else ddy_id)
-        _validate_climate_pair(Path(weather["path"]), Path(ddy["path"]))
+        declared_ground = resolved.get("ground_temperature_c")
+        declared_mains = resolved.get("water_mains_temperature_c")
+        _validate_climate_pair(
+            Path(weather["path"]), Path(ddy["path"]),
+            ground_temperature_c=None if declared_ground is None else float(declared_ground),
+            water_mains_temperature_c=None if declared_mains is None else float(declared_mains))
     _read_gdf.cache_clear()
     if values:
         db.update_project_settings(values)
@@ -1579,11 +1620,22 @@ def _extract_zipped_shapefile(source: Path, staging: Path) -> Path:
         raise
 
 
-def _validate_climate_pair(epw: Path, ddy: Path) -> dict[str, Any]:
+def _validate_climate_pair(epw: Path, ddy: Path, *,
+                           ground_temperature_c: float | None = None,
+                           water_mains_temperature_c: float | None = None) -> dict[str, Any]:
+    """Build the bundle this pair would produce, so a bad one is caught on activation.
+
+    The declared site temperatures have to travel with it.  Without them this
+    refused every climate except the one the project was verified on, because
+    the bundle builder rightly will not invent a ground temperature - the
+    declaration was in the same request, just not passed down.
+    """
     mutable = runtime_environment()["mutable_paths"]
     assert isinstance(mutable, dict)
     _, record = file_inputs.build_climate_bundle(
-        epw, ddy, Path(str(mutable["var_dir"])) / "climates")
+        epw, ddy, Path(str(mutable["var_dir"])) / "climates",
+        ground_temperature_c=ground_temperature_c,
+        water_mains_temperature_c=water_mains_temperature_c)
     return record
 
 

@@ -47,6 +47,15 @@ class ProjectSettingsRequest(StrictRequest):
     template_dataset_id: str | None = None
     weather_dataset_id: str | None = None
     ddy_dataset_id: str | None = None
+    stock_dataset_id: str | None = None
+    microclimate_dataset_id: str | None = None
+    # Not datasets: what this city is called, and the two site temperatures no
+    # weather file can supply.  They are settings because they qualify every
+    # run, and they are nullable because "never stated" is a real answer that
+    # must not be confused with a value someone chose.
+    city_name: str | None = None
+    ground_temperature_c: float | None = None
+    water_mains_temperature_c: float | None = None
 
 
 class StockInputPolicyFields(StrictRequest):

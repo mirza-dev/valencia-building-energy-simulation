@@ -22,6 +22,11 @@ import pytest
 PROJECT = Path(__file__).resolve().parents[1]
 LECCO_STOCK = PROJECT / "data/gis/lecco/lecco_stock_v2.gpkg"
 LECCO_CLIMATE = PROJECT / "climates/lecco_bergamo_tmyx.json"
+_LECCO_WEATHER = PROJECT / "data/weather/lecco"
+LECCO_CLIMATE_FILES = (
+    _LECCO_WEATHER / "ITA_LM_Milano-Bergamo.Intl.AP.160760_TMYx.2009-2023.epw",
+    _LECCO_WEATHER / "ITA_LM_Milano-Bergamo.Intl.AP.160760_TMYx.2009-2023.ddy",
+)
 
 # What Valencia contributes that must never reach another city.
 VALENCIA_GIS = PROJECT / "data/gis/DatosRai_ciudadValencia.shp"
@@ -228,6 +233,91 @@ def test_a_foreign_city_runs_with_the_valencia_files_hidden(tmp_path: Path):
          / "deep_layers.json").read_text(encoding="utf-8"))
     weather = json.dumps(layers["layers"].get("weather", {}))
     assert "Valencia" not in weather and "VALENCIA" not in weather
+
+
+# ---------------------------------------------------------------------------
+# The product path
+# ---------------------------------------------------------------------------
+@requires_lecco
+def test_a_second_city_can_be_activated_through_the_api():
+    """Upload, declare, activate, preflight - the path a person actually takes.
+
+    Every piece of this was unit-tested and the whole still refused, because the
+    activation endpoint validated the climate pair without passing on the
+    declaration that arrived in the same request.  The units cannot see that;
+    only the assembled path can.
+    """
+    from fastapi.testclient import TestClient
+
+    from workbench import db
+    from workbench.api import app
+
+    epw, ddy = LECCO_CLIMATE_FILES
+    with TestClient(app) as client:
+        original = client.get("/api/project/settings").json()
+        try:
+            stock = client.post(
+                "/api/datasets", data={"kind": "stock", "name": "second city stock"},
+                files={"file": (LECCO_STOCK.name, LECCO_STOCK.read_bytes(),
+                                "application/octet-stream")})
+            assert stock.status_code == 200, stock.text
+            assert stock.json()["metadata"]["envelope_source"] == "pinned"
+
+            weather = client.post(
+                "/api/datasets", data={"kind": "weather", "name": "second city EPW"},
+                files={"file": (epw.name, epw.read_bytes(), "text/plain")})
+            design = client.post(
+                "/api/datasets", data={"kind": "ddy", "name": "second city DDY"},
+                files={"file": (ddy.name, ddy.read_bytes(), "text/plain")})
+            assert weather.status_code == 200 and design.status_code == 200
+
+            # Without the declaration the activation must refuse rather than
+            # quietly write Valencia's verified 18.0 C into another city.
+            refused = client.patch("/api/project/settings", json={
+                "weather_dataset_id": weather.json()["id"],
+                "ddy_dataset_id": design.json()["id"]})
+            assert refused.status_code == 422
+            assert "ground_temperature_c must be declared" in refused.text
+
+            activated = client.patch("/api/project/settings", json={
+                "stock_dataset_id": stock.json()["id"],
+                "weather_dataset_id": weather.json()["id"],
+                "ddy_dataset_id": design.json()["id"],
+                "city_name": "Second City", "ground_temperature_c": 18.0})
+            assert activated.status_code == 200, activated.text
+            assert activated.json()["city_name"] == "Second City"
+
+            profile = client.get("/api/stock/profile").json()
+            assert profile["prepared_stock"] is True
+            assert profile["missing_inputs"] == []
+            # No dwelling ledger is required, and no district scope is offered.
+            assert profile["inputs"]["tipo15"] is None
+            assert client.get("/api/stock/districts").json()["districts"] == []
+
+            bundle = json.loads(Path(profile["inputs"]["climate"]).read_text(encoding="utf-8"))
+            assert bundle["water_mains_temperature_c"] == 13.7, (
+                "the mains temperature must come from this city's own EPW, not "
+                "from the 10.0 C measured for Valencia")
+
+            preflight = client.post("/api/stock/preflight", json={"scope": "clusters"}).json()
+            assert preflight["ok"] is True and preflight["runnable"] > 0
+        finally:
+            client.patch("/api/project/settings", json={
+                key: original.get(key) for key in (
+                    "stock_dataset_id", "weather_dataset_id", "ddy_dataset_id",
+                    "city_name", "ground_temperature_c")})
+            db.project_settings()
+
+
+def test_a_cadastre_gate_asks_for_metres_not_for_spain():
+    """Another country's cadastre is in another UTM zone, and that is fine."""
+    from workbench import service
+
+    assert service._is_metric_crs("EPSG:25830")     # Valencia
+    assert service._is_metric_crs("EPSG:32632")     # Lecco
+    assert service._is_metric_crs("EPSG:32633")     # somewhere else
+    assert not service._is_metric_crs("EPSG:4326")  # degrees
+    assert not service._is_metric_crs("")
 
 
 # ---------------------------------------------------------------------------
