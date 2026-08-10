@@ -27,6 +27,12 @@ def _require_ready() -> dict[str, Any]:
 def lhs_preflight() -> dict[str, Any]:
     capability = _require_ready()
     result = inspect_lhs()
+    expected = (capability.get("contract") or {}).get("expected") or {}
+    result["accepted_reference"] = {
+        "n": expected.get("n"),
+        "seed": expected.get("seed"),
+        "statistics": expected.get("statistics") or {},
+    }
     result["capability"] = {
         "version": capability.get("version"),
         "runner_sha256": capability.get("contract", {}).get("runner_sha256"),
@@ -186,7 +192,34 @@ def lhs_detail(run_id: str) -> dict[str, Any]:
         json.loads(result_path.read_text(encoding="utf-8"))
         if verification["ok"] and result_path.exists() else None
     )
-    return run | {"result": result, "verification": verification}
+    compatibility = _current_input_compatibility(result)
+    return run | {
+        "result": result,
+        "verification": verification,
+        "current_compatibility": compatibility,
+    }
+
+
+def _current_input_compatibility(result: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep artifact integrity separate from whether a run is today's baseline.
+
+    Historical LHS artifacts remain immutable and VERIFIED.  They must not,
+    however, be presented as the current accepted baseline after any snapshotted
+    runner, model, weather or input has changed.
+    """
+    stored = ((result or {}).get("settings") or {}).get("input_snapshot_hashes") or {}
+    if not stored:
+        return {"current": False, "changed_roles": ["input_snapshot_hashes"]}
+    changed: list[str] = []
+    for role, (path, kind) in source_paths().items():
+        try:
+            current = integrity.snapshot_descriptor(path, kind=kind)["snapshot_hash"]
+        except (FileNotFoundError, OSError, ValueError):
+            changed.append(role)
+            continue
+        if stored.get(role) != current:
+            changed.append(role)
+    return {"current": not changed, "changed_roles": changed}
 
 
 def list_lhs_runs() -> list[dict[str, Any]]:

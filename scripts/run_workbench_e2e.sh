@@ -10,13 +10,19 @@ fi
 export WORKBENCH_E2E_RUN_ID="${WORKBENCH_E2E_RUN_ID:-$(date +%s)-$$-$RANDOM}"
 export WORKBENCH_E2E_BASE="${WORKBENCH_E2E_BASE:-${PROJECT_DIR:A:h}/valencia-workbench-test-state/e2e}"
 export WORKBENCH_E2E_ROOT="$WORKBENCH_E2E_BASE/valencia-workbench-e2e-${WORKBENCH_E2E_RUN_ID}"
-mkdir -p "$WORKBENCH_E2E_ROOT/tmp"
+shared_mpl_cache="$WORKBENCH_E2E_BASE/matplotlib-cache"
+mkdir -p "$WORKBENCH_E2E_ROOT/tmp" "$WORKBENCH_E2E_ROOT/matplotlib" "$shared_mpl_cache"
+cp -R "$shared_mpl_cache/." "$WORKBENCH_E2E_ROOT/matplotlib/" 2>/dev/null || true
 export TMPDIR="$WORKBENCH_E2E_ROOT/tmp"
 export TMP="$TMPDIR"
 export TEMP="$TMPDIR"
 
 "$PROJECT_DIR/frontend/node_modules/.bin/playwright" test "$@"
 exit_code=$?
+
+# Keep the expensive font discovery reusable while every Workbench runtime
+# still sees a cache path inside its own disposable, security-checked root.
+cp -R "$WORKBENCH_E2E_ROOT/matplotlib/." "$shared_mpl_cache/" 2>/dev/null || true
 
 if [[ $exit_code -eq 0 && "${WORKBENCH_E2E_KEEP_STATE:-0}" != "1" ]]; then
   e2e_base_abs="${WORKBENCH_E2E_BASE:A}"

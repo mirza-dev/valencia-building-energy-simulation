@@ -192,6 +192,26 @@ def test_lhs_compare_rejects_same_run():
         lhs_service.compare_lhs("same", "same")
 
 
+def test_lhs_current_compatibility_keeps_verified_history_separate_from_current_baseline(monkeypatch):
+    monkeypatch.setattr(
+        lhs_service, "source_paths",
+        lambda: {"runner": (Path("runner.py"), "file"), "weather": (Path("weather.epw"), "file")},
+    )
+    current = {"runner.py": "a" * 64, "weather.epw": "b" * 64}
+    monkeypatch.setattr(
+        lhs_service.integrity, "snapshot_descriptor",
+        lambda path, kind: {"snapshot_hash": current[str(path)]},
+    )
+    result = {"settings": {"input_snapshot_hashes": {"runner": "a" * 64, "weather": "old"}}}
+    compatibility = lhs_service._current_input_compatibility(result)
+    assert compatibility == {"current": False, "changed_roles": ["weather"]}
+
+    result["settings"]["input_snapshot_hashes"]["weather"] = "b" * 64
+    assert lhs_service._current_input_compatibility(result) == {
+        "current": True, "changed_roles": [],
+    }
+
+
 def test_lhs_compare_requires_identical_protocol_and_input_snapshots(monkeypatch):
     settings = {
         "scope": "4252702YJ2745A", "run_mode": "frozen_baseline",

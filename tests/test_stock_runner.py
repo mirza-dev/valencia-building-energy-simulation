@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from shapely.geometry import Point, Polygon
 
@@ -191,8 +192,9 @@ def test_run_one_records_a_failure_instead_of_raising(tmp_path, monkeypatch):
     for key, value in worker.items():
         monkeypatch.setitem(sr._WORKER, key, value)
 
-    row = sr.run_one("BROKEN")
+    row = sr.run_one(("BROKEN", "BlocPluriP04"))
     assert row["status"] == "failed"
+    assert row["cluster"] == "BlocPluriP04"
     assert row["reason"] == "ValueError"
     assert "altura_max" in row["message"]
     assert "traceback" in row
@@ -741,6 +743,18 @@ def test_aggregate_totals_are_area_weighted():
     assert report["totals"]["residential_area_m2"] == 4000.0
     # area weighted, not the plain mean of 50
     assert report["totals"]["area_weighted_total_site_kwh_m2"] == pytest.approx(55.0)
+
+
+def test_aggregate_does_not_duplicate_a_ledger_row_for_multi_footprint_stock():
+    rows = [_ok_row("A", "BlocPluriP04", 1000.0, 40.0)]
+    stock = pd.DataFrame([
+        {"refparcela": "A", "cluster": "BlocPluriP04", "nombre": "Benicalap", "footprint_area_m2": 60.0},
+        {"refparcela": "A", "cluster": "BlocPluriP04", "nombre": "Benicalap", "footprint_area_m2": 40.0},
+    ])
+    report = sr.aggregate(rows, stock)
+    assert report["buildings_ok"] == 1
+    assert report["totals"]["total_site_gwh"] == pytest.approx(0.04)
+    assert report["by_cluster"][0]["cluster"] == "BlocPluriP04"
 
 
 def test_aggregate_uses_the_thesis_reference_not_the_shapefile_rounding():

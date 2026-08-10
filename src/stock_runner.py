@@ -435,7 +435,7 @@ def run_one(task: tuple[str, str | None] | str) -> dict:
     out_dir = Path(_WORKER["out_dir"])
     # the full identity travels on every row, so what produced it can always be
     # established from the ledger alone
-    base = {"refparcela": refparcela,
+    base = {"refparcela": refparcela, "cluster": cluster,
             **{key: _WORKER[key] for key in IDENTITY_FIELDS}}
     try:
         summary, qa_passed = vm.simulate_verified_building(
@@ -733,8 +733,25 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
 
     frame = pd.DataFrame(ok)
     if stock is not None:
-        lookup = stock.set_index("refparcela")[["cluster", "nombre"]]
-        frame = frame.join(lookup, on="refparcela")
+        # A cadastral reference can contain more than one footprint row.  The
+        # cluster/district attributes are parcel-level metadata, so collapse
+        # that lookup before mapping it onto the one-row-per-reference ledger.
+        # Joining the raw, non-unique index would duplicate energy totals.
+        lookup = (
+            stock[["refparcela", "cluster", "nombre"]]
+            .drop_duplicates(subset=["refparcela"], keep="first")
+            .set_index("refparcela")
+        )
+        # Schema-2 ledgers did not carry cluster, while current rows do.  Fill
+        # either shape from the exact prepared stock without creating pandas'
+        # overlapping-column error or replacing a value already frozen on the
+        # ledger row.
+        for column in ("cluster", "nombre"):
+            fallback = frame["refparcela"].map(lookup[column])
+            if column in frame.columns:
+                frame[column] = frame[column].where(frame[column].notna(), fallback)
+            else:
+                frame[column] = fallback
 
     area = frame["res_area_m2"]
     energy_cols = {"heating": "space_heating_kwh_m2", "cooling": "cooling_kwh_m2",

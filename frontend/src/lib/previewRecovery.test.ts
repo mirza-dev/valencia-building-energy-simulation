@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { restorePreviewDraft, isAttachedPreviewTerminal } from './previewRecovery'
-import type { BuildConfig, PreviewDetail, Profile } from './types'
+import { compactRecoveryItems, restorePreviewDraft, isAttachedPreviewTerminal } from './previewRecovery'
+import type { BuildConfig, PreviewDetail, PreviewRecoveryItem, Profile } from './types'
 
 const config: BuildConfig = {
   data: { building_path: 'a', neighbor_path: 'b', template_path: 'c', epw_path: 'd', output_root: 'e' },
@@ -35,5 +35,16 @@ describe('builder preview recovery', () => {
     expect(isAttachedPreviewTerminal('running')).toBe(false)
     expect(isAttachedPreviewTerminal('ready')).toBe(true)
     expect(isAttachedPreviewTerminal('failed')).toBe(true)
+  })
+
+  it('keeps the newest semantic preview plus active and explicitly attached records', () => {
+    const item = (id: string, status: PreviewRecoveryItem['status'], scenario = 'Pilot') => ({
+      id, status, stage: status, refparcela: '4252702YJ2745A', scenario_name: scenario,
+      baseline_profile: 'pilot', created_at: '2026-08-10T00:00:00Z', updated_at: '2026-08-10T00:00:00Z',
+      artifact_state: { status: 'AVAILABLE', recoverable: true, issues: [] },
+    }) satisfies PreviewRecoveryItem
+    const items = [item('newest', 'ready'), item('older', 'ready'), item('active', 'running'), item('variant', 'ready', 'Variant')]
+    expect(compactRecoveryItems(items, null).map((entry) => entry.id)).toEqual(['newest', 'active', 'variant'])
+    expect(compactRecoveryItems(items, 'older').map((entry) => entry.id)).toEqual(['newest', 'older', 'active', 'variant'])
   })
 })

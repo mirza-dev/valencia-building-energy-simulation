@@ -1418,6 +1418,15 @@ button:disabled { opacity: .5; }
 .stock-row-ledger b small { margin-top: 2px; }
 .stock-interpretation-blocked { min-height: 260px; display: grid; place-items: center; align-content: center; gap: 8px; color: var(--red); text-align: center; background: #f7f8f5; }
 .stock-interpretation-blocked p { max-width: 500px; margin: 0; color: var(--muted); font-size: 11px; }
+.lhs-outdated-block { color: #8a6118; background: #fffaf0; }
+.lhs-accepted-reference { margin-top: 8px; padding: 9px 11px; display: flex; flex-wrap: wrap; justify-content: center; gap: 5px 12px; border: 1px solid #dcc68f; background: white; }
+.lhs-accepted-reference span { flex-basis: 100%; color: var(--muted); font: 8px var(--mono); letter-spacing: .06em; }
+.lhs-accepted-reference strong { font: 11px var(--mono); color: var(--ink); }
+.lhs-outdated-evidence { padding: 12px; display: flex; align-items: flex-start; gap: 8px; border-bottom: 1px solid var(--line); background: #fff8e7; color: #8a6118; }
+.lhs-outdated-evidence > svg { flex: 0 0 auto; }
+.lhs-outdated-evidence > div { min-width: 0; display: grid; gap: 4px; }
+.lhs-outdated-evidence p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.lhs-outdated-evidence code { overflow-wrap: anywhere; font-size: 8px; }
 
 @media (max-width: 1400px) {
   .builder-workspace { grid-template-columns: 286px minmax(390px,1fr) 252px; }
@@ -1643,6 +1652,14 @@ button:disabled { opacity: .5; }
 .output-kpi-grid span { color: var(--faint); font: 8px var(--mono); }
 .output-kpi-grid strong { font: 19px var(--mono); }
 .output-kpi-grid small { color: var(--muted); font-size: 8px; line-height: 1.35; }
+.output-interpretation-note { margin: 0 0 12px; padding: 11px 13px; display: flex; align-items: flex-start; gap: 9px; border-left: 3px solid var(--amber); background: #fff8e7; color: var(--ink); }
+.output-interpretation-note > svg { flex: 0 0 auto; margin-top: 1px; color: #9a6919; }
+.output-interpretation-note > div { min-width: 0; display: grid; gap: 3px; }
+.output-interpretation-note strong { font-size: 11px; }
+.output-interpretation-note p { margin: 0; max-width: 92ch; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.output-interpretation-note small { color: #73551c; font-size: 9px; }
+.building-evidence-drawer dd > strong, .building-evidence-drawer dd > span { display: block; }
+.building-evidence-drawer dd > span { margin-top: 3px; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
 .output-section { margin-top: 13px; border: 1px solid var(--line-strong); background: #fafbf8; }
 .output-section > header { min-height: 54px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
 .output-section > header > div:first-child { display: flex; align-items: center; gap: 8px; }

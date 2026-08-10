@@ -13,10 +13,11 @@ import CodeTrace from './CodeTrace'
 import { api, ApiError } from '../lib/api'
 import { changedFields, deepClone, withOverrideRecords } from '../lib/config'
 import { validateBuildConfig } from '../lib/buildConfigValidation'
-import { isAttachedPreviewTerminal, restorePreviewDraft } from '../lib/previewRecovery'
+import { compactRecoveryItems, isAttachedPreviewTerminal, restorePreviewDraft } from '../lib/previewRecovery'
 import { useJobStream } from '../lib/useJobStream'
 import { useActiveBuilding } from '../lib/activeBuilding'
 import { useFeedback } from './FeedbackProvider'
+import { formatDate } from '../lib/locale'
 import type { BuildConfig, Profile, SourceType } from '../lib/types'
 
 const MapPanel = lazy(() => import('./MapPanel'))
@@ -273,7 +274,12 @@ export default function BuilderPage() {
     && !previewStale && !commitMutation.isPending
   const maxStep = preview ? 4 : geometryResult ? (geometryReady ? 3 : 2) : 1
   const profileChanges = pendingProfile && config ? changedFields(pendingProfile.config, config) : []
-  const recoveryItems = recoveryQuery.data?.items ?? []
+  const allRecoveryItems = recoveryQuery.data?.items ?? []
+  const recoveryItems = useMemo(
+    () => compactRecoveryItems(allRecoveryItems, jobId),
+    [allRecoveryItems, jobId],
+  )
+  const supersededPreviewCount = allRecoveryItems.length - recoveryItems.length
   const detachPreview = () => {
     attachPreview(null)
     setStep(1)
@@ -322,14 +328,14 @@ export default function BuilderPage() {
       </div> : null}
 
       {recoveryItems.length ? <section className="preview-recovery-strip" aria-label={t('builder.previewLedger')}>
-        <header><History size={15} /><strong>{t('builder.previewLedger')}</strong><code>{t('builder.readyPreviews', { count: recoveryQuery.data?.ready_count ?? 0 })}</code></header>
+        <header><History size={15} /><strong>{t('builder.previewLedger')}</strong><code>{t('builder.readyPreviews', { count: recoveryItems.filter((item) => item.status === 'ready').length })}{supersededPreviewCount ? ` · ${t('previewRecovery.superseded', { count: supersededPreviewCount })}` : ''}</code></header>
         <div className="preview-recovery-list">
           {recoveryItems.map((item) => <button key={item.id} className={jobId === item.id ? 'active' : ''}
             onClick={() => attachPreview(item.id)} disabled={!item.artifact_state.recoverable}
             data-preview-job={item.id} data-preview-status={item.status}
             aria-label={t('builder.openPreview', { name: item.scenario_name })}
             title={!item.artifact_state.recoverable ? item.artifact_state.issues.join('; ') : item.stage}>
-            <i className={item.status} /><span><strong>{item.scenario_name}</strong><small>{item.refparcela}</small></span>
+            <i className={item.status} /><span><strong>{item.scenario_name}</strong><small>{item.refparcela} · {item.baseline_profile ?? 'custom'} · {formatDate(item.created_at, i18n.language)} · {item.id.slice(0, 8)}</small></span>
             <em>{t(`simulation.status.${item.status}`)}{item.queue_position ? ` #${item.queue_position}` : ''}</em>
           </button>)}
         </div>

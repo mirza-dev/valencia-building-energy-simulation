@@ -365,7 +365,7 @@ export default function ModelViewer({ scene, compact = false, syncKey, onCapture
 
       {!compact && stories.length ? <div className="viewer-story-control">
         <span><SlidersHorizontal size={13} /> {t('viewer.stories')}</span>
-        {stories.map((story) => <label key={story} title={story}><input type="checkbox" checked={storyVisibility[story] ?? true}
+        {stories.map((story) => <label key={story} title={formatModelDisplayText(story, i18n.language)}><input type="checkbox" checked={storyVisibility[story] ?? true}
           onChange={(event) => setStoryVisibility((current) => ({ ...current, [story]: event.target.checked }))} />{formatModelDisplayText(story, i18n.language)}</label>)}
       </div> : null}
 

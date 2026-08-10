@@ -397,6 +397,8 @@ export interface ProductLedgerRow extends Record<string, unknown> {
   occupancy_plausibility?: string
   qa_all_passed?: boolean
   error?: string
+  reason?: string
+  message?: string
 }
 
 export interface ProductLedgerPage {
@@ -1360,6 +1362,11 @@ export interface LhsPreflight {
   baselines: LhsBaselines
   outputs: string[]
   capability: { version: string; runner_sha256: string; adapter_sha256: string }
+  accepted_reference?: {
+    n?: number
+    seed?: number
+    statistics: Record<string, Partial<LhsStatistic>>
+  }
 }
 
 export interface LhsStatistic {
@@ -1428,6 +1435,7 @@ export interface LhsRun extends RunRecord {
   run_type: 'lhs'
   result: LhsResult | null
   verification: { ok: boolean; status: string; issues: string[] }
+  current_compatibility?: { current: boolean; changed_roles: string[] }
 }
 
 export interface LhsComparison {

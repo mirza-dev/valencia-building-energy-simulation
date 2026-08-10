@@ -154,6 +154,23 @@ def test_ledger_page_is_bounded_searchable_and_filterable(client, has_finished_r
     assert found["items"][0]["refparcela"] == reference
 
 
+def test_historical_ledger_rows_are_enriched_from_the_exact_prepared_stock(tmp_path, monkeypatch):
+    run = tmp_path / "historical"
+    run.mkdir()
+    (run / "ledger.jsonl").write_text(
+        '{"refparcela":"A","status":"ok"}\n'
+        '{"refparcela":"B","status":"failed","reason":"RuntimeError"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path)
+    monkeypatch.setattr(
+        stock_adapter, "_cluster_lookup_for_run",
+        lambda _out_dir: {"A": "VivUniP02", "B": "BlocPluriP04"},
+    )
+    rows = stock_adapter.ledger_rows("historical")
+    assert [row["cluster"] for row in rows] == ["VivUniP02", "BlocPluriP04"]
+
+
 def test_finished_run_log_endpoint_is_safe_and_uncached(client, has_finished_run):
     if not has_finished_run:
         pytest.skip(f"{FINISHED_RUN} not on disk")

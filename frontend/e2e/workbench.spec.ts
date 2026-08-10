@@ -113,10 +113,15 @@ function lhsFixture() {
     id, job_id: `${id}-job`, refparcela: '4252702YJ2745A', scenario_name: 'Pilot · N50 seed42', config: result.settings,
     stats: result.summary, qa: result.qa, artifact_dir: `/tmp/${id}`, verification_status: 'VERIFIED', run_type: 'lhs', parent_run_id: null,
     created_at: new Date(Date.parse(now) - hours * 3_600_000).toISOString(), artifacts: [{ name: 'runs.csv', sha256: 'a'.repeat(64), size_bytes: 1200 }],
-    result, verification: { ok: true, status: 'VERIFIED', issues: [] },
+    result, verification: { ok: true, status: 'VERIFIED', issues: [] }, current_compatibility: { current: true, changed_roles: [] as string[] },
   })
   const runs = [makeRun('lhs-run', 0), makeRun('lhs-run-previous', 24)]
-  const preflight = { schema_version: 1, scope: '4252702YJ2745A', method: 'latin_hypercube_uniform_spearman', locked: true, settings: { n: 50, seed: 42, simulation_variables: 7, post_variables: 3, model_path: 'massless', context_shading: true, estimated_minutes: 20 }, variables, variable_fingerprint: 'd'.repeat(64), baselines: result.baselines, outputs: Object.keys(statistics), capability: { version: '1', runner_sha256: 'b'.repeat(64), adapter_sha256: 'c'.repeat(64) } }
+  const acceptedStatistics = {
+    heating_kwh_m2: { mean: 16.8796, median: 16.835, p5: 12.622, p95: 22.7285 },
+    cooling_kwh_m2: { mean: 14.7046, median: 14.665, p5: 13.757, p95: 15.631 },
+    co2_kg_m2: { mean: 3.6264, median: 3.345, p5: 2.104, p95: 5.883 },
+  }
+  const preflight = { schema_version: 1, scope: '4252702YJ2745A', method: 'latin_hypercube_uniform_spearman', locked: true, settings: { n: 50, seed: 42, simulation_variables: 7, post_variables: 3, model_path: 'massless', context_shading: true, estimated_minutes: 20 }, variables, variable_fingerprint: 'd'.repeat(64), baselines: result.baselines, outputs: Object.keys(statistics), accepted_reference: { n: 50, seed: 42, statistics: acceptedStatistics }, capability: { version: '1', runner_sha256: 'b'.repeat(64), adapter_sha256: 'c'.repeat(64) } }
   return { preflight, result, runs }
 }
 
@@ -743,7 +748,7 @@ test('capability gate hides unavailable dependent modules and INVALID results hi
   await page.route('**/api/simulations', (route) => route.fulfill({ json: [invalid] }))
   await page.route('**/api/simulations/eligible-models', (route) => route.fulfill({ json: [] }))
   await page.goto('/?qa=invalid#/simulation')
-  await page.locator('.recent-run-picker select').selectOption('invalid-run')
+  await expect(page.locator('.recent-run-picker select')).toHaveValue('invalid-run')
   await expect(page.locator('.scientific-banner.invalid')).toBeVisible()
   await expect(page.locator('.diagnostic-panel')).toBeVisible()
   await expect(page.locator('.energy-hero-band')).toHaveCount(0)
@@ -1299,6 +1304,32 @@ test('historical LHS remains directly reachable but is absent from the single-bu
   await page.goto('/#/runs')
   await expect(page.locator('.run-list > button').filter({ hasText: 'LHS' })).toHaveCount(0)
   await expect(page.getByText(/Bu bina için henüz|No model or simulation/)).toBeVisible()
+})
+
+test('outdated LHS keeps verified evidence but replaces stale statistics with the accepted reference', async ({ page }) => {
+  const fixture = lhsFixture()
+  fixture.runs[0].current_compatibility = {
+    current: false,
+    changed_roles: ['lhs_study', 'model_builder', 'run_simulation'],
+  }
+  fixture.runs.splice(1)
+  await page.route('**/api/capabilities', async (route) => {
+    const response = await route.fetch()
+    const payload = await response.json()
+    payload.capabilities.lhs.runtime_ready = true
+    await route.fulfill({ response, json: payload })
+  })
+  await page.route('**/api/lhs/preflight', (route) => route.fulfill({ json: fixture.preflight }))
+  await page.route('**/api/lhs/jobs/active', (route) => route.fulfill({ json: { job: null } }))
+  await page.route(/\/api\/lhs\/runs$/, (route) => route.fulfill({ json: fixture.runs }))
+
+  await page.goto('/#/lhs')
+  await expect(page.getByRole('button', { name: /GÜNCEL DEĞİL|OUTDATED/ })).toBeVisible()
+  await expect(page.locator('.lhs-outdated-block')).toContainText(/16[,.]88/)
+  await expect(page.locator('.lhs-outdated-block')).toContainText(/14[,.]7/)
+  await expect(page.locator('.lhs-outdated-block')).toContainText(/3[,.]63/)
+  await expect(page.locator('.lhs-result-strip')).toHaveCount(0)
+  await expect(page.locator('.focused-toolbar-lead .segmented-control button').nth(0)).toBeDisabled()
 })
 
 test('LHS scientific QA failure preserves evidence but suppresses statistical interpretation', async ({ page }) => {

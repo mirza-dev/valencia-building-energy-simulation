@@ -277,7 +277,7 @@ export default function SimulationPage() {
       panel={panel}
       onPanelChange={setPanel}
       status={{ level: statusLevel, label: t(`focused.${statusLevel === 'verified' ? 'verified' : statusLevel === 'blocked' ? 'blocked' : 'pending'}`), detail: selectedRun ? `${selectedRun.verification_status} · ${selectedResult?.qa.scientific_status ?? '—'}` : t('focused.pending') }}
-      runs={buildingHistory.map((item) => ({ id: item.id, label: item.scenario_name, meta: formatDate(item.created_at, i18n.language) }))}
+      runs={buildingHistory.map((item) => ({ id: item.id, label: item.scenario_name, meta: `${formatDate(item.created_at, i18n.language)} · ${item.id.slice(0, 8)}` }))}
       selectedRunId={selectedRunId}
       onSelectRun={setSelectedRunId}
       tabs={[

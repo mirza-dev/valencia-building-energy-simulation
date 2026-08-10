@@ -24,11 +24,21 @@ test('stock product exposes Files → Run → Outputs with verified evidence', a
   await page.getByRole('link', { name: /Outputs Evidence/ }).click()
   await expect(page.getByRole('heading', { name: 'Outputs' })).toBeVisible()
   await expect(page.getByText('TOTAL SITE ENERGY')).toBeVisible()
+  await expect(page.getByText('RESIDENTIAL-AREA EUI', { exact: true })).toBeVisible()
+  await expect(page.getByText('conditioned geometry', { exact: true })).toHaveCount(0)
   await expect(page.getByText('CADASTRAL EUI', { exact: true })).toBeVisible()
+  await expect(page.getByText('RESULT STATUS', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Full signed ZIP' })).toBeVisible()
   await expect(page.locator('.ledger-table tbody tr').first()).toBeVisible()
   await page.locator('.ledger-table tbody tr').first().click()
   await expect(page.getByText('Signed building package')).toBeVisible()
+  await expect(page.locator('.building-evidence-drawer')).not.toContainText('Cluster—')
+
+  await page.getByLabel('Filter ledger by status').selectOption('failed')
+  await expect(page.locator('.ledger-table tbody tr')).toHaveCount(1)
+  await page.locator('.ledger-table tbody tr').click()
+  await expect(page.locator('.building-evidence-drawer')).toContainText('RuntimeError')
+  await expect(page.locator('.building-evidence-drawer')).toContainText('unexplained Severe')
 
   const overflow = await page.evaluate(() => ({
     body: document.body.scrollWidth - document.body.clientWidth,

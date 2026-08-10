@@ -49,10 +49,13 @@ export default function LhsPage() {
   const handledJob = useRef('')
   const selectedRun = history.data?.find((item) => item.id === selectedRunId)
   const result = selectedRun?.result
-  const trustedResult = Boolean(
+  const artifactTrusted = Boolean(
     selectedRun?.verification_status === 'VERIFIED'
+    && selectedRun.verification?.ok
     && result?.qa.scientific_status === 'VALIDATED',
   )
+  const outdatedResult = Boolean(artifactTrusted && selectedRun?.current_compatibility?.current === false)
+  const trustedResult = Boolean(artifactTrusted && !outdatedResult)
   const selectedSample = result?.samples[selectedSampleIndex]
   const variables = result?.variables ?? preflight.data?.variables ?? []
   const source = capabilities.data?.capabilities.lhs
@@ -107,7 +110,11 @@ export default function LhsPage() {
   const cancel = useMutation({ mutationFn: () => api.cancelJob(jobId), onSuccess: (updated) => client.setQueryData(['job', jobId], updated) })
   const retry = useMutation({ mutationFn: () => api.retryJob(jobId), onSuccess: (created) => { client.setQueryData(['job', created.id], created); setJobRoute(created.id) } })
   const running = Boolean(jobId && ['queued', 'running'].includes(job.data?.status ?? 'queued'))
-  const statusLevel = resolveFocusedStatus({ blocked: Boolean(result && !trustedResult), verified: Boolean(result && trustedResult) })
+  const statusLevel = resolveFocusedStatus({
+    blocked: Boolean(result && !artifactTrusted),
+    warning: outdatedResult,
+    verified: Boolean(result && trustedResult),
+  })
   const protocolRows = useMemo(() => [
     [t('lhs.scope'), preflight.data?.scope ?? '4252702YJ2745A'],
     [t('lhs.sampleCount'), `N=${preflight.data?.settings.n ?? 50}`],
@@ -126,8 +133,8 @@ export default function LhsPage() {
       panel={panel}
       onPanelChange={setPanel}
       toolbarLead={<div className="segmented-control" aria-label={t('lhs.workspace')}><button disabled={Boolean(result && !trustedResult)} className={tab === 'distributions' ? 'active' : ''} onClick={() => setTab('distributions')}>{t('lhs.tabs.distributions')}</button><button disabled={Boolean(result && !trustedResult)} className={tab === 'sensitivity' ? 'active' : ''} onClick={() => setTab('sensitivity')}>{t('lhs.tabs.sensitivity')}</button><button disabled={Boolean(result && !trustedResult)} className={tab === 'samples' ? 'active' : ''} onClick={() => setTab('samples')}>{t('lhs.tabs.samples')}</button></div>}
-      status={{ level: statusLevel, label: t(`focused.${statusLevel === 'verified' ? 'verified' : statusLevel === 'blocked' ? 'blocked' : 'pending'}`), detail: selectedRun ? `${selectedRun.verification_status} · ${result?.qa.scientific_status ?? '—'}` : t('lhs.preflight') }}
-      runs={(history.data ?? []).map((item) => ({ id: item.id, label: item.result?.qa.scientific_status ?? item.id.slice(0, 8), meta: `N=${item.result?.summary.samples_completed ?? '—'} · ${formatDate(item.created_at, i18n.language)}` }))}
+      status={{ level: statusLevel, label: outdatedResult ? t('lhsOutdated.status') : t(`focused.${statusLevel === 'verified' ? 'verified' : statusLevel === 'blocked' ? 'blocked' : 'pending'}`), detail: selectedRun ? `${selectedRun.verification_status} · ${result?.qa.scientific_status ?? '—'}${outdatedResult ? ` · ${selectedRun.current_compatibility?.changed_roles.length ?? 0} ${t('lhsOutdated.changedInputs')}` : ''}` : t('lhs.preflight') }}
+      runs={(history.data ?? []).map((item) => ({ id: item.id, label: `${item.result?.qa.scientific_status ?? item.id.slice(0, 8)}${item.current_compatibility?.current === false ? ` · ${t('lhsOutdated.status')}` : ''}`, meta: `N=${item.result?.summary.samples_completed ?? '—'} · ${formatDate(item.created_at, i18n.language)} · ${item.id.slice(0, 8)}` }))}
       selectedRunId={selectedRunId}
       onSelectRun={setSelectedRunId}
       tabs={[
@@ -140,6 +147,7 @@ export default function LhsPage() {
           {selectedSample ? <SampleInspector sample={selectedSample} index={selectedSampleIndex} variables={variables} selectedVariable={selectedVariable} /> : null}
         </> },
         { id: 'evidence', label: t('focused.evidence'), alert: Boolean(result && !trustedResult), content: <>
+          {outdatedResult ? <section className="lhs-outdated-evidence"><CircleAlert size={17} /><div><strong>{t('lhsOutdated.title')}</strong><p>{t('lhsOutdated.text')}</p><code>{selectedRun?.current_compatibility?.changed_roles.join(' · ')}</code></div></section> : null}
           {selectedRun ? <div className="focused-drawer-actions"><Link className="secondary-button" to={`/runs?run=${selectedRun.id}`}><Archive size={16} />{t('lhs.openRun')}</Link>{selectedRun.verification_status === 'VERIFIED' ? <a className="secondary-button" href={api.exportUrl(selectedRun.id)}><Download size={16} />{t('common.export')}</a> : null}</div> : null}
           {result ? <QaWorkspace result={result} /> : null}
           {selectedRun ? <section className="lhs-compare"><div className="inspector-subhead"><GitCompareArrows size={14} />{t('lhs.compare')}</div><label><span>{t('lhs.compareWith')}</span><select value={compareRunId} onChange={(event) => setCompareRunId(event.target.value)}><option value="">{t('common.notSelected')}</option>{history.data?.filter((item) => item.id !== selectedRunId).map((item) => <option key={item.id} value={item.id}>{formatDate(item.created_at, i18n.language)} · {item.id.slice(0, 8)}</option>)}</select></label>{compare.data ? <div className={`lhs-compare-status ${compare.data.comparable ? 'pass' : 'warn'}`}><strong>{compare.data.comparable ? t('lhs.comparable') : t('lhs.absoluteOnly')}</strong>{compare.data.rows.slice(0, 4).map((row) => <span key={`${row.output}-${row.statistic}`}><code>{t(`lhs.outputs.${row.output}`)} · {row.statistic}</code><b>{row.delta >= 0 ? '+' : ''}{number(row.delta, 3)}{row.percent != null ? ` · ${number(row.percent, 2)}%` : ''}</b></span>)}</div> : null}</section> : null}
@@ -151,11 +159,17 @@ export default function LhsPage() {
         {jobId ? <NeighborhoodJobControl jobId={jobId} job={job.data} translationRoot="lhs" onCancel={() => cancel.mutate()} onRetry={() => retry.mutate()} onDismiss={() => setJobRoute('')} /> : null}
         {trustedResult && result ? <LhsResultStrip result={result} /> : !selectedRun ? <div className="lhs-preflight-banner"><FlaskConical size={18} /><span><strong>{t('lhs.awaitingRun')}</strong><small>{t('lhs.awaitingRunText')}</small></span></div> : null}
         <div className="lhs-stage">
-          {!result ? <ProtocolPreview variables={variables} /> : !trustedResult ? <div className="stock-interpretation-blocked"><CircleAlert size={22} /><strong>{t('lhs.unverified')}</strong><p>{t('lhs.integrityBlocked')}</p></div> : tab === 'distributions' ? <DistributionWorkspace runId={selectedRun!.id} result={result} /> : tab === 'sensitivity' ? <SensitivityWorkspace runId={selectedRun!.id} result={result} /> : <SampleLedger result={result} selected={selectedSampleIndex} onSelect={(index) => { setSelectedSampleIndex(index); setPanel('selection') }} selectedVariable={selectedVariable} />}
+          {!result ? <ProtocolPreview variables={variables} /> : outdatedResult ? <div className="stock-interpretation-blocked lhs-outdated-block"><CircleAlert size={22} /><strong>{t('lhsOutdated.title')}</strong><p>{t('lhsOutdated.text')}</p><AcceptedReference statistics={preflight.data?.accepted_reference?.statistics} /></div> : !trustedResult ? <div className="stock-interpretation-blocked"><CircleAlert size={22} /><strong>{t('lhs.unverified')}</strong><p>{t('lhs.integrityBlocked')}</p></div> : tab === 'distributions' ? <DistributionWorkspace runId={selectedRun!.id} result={result} /> : tab === 'sensitivity' ? <SensitivityWorkspace runId={selectedRun!.id} result={result} /> : <SampleLedger result={result} selected={selectedSampleIndex} onSelect={(index) => { setSelectedSampleIndex(index); setPanel('selection') }} selectedVariable={selectedVariable} />}
         </div>
       </div>
     </FocusedWorkspace>
   </div>
+}
+
+function AcceptedReference({ statistics }: { statistics?: Record<string, { mean?: number }> }) {
+  const { t } = useTranslation()
+  if (!statistics) return null
+  return <div className="lhs-accepted-reference"><span>{t('lhsOutdated.currentReference')}</span><strong>{number(statistics.heating_kwh_m2?.mean)} H</strong><strong>{number(statistics.cooling_kwh_m2?.mean)} C</strong><strong>{number(statistics.co2_kg_m2?.mean)} kgCO₂/m²</strong></div>
 }
 
 function VariableRow({ variable, active, onSelect }: { variable: LhsVariable; active: boolean; onSelect: () => void }) {

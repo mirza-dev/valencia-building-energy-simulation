@@ -16,9 +16,10 @@ if (!/^[A-Za-z0-9._-]{1,128}$/.test(e2eRunId)) {
 }
 const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 const defaultE2eBase = fileURLToPath(new URL('../../valencia-workbench-test-state/e2e/', import.meta.url))
+const e2eBase = resolve(process.env.WORKBENCH_E2E_BASE ?? defaultE2eBase)
 const e2eRoot = resolve(
   process.env.WORKBENCH_E2E_ROOT
-    ?? `${process.env.WORKBENCH_E2E_BASE ?? defaultE2eBase}/valencia-workbench-e2e-${e2eRunId}`,
+    ?? `${e2eBase}/valencia-workbench-e2e-${e2eRunId}`,
 )
 if (!isAbsolute(e2eRoot) || e2eRoot === projectRoot || e2eRoot.startsWith(`${projectRoot}${sep}`)) {
   throw new Error('WORKBENCH_E2E_ROOT must be absolute and outside the project tree')
@@ -42,7 +43,10 @@ export default defineConfig({
     command: `env PYTHONPATH=../src WORKBENCH_ENV=test WORKBENCH_PORT=${e2ePort} WORKBENCH_TEST_ROOT=${shellQuote(e2eRoot)} WORKBENCH_TEST_RUN_ID=${shellQuote(e2eRunId)} WORKBENCH_TEST_REQUIRE_HEADER=1 WORKBENCH_VAR_DIR=${shellQuote(`${e2eRoot}/var`)} WORKBENCH_DB_PATH=${shellQuote(`${e2eRoot}/var/workbench.sqlite3`)} WORKBENCH_PREVIEW_ROOT=${shellQuote(`${e2eRoot}/previews`)} WORKBENCH_IMPORT_ROOT=${shellQuote(`${e2eRoot}/imports`)} WORKBENCH_RUN_ROOT=${shellQuote(`${e2eRoot}/runs`)} WORKBENCH_EXPORT_ROOT=${shellQuote(`${e2eRoot}/exports`)} MPLCONFIGDIR=${shellQuote(`${e2eRoot}/matplotlib`)} TMPDIR=${shellQuote(`${e2eRoot}/tmp`)} TMP=${shellQuote(`${e2eRoot}/tmp`)} TEMP=${shellQuote(`${e2eRoot}/tmp`)} ../.venv/bin/python -m workbench`,
     url: `${e2eURL}/api/health`,
     reuseExistingServer: false,
-    timeout: 60_000,
+    // Cold OpenStudio + Matplotlib initialization can exceed one minute on the
+    // external test volume.  This is startup admission only; individual UI
+    // assertions retain their tighter 30/90-second limits.
+    timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
   },

@@ -44,6 +44,9 @@ export default function OutputsPage() {
   })
   const summary = detail.data?.summary
   const totals = summary?.totals
+  const rejected = summary
+    ? summary.buildings_failed + summary.buildings_failed_qa
+    : 0
   const exportPlanMutation = useMutation({
     mutationFn: () => api.stockExportPlan(selected),
     onSuccess: (value) => { setExportPlan(value); setExportConfirmed(false) },
@@ -66,12 +69,19 @@ export default function OutputsPage() {
       {summary ? <>
         <section className="output-kpi-grid">
           <article><span>TOTAL SITE ENERGY</span><strong>{number(totals?.total_site_gwh)}</strong><small>GWh / year · modelled subset</small></article>
-          <article><span>GEOMETRIC EUI</span><strong>{number(totals?.area_weighted_total_site_kwh_m2, 1)}</strong><small>kWh/m² · conditioned geometry</small></article>
+          <article title={totals?.area_basis_note}><span>RESIDENTIAL-AREA EUI</span><strong>{number(totals?.area_weighted_total_site_kwh_m2, 1)}</strong><small>kWh/m² · geometric residential storeys</small></article>
           <article className="accent"><span>CADASTRAL EUI</span><strong>{number(totals?.cadastral_total_site_kwh_m2, 1)}</strong><small>kWh/m² · Tipo15 residential area</small></article>
           <article><span>CARBON</span><strong>{number(totals?.carbon_total_site_t_yr, 0)}</strong><small>tCO₂ / year · total site</small></article>
-          <article><span>COVERAGE</span><strong>{number(summary.coverage.building_coverage_pct, 1)}%</strong><small>{summary.buildings_ok.toLocaleString()} OK · {summary.buildings_excluded} excluded</small></article>
-          <article className={summary.qa_failed || summary.unexplained_severes ? 'danger' : 'pass'}><span>QA STATUS</span><strong>{summary.qa_failed || summary.unexplained_severes ? 'REVIEW' : 'PASS'}</strong><small>{summary.qa_failed} QA failed · {summary.unexplained_severes} unexplained severe</small></article>
+          <article><span>COVERAGE</span><strong>{number(summary.coverage.building_coverage_pct, 1)}%</strong><small>{summary.buildings_ok.toLocaleString()} OK · {summary.buildings_failed} failed · {summary.buildings_failed_qa} QA rejected · {summary.buildings_excluded} excluded</small></article>
+          <article className={rejected || summary.qa_failed || summary.unexplained_severes ? 'danger' : 'pass'}><span>RESULT STATUS</span><strong>{rejected || summary.qa_failed || summary.unexplained_severes ? 'REVIEW' : 'PASS'}</strong><small>{summary.buildings_failed} runtime failed · {summary.buildings_failed_qa} QA rejected · accepted rows: {summary.unexplained_severes} unexplained severe</small></article>
         </section>
+
+        {(summary.coverage.note || rejected || summary.implausible_occupancy) ? <section className="output-interpretation-note" aria-label="Result interpretation">
+          <AlertTriangle size={17} /><div><strong>Read the subset before interpreting its intensity</strong>
+            {summary.coverage.note ? <p>{summary.coverage.note}</p> : null}
+            <small>{rejected ? `${rejected} building result${rejected === 1 ? '' : 's'} did not enter the totals. ` : ''}{summary.implausible_occupancy ? `${summary.implausible_occupancy} accepted building${summary.implausible_occupancy === 1 ? '' : 's'} carry an occupancy plausibility flag.` : ''}</small>
+          </div>
+        </section> : null}
 
         <section className="output-section">
           <header><div><BarChart3 size={17} /><span><strong>Cluster totals</strong><small>Both geometric and cadastral denominators remain visible.</small></span></div></header>
@@ -96,7 +106,7 @@ export default function OutputsPage() {
 
     {building && <aside className="building-evidence-drawer" aria-label={`Evidence for ${building.refparcela}`}>
       <header><div><Building2 size={17} /><span><small>BUILDING EVIDENCE</small><strong>{building.refparcela}</strong></span></div><button className="icon-button" onClick={() => setBuilding(null)} aria-label="Close evidence">×</button></header>
-      <dl><div><dt>Status</dt><dd>{building.status}</dd></div><div><dt>Cluster</dt><dd>{String(building.cluster ?? '—')}</dd></div><div><dt>Total site EUI</dt><dd>{number(building.total_site_kwh_m2, 2)} kWh/m²</dd></div><div><dt>QA</dt><dd>{building.qa_all_passed === true ? 'PASS' : building.qa_all_passed === false ? 'FAIL' : '—'}</dd></div>{building.error && <div><dt>Error</dt><dd>{building.error}</dd></div>}</dl>
+      <dl><div><dt>Status</dt><dd>{building.status}</dd></div><div><dt>Cluster</dt><dd>{String(building.cluster ?? '—')}</dd></div><div><dt>Total site EUI</dt><dd>{number(building.total_site_kwh_m2, 2)} kWh/m²</dd></div><div><dt>QA</dt><dd>{building.qa_all_passed === true ? 'PASS' : building.qa_all_passed === false ? 'FAIL' : '—'}</dd></div>{(building.error || building.message || building.reason) && <div><dt>Failure</dt><dd><strong>{building.reason ?? 'Error'}</strong>{building.message || building.error ? <span>{String(building.message ?? building.error)}</span> : null}</dd></div>}</dl>
       {building.status === 'ok' && <nav><span>PRESERVED FILES</span>{ARTIFACTS.map(([file, label]) => <a key={file} href={api.stockArtifactUrl(selected, building.refparcela, file)} target="_blank" rel="noreferrer"><ExternalLink size={14} /><span><strong>{label}</strong><code>{file}</code></span></a>)}</nav>}
       <a className="building-package-link" href={api.stockExportUrl(selected, [building.refparcela])}><PackageCheck size={14} /><span><strong>Signed building package</strong><small>Model, preserved outputs, ledger evidence and Ed25519 manifest</small></span></a>
     </aside>}

@@ -9,6 +9,7 @@ import { SimulationResultPanel } from './SimulationResultPanel'
 import { api } from '../lib/api'
 import { useActiveBuilding } from '../lib/activeBuilding'
 import { formatModelDisplayText } from '../lib/modelGraph'
+import { formatDate } from '../lib/locale'
 
 type CompareMode = 'model' | 'simulation'
 const compareModes: CompareMode[] = ['model', 'simulation']
@@ -19,6 +20,26 @@ export function formatDiffValue(value: unknown): string {
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   try { return JSON.stringify(value) }
   catch { return String(value) }
+}
+
+export function summarizeDiffValue(field: string, value: unknown): string {
+  if (field === 'editor.patch_journal' && Array.isArray(value)) {
+    if (!value.length) return 'No authored edits'
+    const operations = new Map<string, number>()
+    for (const item of value) {
+      const op = typeof item === 'object' && item && 'op' in item
+        ? String((item as { op?: unknown }).op ?? 'unknown') : 'unknown'
+      operations.set(op, (operations.get(op) ?? 0) + 1)
+    }
+    const breakdown = [...operations.entries()].map(([op, count]) => `${op} × ${count}`).join(' · ')
+    return `${value.length} authored edit${value.length === 1 ? '' : 's'} · ${breakdown}`
+  }
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`
+  if (typeof value === 'object' && value) {
+    const keys = Object.keys(value as Record<string, unknown>)
+    return `${keys.length} field${keys.length === 1 ? '' : 's'} · ${keys.slice(0, 5).join(' · ')}${keys.length > 5 ? ` · +${keys.length - 5}` : ''}`
+  }
+  return formatDiffValue(value)
 }
 
 export default function ComparePage() {
@@ -79,19 +100,19 @@ export default function ComparePage() {
 
   return <div className="page compare-page">
     <PageHeader eyebrow={t('compare.eyebrow')} title={t('compare.title')} subtitle={t('compare.subtitle')} actions={<div className="compare-actions"><div className="segmented-control compare-mode-control" aria-label={t('compare.mode')}><button className={mode === 'model' ? 'active' : ''} onClick={() => switchMode('model')}><Boxes size={14} />{t('compare.modelMode')}</button><button className={mode === 'simulation' ? 'active' : ''} onClick={() => switchMode('simulation')}><Activity size={14} />{t('compare.simulationMode')}</button></div><div className="compare-selectors">
-      <select data-testid="compare-left-run" value={left} onChange={(event) => selectLeft(event.target.value)} aria-label={t('compare.runA')}><option value="">{t('compare.selectFirst')}</option>{choices.map((run) => <option key={run.id} value={run.id} disabled={run.id === right}>A · {run.scenario_name}</option>)}</select>
+      <select data-testid="compare-left-run" value={left} onChange={(event) => selectLeft(event.target.value)} aria-label={t('compare.runA')}><option value="">{t('compare.selectFirst')}</option>{choices.map((run) => <option key={run.id} value={run.id} disabled={run.id === right}>A · {run.scenario_name} · {formatDate(run.created_at, i18n.language)} · {run.id.slice(0, 8)}</option>)}</select>
       <button className="icon-button" onClick={swap} disabled={!left || !right} title={t('compare.swap')} aria-label={t('compare.swap')}><ArrowLeftRight size={16} /></button>
-      <select data-testid="compare-right-run" value={right} onChange={(event) => selectRight(event.target.value)} aria-label={t('compare.runB')}><option value="">{t('compare.selectSecond')}</option>{choices.map((run) => <option key={run.id} value={run.id} disabled={run.id === left}>B · {run.scenario_name}</option>)}</select>
+      <select data-testid="compare-right-run" value={right} onChange={(event) => selectRight(event.target.value)} aria-label={t('compare.runB')}><option value="">{t('compare.selectSecond')}</option>{choices.map((run) => <option key={run.id} value={run.id} disabled={run.id === left}>B · {run.scenario_name} · {formatDate(run.created_at, i18n.language)} · {run.id.slice(0, 8)}</option>)}</select>
     </div></div>} />
     <div className="compare-sync-strip"><GitCompareArrows size={14} />{syncText}<code>{choices.length} {t('compare.availableRuns')}</code></div>
     {mode === 'model' ? <div className="compare-layout">
       <section className="compare-view"><header><span>A</span><strong title={modelCompare.data?.left.scenario_name}>{modelCompare.data?.left.scenario_name ?? t('common.notSelected')}</strong></header>{leftScene.data ? <ModelViewer scene={leftScene.data} compact syncKey="comparison" /> : <div className="model-empty">{leftScene.isLoading ? <span className="spinner" /> : null}</div>}</section>
       <section className="compare-view"><header><span>B</span><strong title={modelCompare.data?.right.scenario_name}>{modelCompare.data?.right.scenario_name ?? t('common.notSelected')}</strong></header>{rightScene.data ? <ModelViewer scene={rightScene.data} compact syncKey="comparison" /> : <div className="model-empty">{rightScene.isLoading ? <span className="spinner" /> : null}</div>}</section>
       <section className="diff-ledger">
-        {modelCompare.data ? <div className="compare-evidence"><div><span>{t('compare.integrity')}</span><strong>{modelCompare.data.left.verification_status}</strong><strong>{modelCompare.data.right.verification_status}</strong></div><div><span>QA</span><strong>{modelCompare.data.left.qa.all_pass ? 'PASS' : 'FAIL'}</strong><strong>{modelCompare.data.right.qa.all_pass ? 'PASS' : 'FAIL'}</strong></div><div><span>{t('compare.surfaces')}</span><strong>{String(modelCompare.data.left.stats.n_surfaces ?? '—')}</strong><strong>{String(modelCompare.data.right.stats.n_surfaces ?? '—')}</strong></div><div><span>{t('compare.canonical')}</span><code>{modelCompare.data.left.canonical_fingerprint?.slice(0, 10) ?? 'legacy'}</code><code>{modelCompare.data.right.canonical_fingerprint?.slice(0, 10) ?? 'legacy'}</code></div><div><span>{t('compare.snapshots')}</span><strong>{Object.keys(modelCompare.data.evidence.left.input_snapshots).length}</strong><strong>{Object.keys(modelCompare.data.evidence.right.input_snapshots).length}</strong></div><div><span>{t('compare.overrides')}</span><strong>{modelCompare.data.evidence.left.provenance.overrides?.length ?? 0}</strong><strong>{modelCompare.data.evidence.right.provenance.overrides?.length ?? 0}</strong></div><div><span>{t('compare.facadeRows')}</span><strong>{modelCompare.data.evidence.left.facade_qa.length}</strong><strong>{modelCompare.data.evidence.right.facade_qa.length}</strong></div>
+        {modelCompare.data ? <div className="compare-evidence"><div><span>{t('compare.integrity')}</span><strong>{modelCompare.data.left.verification_status}</strong><strong>{modelCompare.data.right.verification_status}</strong></div><div><span>QA</span><strong>{modelCompare.data.left.qa.all_pass ? 'PASS' : 'FAIL'}</strong><strong>{modelCompare.data.right.qa.all_pass ? 'PASS' : 'FAIL'}</strong></div><div><span>{t('compare.surfaces')}</span><strong>{String(modelCompare.data.left.stats.n_surfaces ?? leftScene.data?.surfaces.length ?? '—')}</strong><strong>{String(modelCompare.data.right.stats.n_surfaces ?? rightScene.data?.surfaces.length ?? '—')}</strong></div><div><span>{t('compare.canonical')}</span><code>{modelCompare.data.left.canonical_fingerprint?.slice(0, 10) ?? 'legacy'}</code><code>{modelCompare.data.right.canonical_fingerprint?.slice(0, 10) ?? 'legacy'}</code></div><div><span>{t('compare.snapshots')}</span><strong>{Object.keys(modelCompare.data.evidence.left.input_snapshots).length}</strong><strong>{Object.keys(modelCompare.data.evidence.right.input_snapshots).length}</strong></div><div><span>{t('compare.overrides')}</span><strong>{modelCompare.data.evidence.left.provenance.overrides?.length ?? 0}</strong><strong>{modelCompare.data.evidence.right.provenance.overrides?.length ?? 0}</strong></div><div><span>{t('compare.facadeRows')}</span><strong>{modelCompare.data.evidence.left.facade_qa.length}</strong><strong>{modelCompare.data.evidence.right.facade_qa.length}</strong></div>
           {Array.from(new Set([...Object.keys(modelCompare.data.evidence.left.input_snapshots), ...Object.keys(modelCompare.data.evidence.right.input_snapshots)])).map((role) => <div key={role}><span>{role}</span><code>{modelCompare.data.evidence.left.input_snapshots[role]?.snapshot_hash.slice(0, 10) ?? '—'}</code><code>{modelCompare.data.evidence.right.input_snapshots[role]?.snapshot_hash.slice(0, 10) ?? '—'}</code></div>)}</div> : <div className="empty-state"><p>{t('compare.selectTwo')}</p></div>}
         <div className="diff-filter"><div className="table-head"><span>{t('compare.delta')}</span><code>{t('compare.fields', { count: differences.length })}</code></div><label className="search-field"><Search size={14} /><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={t('compare.searchDiff')} /></label></div>
-        <table><thead><tr><th>{t('compare.field')}</th><th>A</th><th>B</th></tr></thead><tbody>{differences.map((item) => { const leftRaw = formatDiffValue(item.left); const rightRaw = formatDiffValue(item.right); const leftValue = formatModelDisplayText(leftRaw, i18n.language); const rightValue = formatModelDisplayText(rightRaw, i18n.language); return <tr key={item.field}><td><code>{item.field}</code></td><td><code className="structured-diff-value" title={leftRaw}>{leftValue}</code></td><td><code className="structured-diff-value" title={rightRaw}>{rightValue}</code></td></tr> })}</tbody></table>
+        <table><thead><tr><th>{t('compare.field')}</th><th>A</th><th>B</th></tr></thead><tbody>{differences.map((item) => { const leftRaw = formatDiffValue(item.left); const rightRaw = formatDiffValue(item.right); const leftValue = formatModelDisplayText(summarizeDiffValue(item.field, item.left), i18n.language); const rightValue = formatModelDisplayText(summarizeDiffValue(item.field, item.right), i18n.language); return <tr key={item.field}><td><code>{item.field}</code></td><td><code className="structured-diff-value" title={leftRaw.length <= 500 ? leftRaw : undefined}>{leftValue}</code></td><td><code className="structured-diff-value" title={rightRaw.length <= 500 ? rightRaw : undefined}>{rightValue}</code></td></tr> })}</tbody></table>
         {modelCompare.data && !differences.length ? <div className="empty-state compact-empty"><p>{t('compare.noDiff')}</p></div> : null}
       </section>
     </div> : mode === 'simulation' ? <div className="simulation-compare-layout">

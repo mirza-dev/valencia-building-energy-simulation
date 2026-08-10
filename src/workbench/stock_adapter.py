@@ -440,7 +440,49 @@ def summary(name: str) -> dict[str, Any]:
 
 def ledger_rows(name: str) -> list[dict[str, Any]]:
     out_dir = run_directory(name)
-    return sr.latest_per_reference(sr.read_ledger(out_dir / "ledger.jsonl"))
+    rows = sr.latest_per_reference(sr.read_ledger(out_dir / "ledger.jsonl"))
+    # Runner schema 2 did not persist the task's cluster on the ledger row,
+    # even though the worker already received it and the aggregate joined it
+    # from the prepared stock.  Keep the immutable ledger untouched and enrich
+    # the API/CSV view from that exact prepared input.  New rows carry the
+    # cluster directly; this compatibility path makes historical runs equally
+    # auditable, including failures that never produced a model path.
+    lookup = _cluster_lookup_for_run(out_dir)
+    return [
+        row if row.get("cluster") else row | {"cluster": lookup.get(str(row.get("refparcela"))) }
+        for row in rows
+    ]
+
+
+@lru_cache(maxsize=16)
+def _read_cluster_lookup(path_text: str, mtime_ns: int) -> dict[str, str]:
+    del mtime_ns  # part of the cache key; content is read from path_text
+    path = Path(path_text).resolve()
+    allowed_root = (PROJECT / "var").resolve()
+    if path != allowed_root and allowed_root not in path.parents:
+        return {}
+    frame = gpd.read_file(
+        path, columns=["refparcela", "cluster"], ignore_geometry=True,
+    )
+    if not {"refparcela", "cluster"} <= set(frame.columns):
+        return {}
+    return {
+        str(reference): str(cluster)
+        for reference, cluster in zip(frame["refparcela"], frame["cluster"], strict=False)
+        if reference is not None and cluster is not None and str(cluster).strip()
+    }
+
+
+def _cluster_lookup_for_run(out_dir: Path) -> dict[str, str]:
+    config_path = out_dir / "run_config.json"
+    if not config_path.is_file():
+        return {}
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        prepared = Path(str(config["worker_config"]["prepared_gis"])).resolve()
+        return _read_cluster_lookup(str(prepared), prepared.stat().st_mtime_ns)
+    except (KeyError, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError):
+        return {}
 
 
 def artifact_path(name: str, refparcela: str, filename: str) -> Path:
