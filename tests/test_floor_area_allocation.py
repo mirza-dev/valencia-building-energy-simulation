@@ -129,6 +129,52 @@ def test_alternative_rules_are_measured_on_the_same_buildings(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Proxied cadastral areas: measuring against a constructed value measures nothing
+# ---------------------------------------------------------------------------
+def _stock(tmp_path, proxies):
+    import geopandas as gpd
+    from shapely.geometry import box
+    refs = ["A", "B"]
+    frame = gpd.GeoDataFrame(
+        {"refparcela": refs, "res_area_proxy": [r in proxies for r in refs]},
+        geometry=[box(0, 0, 1, 1), box(2, 0, 3, 1)], crs="EPSG:25830")
+    path = tmp_path / "stock.gpkg"
+    frame.to_file(path, driver="GPKG")
+    return path
+
+
+def test_a_proxied_building_is_excluded_and_reported(tmp_path):
+    """Its Tipo15 area came from the cluster ratio, so the gap against it is
+    the filling rule's, not the stock's."""
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3),
+            _row("B", 100.0, 250.0, built=5, storeys_effective=3)]
+    report = faa.measure(_ledger(tmp_path, rows), _stock(tmp_path, {"B"}))
+    provenance = report["cadastral_area_provenance"]
+    assert provenance["checked"] is True
+    assert provenance["excluded_buildings"] == 1
+    assert report["buildings_ok"] == 1
+    assert report["area"]["cadastral_m2"] == pytest.approx(250.0)
+
+
+def test_without_a_prepared_stock_the_report_says_it_did_not_check(tmp_path):
+    """Silence must not read as 'there were none'."""
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3)]
+    provenance = faa.measure(_ledger(tmp_path, rows))["cadastral_area_provenance"]
+    assert provenance["checked"] is False
+    assert "could not be separated" in provenance["note"]
+
+
+def test_a_file_without_the_proxy_flag_is_refused(tmp_path):
+    import geopandas as gpd
+    from shapely.geometry import box
+    path = tmp_path / "not_stock.gpkg"
+    gpd.GeoDataFrame({"refparcela": ["A"]}, geometry=[box(0, 0, 1, 1)],
+                     crs="EPSG:25830").to_file(path, driver="GPKG")
+    with pytest.raises(faa.AllocationError, match="res_area_proxy"):
+        faa.measure(_ledger(tmp_path, [_row("A")]), path)
+
+
+# ---------------------------------------------------------------------------
 # Against the published run
 # ---------------------------------------------------------------------------
 @pytest.mark.skipif(not (RUN / "aggregate.json").exists(),

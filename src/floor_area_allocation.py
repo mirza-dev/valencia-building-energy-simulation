@@ -106,9 +106,43 @@ def _annotate(row: dict) -> dict:
     }
 
 
-def measure(ledger_path: Path) -> dict:
-    """Decompose the modelled-versus-cadastral gap on a finished ledger."""
-    ok = [_annotate(r) for r in _rows(ledger_path)]
+def _proxy_references(prepared_stock: Path | None) -> set[str] | None:
+    """Which buildings' `tipo15_res_area_m2` was constructed rather than recorded.
+
+    `stock_input_policy` fills a missing Tipo15 area from the cluster ratio and
+    marks the row `res_area_proxy`.  That flag never reaches the ledger, so a
+    measurement reading the ledger alone cannot tell a recorded area from a
+    constructed one - and comparing modelled area against a constructed one
+    measures the filling rule, not the stock.  Returning None means "not
+    checked", which the report states rather than hides.
+    """
+    if prepared_stock is None:
+        return None
+    import geopandas as gpd  # only needed on this path
+    frame = gpd.read_file(prepared_stock)
+    if "res_area_proxy" not in frame.columns:
+        raise AllocationError(f"{Path(prepared_stock).name}: no 'res_area_proxy' "
+                              "column; this is not a prepared stock file")
+    return set(frame.loc[frame["res_area_proxy"] == True,  # noqa: E712
+                         "refparcela"].astype(str))
+
+
+def measure(ledger_path: Path, prepared_stock: Path | None = None) -> dict:
+    """Decompose the modelled-versus-cadastral gap on a finished ledger.
+
+    Pass the run's prepared stock to separate buildings whose cadastral area was
+    proxied; without it the report says the separation was not made.
+    """
+    proxies = _proxy_references(prepared_stock)
+    every = [_annotate(r) for r in _rows(ledger_path)]
+    if proxies is None:
+        ok, proxied = every, []
+    else:
+        ok = [r for r in every if r["refparcela"] not in proxies]
+        proxied = [r for r in every if r["refparcela"] in proxies]
+        if not ok:
+            raise AllocationError("every building's cadastral area is a proxy; "
+                                  "there is nothing recorded to measure against")
 
     modelled = sum(r["_area"] for r in ok)
     cadastral = sum(r["_c"] for r in ok)
@@ -145,6 +179,7 @@ def measure(ledger_path: Path) -> dict:
     return {
         "ledger": str(Path(ledger_path)),
         "buildings_ok": len(ok),
+        "cadastral_area_provenance": _provenance(proxies, proxied, cadastral),
         "area": {
             "modelled_m2": round(modelled, 1),
             "cadastral_m2": round(cadastral, 1),
@@ -193,6 +228,27 @@ def measure(ledger_path: Path) -> dict:
     }
 
 
+def _provenance(proxies: set[str] | None, proxied: list[dict],
+                measured_cadastral: float) -> dict:
+    """State whether proxied rows were separated - never let silence imply zero."""
+    if proxies is None:
+        return {"checked": False,
+                "note": "no prepared stock supplied; buildings whose cadastral "
+                        "area was proxied could not be separated and are "
+                        "included in every figure below"}
+    excluded_area = sum(r["_c"] for r in proxied)
+    return {
+        "checked": True,
+        "excluded_buildings": len(proxied),
+        "excluded_cadastral_m2": round(excluded_area, 1),
+        "excluded_share_of_cadastral_pct":
+            round(100.0 * excluded_area / (measured_cadastral + excluded_area), 2)
+            if measured_cadastral + excluded_area else 0.0,
+        "note": "their Tipo15 area came from the cluster ratio, so comparing "
+                "modelled area against it would measure the filling rule",
+    }
+
+
 def _band(rows: list[dict]) -> dict:
     area = sum(r["_area"] for r in rows)
     cadastral = sum(r["_c"] for r in rows)
@@ -230,6 +286,11 @@ def reference_ratio(report: dict, aggregate_path: Path) -> dict:
     Both sides divide by cadastral dwelling area and both carry their commercial
     energy in the numerator, so the comparison is symmetric - except that ours
     also carries floor area the cadastre does not record.
+
+    The band is measured on buildings with a recorded area but applied to the
+    whole aggregate, which also contains proxied ones.  Those carry rounding
+    excess too, so the correction here is a floor: the true ratio is at or below
+    what this returns.
     """
     aggregate = json.loads(Path(aggregate_path).read_text(encoding="utf-8"))
     covered = [b for b in aggregate.get("by_cluster", [])
@@ -247,6 +308,9 @@ def reference_ratio(report: dict, aggregate_path: Path) -> dict:
         "published_ratio": round(ours / theirs, 4),
         "ratio_without_rounding_excess": [round(ours * (1 - hi / 100) / theirs, 4),
                                           round(ours * (1 - lo / 100) / theirs, 4)],
+        "correction_is_a_floor": not report["cadastral_area_provenance"]["checked"]
+                                 or bool(report["cadastral_area_provenance"]
+                                         ["excluded_buildings"]),
     }
 
 
@@ -254,11 +318,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--run", type=Path, required=True,
                         help="finished run directory holding ledger.jsonl")
+    parser.add_argument("--stock", type=Path, default=None,
+                        help="the run's prepared stock, so buildings whose "
+                             "cadastral area was proxied can be separated")
     parser.add_argument("--out", type=Path, default=None,
                         help="where to write the report (default: <run>/floor_area_allocation.json)")
     args = parser.parse_args(argv)
 
-    report = measure(args.run / "ledger.jsonl")
+    report = measure(args.run / "ledger.jsonl", args.stock)
     aggregate = args.run / "aggregate.json"
     if aggregate.exists():
         report["vs_reference"] = reference_ratio(report, aggregate)
@@ -267,6 +334,12 @@ def main(argv: list[str] | None = None) -> int:
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     area, energy = report["area"], report["energy"]
     rounding = report["decomposition"]["integer_storey_rounding"]
+    provenance = report["cadastral_area_provenance"]
+    if not provenance["checked"]:
+        print("WARNING: proxied cadastral areas were not separated (--stock not given)")
+    else:
+        print(f"excluded {provenance['excluded_buildings']} buildings whose cadastral "
+              f"area was proxied ({provenance['excluded_share_of_cadastral_pct']:.2f}% of area)")
     print(f"modelled {area['modelled_m2']:,.0f} m2 against {area['cadastral_m2']:,.0f} "
           f"recorded = +{area['gap_pct_of_cadastral']:.2f}%")
     print(f"  integer-storey rounding: {rounding['excess_m2']:,.0f} m2 "
