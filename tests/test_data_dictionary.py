@@ -7,15 +7,19 @@ from pathlib import Path
 
 import geopandas as gpd
 from fastapi.testclient import TestClient
+import pytest
 from shapely.geometry import Polygon
 
 from workbench import db
 from workbench.api import app
 
+# The product ships no city; these acceptance tests provision one the way an
+# operator would, so every assertion below still describes a real install.
+pytestmark = pytest.mark.usefixtures("reference_city")
+
 
 def _columns(payload: dict) -> dict[str, dict]:
     return {item["field"]: item for item in payload["columns"]}
-
 
 def test_authoritative_semantics_and_usable_coverage_are_exposed():
     with TestClient(app) as client:
@@ -51,7 +55,6 @@ def test_authoritative_semantics_and_usable_coverage_are_exposed():
         assert "suggests post-intervention heating" in intervention["meaning"]["en"]
         assert "cooling demand" in intervention["meaning"]["en"]
 
-
 def test_stock_method_microcopy_and_tipo15_join_basis_are_explicit():
     with TestClient(app) as client:
         payload = client.get("/api/datasets/valencia-city/dictionary").json()
@@ -83,7 +86,6 @@ def test_stock_method_microcopy_and_tipo15_join_basis_are_explicit():
         tipo15_columns = _columns(tipo15)
         assert tipo15_columns["442_sup_Residencial"]["coverage_basis"] == "dataset_rows"
         assert tipo15_columns["442_sup_Residencial"]["effect"] == "scaling"
-
 
 def test_unknown_fields_are_unclassified_and_missing_tipo15_key_does_not_fail(tmp_path: Path):
     path = tmp_path / "unmapped.geojson"
@@ -120,7 +122,6 @@ def test_unknown_fields_are_unclassified_and_missing_tipo15_key_does_not_fail(tm
             )
             connection.execute("DELETE FROM datasets WHERE id='unmapped-gis'")
 
-
 def test_project_annotation_is_separate_from_system_truth():
     with TestClient(app) as client:
         before = _columns(client.get("/api/datasets/valencia-city/dictionary").json())["demanda_ca"]
@@ -140,7 +141,6 @@ def test_project_annotation_is_separate_from_system_truth():
             json={"note": "x", "semantic_label": ""},
         )
         assert invalid.status_code == 422
-
 
 def test_workflow_contracts_expose_only_controls_that_exist_today():
     with TestClient(app) as client:
@@ -173,7 +173,6 @@ def test_workflow_contracts_expose_only_controls_that_exist_today():
         assert lhs["inputs"][0]["value"] == "N=50 · seed=42"
 
         assert client.get("/api/workflows/not-real/input-policy").status_code == 404
-
 
 def test_current_schema_contains_dataset_annotation_and_versioned_policy_tables():
     with db.connect() as connection:

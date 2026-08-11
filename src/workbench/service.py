@@ -37,7 +37,6 @@ from model_config import (
 )
 from workbench import db, file_inputs
 from workbench import integrity, renderer_provenance, storage
-from workbench.data_dictionary import TIPO15_PATH, companion_bootstrap_metadata
 from workbench.environment import runtime_environment
 from workbench.scene import extract_scene, render_scene_png, write_scene
 
@@ -114,72 +113,15 @@ def bootstrap() -> None:
     for scratch in RUN_ROOT.glob(".scenario-*"):
         if scratch.is_dir():
             shutil.rmtree(scratch, ignore_errors=True)
-    config = mb.DEFAULT_BUILD_CONFIG.model_copy(deep=True)
-    config.data.building_path = CITY_PATH
-    defaults = [
-        ("valencia-city", "gis", "Valencia city buildings", config.data.building_path),
-        ("tipo15-ledger", "companion", "Tipo15 dwelling ledger", TIPO15_PATH),
-        ("plantilla-v2", "template", "PlantillaOS_v2", config.data.template_path),
-        ("valencia-iwec", "weather", "Valencia IWEC", config.data.epw_path),
-        ("valencia-iwec-ddy", "ddy", "Valencia IWEC design days",
-         PROJECT / "data/weather/ESP_Valencia.082840_IWEC.ddy"),
-    ]
-    for dataset_id, kind, name, path in defaults:
-        existing = db.get_dataset(dataset_id)
-        if path.exists() and (existing is None or not existing.get("snapshot_hash")):
-            snapshot = integrity.ensure_snapshot(path, kind=kind)
-            metadata: dict[str, Any] = {"managed": False, "suffix": path.suffix.lower()}
-            if kind == "gis":
-                try:
-                    gdf = read_gdf(path)
-                    metadata.update({
-                        "rows": len(gdf), "crs": str(gdf.crs),
-                        "columns": list(gdf.columns),
-                        "geometry_types": sorted(gdf.geometry.geom_type.dropna().unique().tolist()),
-                    })
-                except Exception as exc:
-                    metadata["inspection_error"] = str(exc)
-            elif kind == "companion":
-                metadata.update(companion_bootstrap_metadata())
-            elif kind in {"template", "weather", "ddy"}:
-                metadata.update(_inspect_uploaded_dataset(kind, path))
-            db.upsert_dataset({
-                "id": dataset_id,
-                "kind": kind,
-                "name": name,
-                "path": str(path),
-                "sha256": snapshot["snapshot_hash"],
-                "snapshot_hash": snapshot["snapshot_hash"],
-                "verification_status": "VERIFIED",
-                "read_only": True,
-                "metadata": metadata | {"snapshot_components": snapshot["components"]},
-            })
-    settings = db.project_settings()
-    defaults_by_field = {
-        "building_dataset_id": "valencia-city",
-        "neighbor_dataset_id": "valencia-city",
-        "tipo15_dataset_id": "tipo15-ledger",
-        "template_dataset_id": "plantilla-v2",
-        "weather_dataset_id": "valencia-iwec",
-        "ddy_dataset_id": "valencia-iwec-ddy",
-    }
-    initial_settings = {
-        field: dataset_id for field, dataset_id in defaults_by_field.items()
-        if db.get_dataset(dataset_id)
-    }
-    if not settings.get("initialized"):
-        db.update_project_settings(initial_settings)
-    else:
-        # Schema v8 introduced these two explicit inputs.  Existing installations
-        # already used these exact files implicitly; record them without changing
-        # any of the four older active selections.
-        migrated_defaults = {
-            field: defaults_by_field[field]
-            for field in ("tipo15_dataset_id", "ddy_dataset_id")
-            if not settings.get(field) and db.get_dataset(defaults_by_field[field])
-        }
-        if migrated_defaults:
-            db.update_project_settings(migrated_defaults)
+    # No city is registered or activated here.  This product used to seed
+    # Valencia's cadastre, ledger, template and weather on every start and
+    # activate them, which made one city a property of the installation rather
+    # than a choice: a fresh copy already had a city in it, and the answer to
+    # "which data does a run read?" was partly the shipped default rather than
+    # entirely what the operator uploaded.  Now an empty install reports its
+    # inputs as missing until they are uploaded, and whatever is uploaded is
+    # what runs.  Valencia's files stay on disk for the frozen regression and
+    # `verified_model --verify`; they are uploaded like any other city's.
     try:
         db.replace_profiles(profile_catalog(workbench_base_config()))
     except RuntimeError:

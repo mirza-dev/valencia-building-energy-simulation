@@ -8,6 +8,10 @@ from workbench import db
 from workbench import api as api_module
 from workbench.api import app
 
+# The product ships no city; these acceptance tests provision one the way an
+# operator would, so every assertion below still describes a real install.
+pytestmark = pytest.mark.usefixtures("reference_city")
+
 
 def test_health_config_building_and_code_contracts():
     with TestClient(app) as client:
@@ -31,7 +35,6 @@ def test_health_config_building_and_code_contracts():
         assert code.status_code == 200
         assert "BuildResult" in code.json()["source"]
 
-
 def test_storage_inventory_cleanup_plan_and_stale_confirmation():
     with TestClient(app) as client:
         overview = client.get("/api/storage")
@@ -51,7 +54,6 @@ def test_storage_inventory_cleanup_plan_and_stale_confirmation():
         })
         assert stale.status_code == 409
 
-
 def test_storage_admission_errors_are_structured_507(monkeypatch):
     evidence = {"allowed": False, "reason": "protected_reserve_would_be_crossed"}
 
@@ -63,7 +65,6 @@ def test_storage_admission_errors_are_structured_507(monkeypatch):
         response = client.get("/api/storage")
     assert response.status_code == 507
     assert response.json()["detail"]["storage"] == evidence
-
 
 def test_geometry_endpoint_reports_party_wall():
     with TestClient(app) as client:
@@ -82,7 +83,6 @@ def test_geometry_endpoint_reports_party_wall():
         assert payload["party_length_m"] == pytest.approx(20.04, abs=0.02)
         assert len(payload["neighbors"]["features"]) == 11
 
-
 def test_project_settings_expose_active_inputs():
     with TestClient(app) as client:
         response = client.get("/api/project/settings")
@@ -91,7 +91,6 @@ def test_project_settings_expose_active_inputs():
         assert settings["building_dataset_id"] == "valencia-city"
         assert settings["template_dataset_id"] == "plantilla-v2"
         assert settings["datasets"]["weather_dataset_id"]["kind"] == "weather"
-
 
 def test_capabilities_global_search_and_vector_tile():
     with TestClient(app) as client:
@@ -142,7 +141,6 @@ def test_capabilities_global_search_and_vector_tile():
         assert tile.headers["content-type"].startswith("application/vnd.mapbox-vector-tile")
         assert len(tile.content) > 20
 
-
 def test_model_inspector_graph_and_scene_routes_are_read_only(monkeypatch, tmp_path):
     osm = tmp_path / "model_python.osm"
     scene = tmp_path / "scene.json"
@@ -173,7 +171,6 @@ def test_model_inspector_graph_and_scene_routes_are_read_only(monkeypatch, tmp_p
         assert loaded_scene.status_code == 200
         assert loaded_scene.json()["surfaces"][0]["construction_id"] == "construction-a"
     assert osm.read_text(encoding="utf-8") == "OSM"
-
 
 def test_simulation_artifact_viewer_serves_only_verified_manifest_files(monkeypatch, tmp_path):
     report = tmp_path / "eplustbl.htm"
@@ -219,7 +216,6 @@ def test_simulation_artifact_viewer_serves_only_verified_manifest_files(monkeypa
         assert client.get(
             f"/api/runs/{run['id']}/artifacts/model.idf",
         ).status_code == 404
-
 
 def test_simulation_artifact_viewer_blocks_unverified_tampered_and_escaped_files(
     monkeypatch, tmp_path,
@@ -268,7 +264,6 @@ def test_simulation_artifact_viewer_blocks_unverified_tampered_and_escaped_files
         wrong_type = client.get("/api/runs/simulation/artifacts/eplusout.err")
         assert wrong_type.status_code == 404
 
-
 def test_model_editor_session_routes_are_typed_and_token_scoped(monkeypatch):
     monkeypatch.setattr(api_module, "capability_status", lambda: {
         "capabilities": {"model_editor": {"runtime_ready": True}},
@@ -311,7 +306,6 @@ def test_model_editor_session_routes_are_typed_and_token_scoped(monkeypatch):
         assert committed.json()["provenance"] == "authored"
         assert client.post("/api/models/session/" + "a" * 32 + "/discard", json={"token": token}).json()["discarded"] is True
 
-
 def test_simulation_job_recovery_is_typed_and_reports_active_job(monkeypatch):
     simulation = {
         "id": "simulation-job", "kind": "simulation", "status": "running",
@@ -333,7 +327,6 @@ def test_simulation_job_recovery_is_typed_and_reports_active_job(monkeypatch):
         wrong_kind = client.get("/api/simulations/jobs/preview-job")
         assert wrong_kind.status_code == 422
 
-
 def test_authored_simulation_pair_route_preserves_automatic_baseline_link(monkeypatch):
     notified = []
     monkeypatch.setattr(api_module, "create_authored_simulation_pair", lambda parent: {
@@ -352,7 +345,6 @@ def test_authored_simulation_pair_route_preserves_automatic_baseline_link(monkey
     assert response.json()["baseline"]["simulation_run_id"] == "baseline-sim"
     assert response.json()["authored"]["job"]["id"] == "authored-job"
     assert notified == [True]
-
 
 def test_preview_recovery_routes_are_typed_and_expose_ready_ledger(monkeypatch):
     preview = {
@@ -385,7 +377,6 @@ def test_preview_recovery_routes_are_typed_and_expose_ready_ledger(monkeypatch):
         assert active.json()["job"]["id"] == "preview-job"
         wrong_kind = client.get("/api/previews/simulation-job")
         assert wrong_kind.status_code == 422
-
 
 def test_neighborhood_map_resource_is_lightweight_cached_and_conditional(tmp_path, monkeypatch):
     map_data = {
@@ -441,7 +432,6 @@ def test_neighborhood_map_resource_is_lightweight_cached_and_conditional(tmp_pat
         unchanged = client.get(descriptor["url"], headers={"If-None-Match": f'"{fingerprint}"'})
         assert unchanged.status_code == 304
         assert client.get(f"/api/neighborhood/maps/{'0' * 64}.geojson").status_code == 404
-
 
 def test_neighborhood_run_map_is_conditional_and_blocks_unverified_artifacts(tmp_path, monkeypatch):
     path = tmp_path / "map.geojson"

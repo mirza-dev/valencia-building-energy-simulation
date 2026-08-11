@@ -18,8 +18,46 @@ def _isolated_workbench(tmp_path: Path, monkeypatch) -> None:
     service.bootstrap()
 
 
+def _provision_template_and_weather() -> None:
+    """The product ships no city, so a test needing a resolvable base config
+    provides the two inputs it is not itself about."""
+    project = Path(service.PROJECT)
+    for dataset_id, kind, path in (
+        ("test-template", "template", project / "data/templates/PlantillaOS_v2.osm"),
+        ("test-weather", "weather", project / "data/weather/ESP_Valencia.082840_IWEC.epw"),
+    ):
+        db.upsert_dataset({
+            "id": dataset_id, "kind": kind, "name": dataset_id, "path": str(path),
+            "sha256": service.sha256_file(path), "snapshot_hash": service.sha256_file(path),
+            "verification_status": "VERIFIED", "read_only": True, "metadata": {},
+        })
+    db.update_project_settings({
+        "template_dataset_id": "test-template", "weather_dataset_id": "test-weather",
+    })
+
+
+def test_an_empty_install_ships_no_city_and_activates_nothing(tmp_path, monkeypatch):
+    """Which data a run reads must be entirely what somebody uploaded.
+
+    Bootstrap used to register Valencia's cadastre, ledger, template and
+    weather and activate them, so a fresh copy already had a city in it and
+    part of the answer came from the shipped default rather than the operator.
+    """
+    _isolated_workbench(tmp_path, monkeypatch)
+
+    assert db.list_datasets() == []
+    settings = db.project_settings()
+    for field in ("building_dataset_id", "neighbor_dataset_id", "tipo15_dataset_id",
+                  "template_dataset_id", "weather_dataset_id", "ddy_dataset_id",
+                  "stock_dataset_id", "microclimate_dataset_id"):
+        assert settings.get(field) is None, field
+    with pytest.raises(RuntimeError, match="incomplete"):
+        service.workbench_base_config()
+
+
 def test_field_mapping_creates_canonical_derivative_and_can_activate(tmp_path, monkeypatch):
     _isolated_workbench(tmp_path, monkeypatch)
+    _provision_template_and_weather()
     source = tmp_path / "external.geojson"
     gdf = gpd.GeoDataFrame(
         {"building_id": ["A-1"], "levels": [4], "stock_group": ["BlocPluriP04"]},

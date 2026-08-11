@@ -10,6 +10,8 @@ from workbench import renderer_provenance
 from workbench import integrity
 from workbench.jobs import JobManager
 
+from conftest import provision_reference_city
+
 
 @pytest.mark.integration
 def test_preview_commit_keeps_exact_osm_hash(tmp_path, monkeypatch):
@@ -18,7 +20,8 @@ def test_preview_commit_keeps_exact_osm_hash(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "PREVIEW_ROOT", tmp_path / "previews")
     monkeypatch.setattr(service, "RUN_ROOT", tmp_path / "runs")
     monkeypatch.setattr(service, "EXPORT_ROOT", tmp_path / "exports")
-    service.bootstrap()
+    # No city ships with the product, so this run provides its own.
+    provision_reference_city()
 
     config = service.workbench_base_config()
     config.data.output_root = service.RUN_ROOT
@@ -93,7 +96,8 @@ def test_isolated_worker_auto_commit_reaches_verified_run(tmp_path, monkeypatch)
     monkeypatch.setenv("WORKBENCH_PREVIEW_ROOT", str(tmp_path / "previews"))
     monkeypatch.setenv("WORKBENCH_RUN_ROOT", str(tmp_path / "runs"))
     monkeypatch.setenv("WORKBENCH_EXPORT_ROOT", str(tmp_path / "exports"))
-    service.bootstrap()
+    # No city ships with the product, so this run provides its own.
+    provision_reference_city()
     config = service.workbench_base_config()
     config.data.output_root = service.RUN_ROOT
     geometry = service.validate_geometry("4252702YJ2745A", config)
