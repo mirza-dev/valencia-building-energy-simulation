@@ -9,7 +9,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import tempfile
+import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -223,6 +226,104 @@ def _preferred_day(names: list[str], *, heating: bool) -> str:
         return points, name
 
     return max(names, key=score)
+
+
+def slice_root(staged: Path) -> Path:
+    """A zip made from a folder nests everything one level down; accept both."""
+    if (staged / "meta.json").is_file() or (staged / "horizontal").is_dir():
+        return staged
+    children = [child for child in staged.iterdir() if child.is_dir()]
+    if len(children) == 1:
+        return slice_root(children[0])
+    return staged
+
+
+def _unpack_slice_archive(archive: Path, staging: Path) -> Path:
+    """Extract a slice zip under one root and return the directory inside it.
+
+    The traversal guard lives here rather than at each call site so inspection
+    and materialisation cannot drift into two different ideas of what a safe
+    archive is.
+    """
+    staging.mkdir(parents=True, exist_ok=False)
+    root = staging.resolve()
+    with zipfile.ZipFile(archive) as handle:
+        for member in handle.namelist():
+            resolved = (staging / member).resolve()
+            if root not in resolved.parents and resolved != root:
+                raise ValueError(f"microclimate archive escapes its directory: {member}")
+        handle.extractall(staging)
+    return slice_root(staging)
+
+
+def inspect_microclimate(path: Path) -> dict[str, Any]:
+    """Validate a PALM slice with the loader that will actually read it.
+
+    `microclimate.load_slice` is already fail-closed - it demands the metadata,
+    exactly one `ta_max`/`ta_min` raster, a declared CRS and a matching grid -
+    so it is called here rather than restated.  A slice arrives as a directory
+    or a zip of one; both are reduced to the directory the loader wants.
+    """
+    import microclimate as mcl
+
+    if path.is_file() and path.suffix.lower() == ".zip":
+        staged = path.parent / f".microclimate-{uuid.uuid4().hex}"
+        try:
+            record = mcl.load_slice(_unpack_slice_archive(path, staged)).record()
+        finally:
+            shutil.rmtree(staged, ignore_errors=True)
+    else:
+        record = mcl.load_slice(path).record()
+    return {
+        "contract": "palm-slice-v1",
+        "slice_name": record.get("name"),
+        "slice_fingerprint": record.get("fingerprint"),
+        "crs": record.get("crs"),
+        "coverage_note": record.get("coverage_note"),
+    }
+
+
+def materialise_slice(archive: Path, destination: Path, *,
+                      expected_fingerprint: str | None = None) -> Path:
+    """Unpack an accepted slice archive into the directory a run can read.
+
+    The zip stays the dataset's identity - it is the artefact that was uploaded
+    and what the snapshot hash covers - but `microclimate.load_slice` reads a
+    directory.  Storing only the archive produced an upload that passed every
+    acceptance gate and still could not be opened by the run that needed it.
+
+    The unpacked copy is derived, not authoritative, so it is read back through
+    the same loader and its fingerprint must match the one the archive produced
+    when it was accepted.  A truncated or swapped extraction fails here instead
+    of becoming a slice whose provenance nobody can follow.  The fingerprint is
+    content-addressed and carries no path, so relocating the slice cannot change
+    it - that is what makes this check meaningful rather than circular.
+    """
+    import microclimate as mcl
+
+    def confirmed(directory: Path) -> Path:
+        found = mcl.load_slice(directory).record().get("fingerprint")
+        if expected_fingerprint and found != expected_fingerprint:
+            raise ValueError(
+                f"unpacked slice fingerprint {found} does not match the archive "
+                f"that was accepted ({expected_fingerprint})")
+        return directory
+
+    if destination.is_dir():
+        return confirmed(destination)
+
+    staging = destination.parent / f".slice-{uuid.uuid4().hex}"
+    try:
+        unpacked = confirmed(_unpack_slice_archive(archive, staging))
+        # Same filesystem as the destination, so this is a rename: a reader
+        # either sees no slice or the whole one, never a half-extracted tree.
+        unpacked.replace(destination)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    for item in destination.rglob("*"):
+        if item.is_file():
+            item.chmod(0o444)
+    return destination
 
 
 def _digest(path: Path) -> str:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -286,3 +287,133 @@ def test_stock_subprocess_receives_every_active_input(monkeypatch, tmp_path: Pat
     assert isinstance(argv, list)
     assert argv[argv.index("--climate") + 1] == str(climate_path)
     assert argv[argv.index("--template") + 1].endswith("PlantillaOS_v2.osm")
+
+
+def _write_slice(root: Path, *, crs: str = "EPSG:32632") -> Path:
+    """The smallest tree `microclimate.load_slice` will accept.
+
+    Built rather than copied: the real Lecco slice is 90 MB and lives outside
+    the repository, so a test that depended on it would only run on one machine.
+    """
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+
+    snapshots = root / "horizontal/2m/thermal/snapshots"
+    snapshots.mkdir(parents=True)
+    (root / "horizontal/meta.json").write_text(json.dumps({
+        "case": "unit-slice", "run_label_local": "test",
+        "start_local_iso": "2025-07-04T10:00", "end_local_iso": "2025-07-04T15:30",
+    }), encoding="utf-8")
+    for name, base in (("ta_max__15_30.tif", 31.0), ("ta_min__10_00.tif", 22.0)):
+        field = base + np.arange(16, dtype="float32").reshape(4, 4) / 10.0
+        with rasterio.open(
+            snapshots / name, "w", driver="GTiff", height=4, width=4, count=1,
+            dtype="float32", crs=crs,
+            transform=from_origin(500000.0, 5000000.0, 2.0, 2.0),
+        ) as handle:
+            handle.write(field, 1)
+    return root
+
+
+def _zip_slice(directory: Path, archive: Path, *, nest: bool = True) -> Path:
+    import zipfile as zf
+
+    with zf.ZipFile(archive, "w") as handle:
+        for item in sorted(directory.rglob("*")):
+            if item.is_file():
+                inner = item.relative_to(directory.parent if nest else directory)
+                handle.write(item, str(inner))
+    return archive
+
+
+def test_an_accepted_slice_is_stored_as_the_directory_a_run_can_open(tmp_path: Path):
+    """The gap this closes: accepted did not mean runnable.
+
+    The upload endpoint takes a zip and the loader reads a directory, so a slice
+    could pass every acceptance gate and still fail the moment a run opened it.
+    """
+    source = _write_slice(tmp_path / "jul_04")
+    accepted = file_inputs.inspect_microclimate(_zip_slice(source, tmp_path / "slice.zip"))
+    assert accepted["contract"] == "palm-slice-v1"
+
+    unpacked = file_inputs.materialise_slice(
+        tmp_path / "slice.zip", tmp_path / "store/slice",
+        expected_fingerprint=accepted["slice_fingerprint"])
+
+    import microclimate as mcl
+    assert unpacked.is_dir()
+    # The identity has to survive the move, or the check above is circular.
+    assert mcl.load_slice(unpacked).record()["fingerprint"] == accepted["slice_fingerprint"]
+
+
+def test_a_flat_archive_is_accepted_as_well_as_a_nested_one(tmp_path: Path):
+    source = _write_slice(tmp_path / "jul_04")
+    flat = _zip_slice(source, tmp_path / "flat.zip", nest=False)
+    assert file_inputs.inspect_microclimate(flat)["contract"] == "palm-slice-v1"
+
+
+def test_materialising_is_idempotent_and_rechecks_what_it_finds(tmp_path: Path):
+    source = _write_slice(tmp_path / "jul_04")
+    archive = _zip_slice(source, tmp_path / "slice.zip")
+    fingerprint = file_inputs.inspect_microclimate(archive)["slice_fingerprint"]
+    first = file_inputs.materialise_slice(archive, tmp_path / "store/slice",
+                                          expected_fingerprint=fingerprint)
+    again = file_inputs.materialise_slice(archive, tmp_path / "store/slice",
+                                          expected_fingerprint=fingerprint)
+    assert first == again
+
+    # An already-present directory is not trusted because it is present.
+    (again / "horizontal/2m/thermal/snapshots/ta_max__15_30.tif").chmod(0o644)
+    (again / "horizontal/2m/thermal/snapshots/ta_max__15_30.tif").write_bytes(b"not a raster")
+    with pytest.raises(Exception):
+        file_inputs.materialise_slice(archive, tmp_path / "store/slice",
+                                      expected_fingerprint=fingerprint)
+
+
+def test_a_slice_that_cannot_be_unpacked_is_never_registered(tmp_path: Path):
+    """Fail closed: a dataset the interface calls VERIFIED must be openable."""
+    from workbench import service
+
+    broken = tmp_path / "broken.zip"
+    broken.write_bytes(b"PK\x03\x04 not really an archive")
+    with pytest.raises(Exception):
+        service.import_dataset("microclimate", "broken slice", broken)
+    assert not [item for item in db.list_datasets() if item["kind"] == "microclimate"]
+
+
+def test_the_runner_is_handed_the_slice_directory_not_the_archive(tmp_path: Path):
+    """The joined path, which is the only place the original break was visible."""
+    from workbench import service
+
+    source = _write_slice(tmp_path / "jul_04")
+    archive = _zip_slice(source, tmp_path / "slice.zip")
+    record = service.import_dataset("microclimate", "unit slice", archive)
+    assert Path(record["path"]).suffix == ".zip", "the upload stays the identity"
+
+    db.update_project_settings({"microclimate_dataset_id": record["id"]})
+    resolved = stock_adapter.default_inputs().microclimate
+    assert resolved is not None and resolved.is_dir()
+
+    import microclimate as mcl
+    assert (mcl.load_slice(resolved).record()["fingerprint"]
+            == record["metadata"]["slice_fingerprint"])
+
+
+def test_a_slice_registered_before_unpacking_heals_on_first_use(tmp_path: Path):
+    """Existing registrations must not need a re-upload to become usable."""
+    from workbench import service
+
+    source = _write_slice(tmp_path / "jul_04")
+    archive = _zip_slice(source, tmp_path / "slice.zip")
+    record = service.import_dataset("microclimate", "legacy slice", archive)
+
+    # Exactly what an older row looks like: the archive, and no unpacked copy.
+    legacy = dict(record["metadata"])
+    unpacked = Path(legacy.pop("slice_dir"))
+    shutil.rmtree(unpacked)
+    db.upsert_dataset(dict(record) | {"metadata": legacy})
+    db.update_project_settings({"microclimate_dataset_id": record["id"]})
+
+    resolved = stock_adapter.default_inputs().microclimate
+    assert resolved is not None and resolved.is_dir()

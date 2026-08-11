@@ -150,11 +150,34 @@ def default_inputs() -> InputSet:
             item = db.get_dataset(str(dataset_id)) if dataset_id else None
             return Path(item["path"]) if item else None
 
+        def selected_slice() -> Path | None:
+            """Hand the runner the directory the loader reads, not the archive.
+
+            A slice registered before uploads unpacked them carries only the
+            zip, so the directory is produced on first use here.  The
+            fingerprint recorded at acceptance is passed down, which means the
+            healed path is checked exactly as the freshly uploaded one.
+            """
+            dataset_id = settings.get("microclimate_dataset_id")
+            item = db.get_dataset(str(dataset_id)) if dataset_id else None
+            if item is None:
+                return None
+            metadata = item.get("metadata") or {}
+            stored = metadata.get("slice_dir")
+            if stored and Path(str(stored)).is_dir():
+                return Path(str(stored))
+            archive = Path(item["path"])
+            if archive.is_dir():
+                return archive
+            return file_inputs.materialise_slice(
+                archive, archive.parent / "slice",
+                expected_fingerprint=metadata.get("slice_fingerprint"))
+
         stock = selected("stock_dataset_id")
         gis = selected("building_dataset_id")
         tipo15 = selected("tipo15_dataset_id")
         template = selected("template_dataset_id")
-        microclimate = selected("microclimate_dataset_id")
+        microclimate = selected_slice()
         epw = selected("weather_dataset_id")
         ddy = selected("ddy_dataset_id")
         climate_path = None

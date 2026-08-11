@@ -1657,44 +1657,8 @@ def _inspect_uploaded_dataset(kind: str, source: Path) -> dict[str, Any]:
     if kind == "stock":
         return file_inputs.inspect_stock(source)
     if kind == "microclimate":
-        return _inspect_microclimate(source)
+        return file_inputs.inspect_microclimate(source)
     return {}
-
-
-def _inspect_microclimate(source: Path) -> dict[str, Any]:
-    """Validate a PALM slice with the loader that will actually read it.
-
-    `microclimate.load_slice` is already fail-closed - it demands the metadata,
-    exactly one `ta_max`/`ta_min` raster, a declared CRS and a matching grid -
-    so it is called here rather than restated.  A slice arrives as a directory
-    or a zip of one; both are reduced to the directory the loader wants.
-    """
-    import microclimate as mcl
-
-    directory = source
-    if source.is_file() and source.suffix.lower() == ".zip":
-        staged = IMPORT_ROOT / f".microclimate-{uuid.uuid4().hex}"
-        try:
-            with zipfile.ZipFile(source) as archive:
-                for member in archive.namelist():
-                    resolved = (staged / member).resolve()
-                    if staged.resolve() not in resolved.parents and resolved != staged.resolve():
-                        raise ValueError(f"microclimate archive escapes its directory: {member}")
-                archive.extractall(staged)
-            directory = _slice_root(staged)
-            slice_ = mcl.load_slice(directory)
-        finally:
-            shutil.rmtree(staged, ignore_errors=True)
-    else:
-        slice_ = mcl.load_slice(directory)
-    record = slice_.record()
-    return {
-        "contract": "palm-slice-v1",
-        "slice_name": record.get("name"),
-        "slice_fingerprint": record.get("fingerprint"),
-        "crs": record.get("crs"),
-        "coverage_note": record.get("coverage_note"),
-    }
 
 
 def ingest_eu_database(dataset_id: str, name: str, *, population: int,
@@ -1730,16 +1694,6 @@ def ingest_eu_database(dataset_id: str, name: str, *, population: int,
     return import_dataset("stock", name, out_path, original_name=out_path.name)
 
 
-def _slice_root(staged: Path) -> Path:
-    """A zip made from a folder nests everything one level down; accept both."""
-    if (staged / "meta.json").is_file():
-        return staged
-    children = [child for child in staged.iterdir() if child.is_dir()]
-    if len(children) == 1 and (children[0] / "meta.json").is_file():
-        return children[0]
-    return staged
-
-
 def import_dataset(kind: str, name: str, source: Path, *, original_name: str | None = None) -> dict[str, Any]:
     preserved_name = Path(original_name).name if original_name else source.name
     staged_dir: Path | None = None
@@ -1773,6 +1727,14 @@ def import_dataset(kind: str, name: str, source: Path, *, original_name: str | N
         "managed": True, "original_name": preserved_name,
         "snapshot_components": snapshot["components"],
     } | validation
+    if kind == "microclimate":
+        # Accepted has to mean runnable.  The loader reads a directory, so the
+        # archive is unpacked here rather than at run time; if that fails the
+        # upload is not registered at all, instead of becoming a dataset the
+        # interface shows as VERIFIED and every event run then refuses.
+        metadata["slice_dir"] = str(file_inputs.materialise_slice(
+            target, target_dir / "slice",
+            expected_fingerprint=metadata.get("slice_fingerprint")))
     if kind == "gis":
         try:
             gdf = gpd.read_file(target)
