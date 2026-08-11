@@ -1563,9 +1563,17 @@ button:disabled { opacity: .5; }
 .site-temperature-fields input { padding: 6px 8px; font-size: 12px; border: 1px solid var(--line-strong); background: white; }
 
 /* Which shape the building input takes; the two are alternatives, not a pair. */
-.stock-source-choice { margin: 0 14px 10px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+.stock-source-choice { margin: 0 14px 10px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
 .stock-source-choice button { padding: 6px 8px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: #45564f; background: #f0f3ee; border: 1px solid var(--line-strong); cursor: pointer; }
 .stock-source-choice button.active { color: white; background: #245e64; border-color: #245e64; }
+
+.database-ingest { padding: 10px 12px 12px; display: grid; gap: 8px; background: #f1f4ef; border-bottom: 1px solid var(--line); }
+.database-ingest > label { display: grid; gap: 4px; }
+.database-ingest > label > span, .ingest-fields label > span { color: var(--muted); font: 8px var(--mono); letter-spacing: .07em; }
+.ingest-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.ingest-fields label { display: grid; gap: 4px; }
+.database-ingest button { padding: 7px 10px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.database-ingest button:disabled { opacity: .5; cursor: not-allowed; }
 
 .run-mode-choice { margin-bottom: 12px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .run-mode-choice button { padding: 9px 11px; display: grid; gap: 2px; text-align: left; background: #fafbf8; border: 1px solid var(--line-strong); cursor: pointer; }

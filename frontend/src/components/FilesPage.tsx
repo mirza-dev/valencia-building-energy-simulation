@@ -64,6 +64,50 @@ function DatasetControl({
   </div>
 }
 
+function DatabaseIngest({ datasets, busy, onIngest }: {
+  datasets: DatasetRecord[]
+  busy: boolean
+  onIngest: (datasetId: string, population: number, crs: string) => void
+}) {
+  const options = datasets.filter((dataset) => dataset.kind === 'eu_database')
+  const [selected, setSelected] = useState('')
+  const [population, setPopulation] = useState('')
+  const [crs, setCrs] = useState('')
+  const chosen = selected || options[options.length - 1]?.id || ''
+  const count = Number(population)
+  const runnable = Boolean(chosen) && Number.isFinite(count) && count > 0 && crs.trim() !== ''
+  return <div className="database-ingest">
+    <label>
+      <span>Uploaded database</span>
+      <select value={chosen} onChange={(event) => setSelected(event.target.value)} disabled={busy}>
+        <option value="" disabled>Upload a building database first</option>
+        {options.map((dataset) => <option value={dataset.id} key={dataset.id}>{dataset.name}</option>)}
+      </select>
+    </label>
+    <div className="ingest-fields">
+      <label>
+        <span>Resident population</span>
+        <input type="number" min="1" step="1" value={population} placeholder="e.g. 47500" disabled={busy}
+          onChange={(event) => setPopulation(event.target.value)} />
+      </label>
+      <label>
+        <span>Metric CRS</span>
+        <input type="text" value={crs} placeholder="e.g. EPSG:32632" disabled={busy}
+          onChange={(event) => setCrs(event.target.value)} />
+      </label>
+    </div>
+    <button type="button" className="ghost" disabled={busy || !runnable}
+      onClick={() => onIngest(chosen, count, crs.trim())}>
+      {busy ? 'Working…' : 'Build stock from database'}
+    </button>
+    <p className="product-empty-note">The database carries footprints, heights and construction
+      classes but no residents, so the population is allocated across the housing it describes.
+      The CRS is the metric projection the city is measured in — areas and distances are computed
+      in it. What this writes is an ordinary stock file that goes through the same contract as an
+      uploaded one, and it is activated as the stock in use.</p>
+  </div>
+}
+
 function FileCard({ icon: Icon, eyebrow, title, description, status, optional, children }: {
   icon: IconType; eyebrow: string; title: string; description: string; status: boolean
   optional?: boolean; children: ReactNode
@@ -123,6 +167,31 @@ export default function FilesPage() {
 
   const usingPrepared = Boolean(active.stock_dataset_id)
   const clearPrepared = () => activateMutation.mutate({ stock_dataset_id: null })
+  // Three ways to arrive at a stock, and the third is not an activation but a
+  // translation, so it cannot be derived from the active settings the way the
+  // other two can.  It is a view the user opens, hence local state.
+  const [source, setSource] = useState<'cadastre' | 'stock' | 'database'>(
+    usingPrepared ? 'stock' : 'cadastre')
+  useEffect(() => { setSource((current) => current === 'database' ? current : usingPrepared ? 'stock' : 'cadastre') },
+    [usingPrepared])
+  const databaseUpload = useMutation({
+    mutationFn: (file: File) => api.uploadDataset('eu_database', file.name, file),
+    onSuccess: async (imported) => { await refresh(); notify(`${imported.name} registered.`, 'success') },
+    onError: (error) => notify(error instanceof Error ? error.message : 'Upload failed.', 'error'),
+  })
+  const ingestMutation = useMutation({
+    mutationFn: async ({ id, population, crs }: { id: string; population: number; crs: string }) => {
+      const stock = await api.ingestDataset(id, { population, crs })
+      await api.updateProjectSettings({ stock_dataset_id: stock.id })
+      return stock
+    },
+    onSuccess: async (stock) => {
+      await refresh()
+      setSource('stock')
+      notify(`${stock.metadata?.buildings?.toLocaleString('en-GB') ?? 'The'} buildings extracted and activated.`, 'success')
+    },
+    onError: (error) => notify(error instanceof Error ? error.message : 'Extraction failed.', 'error'),
+  })
   const cityName = settings.data?.city_name ?? ''
   const [cityDraft, setCityDraft] = useState(cityName)
   const [groundDraft, setGroundDraft] = useState('')
@@ -204,12 +273,29 @@ export default function FilesPage() {
             : 'A raw cadastre. It cannot say how much of a building is housing, so it needs the dwelling ledger below.'}
           status={Boolean(active.stock_dataset_id ?? active.building_dataset_id)}>
           <div className="stock-source-choice" role="group" aria-label="Building stock source">
-            <button type="button" className={usingPrepared ? '' : 'active'} disabled={busy}
-              onClick={() => clearPrepared()}>Cadastre + ledger</button>
-            <button type="button" className={usingPrepared ? 'active' : ''} disabled={busy}
-              onClick={() => { if (!usingPrepared) notify('Upload or select a prepared stock file to switch.', 'info') }}>Prepared stock</button>
+            <button type="button" className={source === 'cadastre' ? 'active' : ''} disabled={busy}
+              onClick={() => { setSource('cadastre'); if (usingPrepared) clearPrepared() }}>Cadastre + ledger</button>
+            <button type="button" className={source === 'stock' ? 'active' : ''} disabled={busy}
+              onClick={() => { setSource('stock'); if (!usingPrepared) notify('Upload or select a prepared stock file to switch.', 'info') }}>Prepared stock</button>
+            <button type="button" className={source === 'database' ? 'active' : ''} disabled={busy}
+              onClick={() => setSource('database')}>Building database</button>
           </div>
-          {usingPrepared
+          {source === 'database'
+            ? <>
+                <label className="compact-upload">
+                  <Upload size={14} /> Upload database
+                  <input type="file" accept=".db,.sqlite,.sqlite3,.gpkg" disabled={busy || databaseUpload.isPending}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (file) databaseUpload.mutate(file)
+                      event.currentTarget.value = ''
+                    }} />
+                </label>
+                <DatabaseIngest datasets={all} busy={busy || databaseUpload.isPending || ingestMutation.isPending}
+                  onIngest={(id, population, crs) => ingestMutation.mutate({ id, population, crs })} />
+                {active.stock_dataset_id && <EvidenceRows dataset={active.stock_dataset_id} />}
+              </>
+            : source === 'stock'
             ? <>
                 <DatasetControl label="Active stock" kind="stock" accept=".gpkg,.geojson,.json" active={active.stock_dataset_id} datasets={all} setting="stock_dataset_id" activate={activate} upload={upload} busy={busy} />
                 <EvidenceRows dataset={active.stock_dataset_id} />

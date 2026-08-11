@@ -152,9 +152,18 @@ export const api = {
     request<DatasetRecord>(`/api/datasets/${encodeURIComponent(datasetId)}/field-map`, {
       method: 'POST', body: JSON.stringify(mapping),
     }),
+  // Turns a registered building database into a registered stock file.  The
+  // product of one step becomes the input of the next: what comes back is an
+  // ordinary stock dataset that went through the same contract as an uploaded
+  // one, so nothing downstream can tell the two apart.
+  ingestDataset: (datasetId: string, options: { population: number; crs: string; include_mixed?: boolean }) =>
+    request<DatasetRecord>(`/api/datasets/${encodeURIComponent(datasetId)}/ingest`, {
+      method: 'POST', body: JSON.stringify(options),
+    }),
   projectSettings: () => request<ProjectSettings>('/api/project/settings'),
   updateProjectSettings: (settings: Partial<Pick<ProjectSettings,
-    'building_dataset_id' | 'neighbor_dataset_id' | 'tipo15_dataset_id' | 'template_dataset_id' | 'weather_dataset_id' | 'ddy_dataset_id'>>) =>
+    'building_dataset_id' | 'neighbor_dataset_id' | 'tipo15_dataset_id' | 'template_dataset_id' | 'weather_dataset_id' | 'ddy_dataset_id'
+    | 'stock_dataset_id' | 'microclimate_dataset_id' | 'city_name' | 'ground_temperature_c' | 'water_mains_temperature_c'>>) =>
     request<ProjectSettings>('/api/project/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
   stockProfile: () => request<ProductProfile>('/api/stock/profile'),
   stockDistricts: () => request<{ districts: string[] }>('/api/stock/districts'),
