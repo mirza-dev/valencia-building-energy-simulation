@@ -58,6 +58,7 @@ import pandas as pd
 import climate as cl
 import deep_building as db
 import eu_footprint_flags as euf
+import floor_area_allocation as faa
 import model_builder as mb
 import stock_input_policy as sip
 import template_contract as tpl
@@ -786,6 +787,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
                 "coverage": coverage_block(rows, ok, stock),
                 "zoning": zoning_block(pd.DataFrame(ok)),
                 "fragmentation": euf.fragmentation_block(pd.DataFrame(ok)),
+                "floor_area_allocation": faa.allocation_block(ok, stock),
                 "qa_failed": 0,
                 "unexplained_severes": 0,
                 "implausible_occupancy": 0,
@@ -943,6 +945,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
         "coverage": coverage_block(rows, ok, stock),
         "zoning": zoning_block(frame),
         "fragmentation": euf.fragmentation_block(frame),
+        "floor_area_allocation": faa.allocation_block(ok, stock),
         "qa_failed": int((~frame["qa_all_passed"].astype(bool)).sum())
         if "qa_all_passed" in frame else 0,
         "unexplained_severes": int(frame.get("severes_unexplained",
@@ -1468,6 +1471,21 @@ def _print_report(report: dict) -> None:
             print(f"  cadastral area  {totals.get('tipo15_residential_area_m2', 0):,.0f} m² | "
                   f"area-weighted {totals['cadastral_total_site_kwh_m2']} kWh/m² "
                   f"(Rai's basis - what vs-Rai uses)")
+    # Printed immediately under the cadastral basis because it qualifies that
+    # exact number: the denominator is the recorded dwelling area, the numerator
+    # carries energy delivered to modelled floor no record asks for.
+    alloc = report.get("floor_area_allocation") or {}
+    if alloc.get("measured"):
+        rounding = alloc["integer_storey_rounding"]
+        print(f"  modelled floor {alloc['gap_pct_of_cadastral']:+.2f}% against the "
+              f"cadastral record ({alloc['gap_m2']:,.0f} m² on "
+              f"{alloc['buildings_measured']} buildings); "
+              f"{rounding['share_of_gap_pct']:.1f}% of it is the storey rule "
+              f"rounding up on {rounding['buildings']}")
+        band = (alloc.get("energy_on_rounding_excess") or {}).get("band_pct")
+        if band:
+            print(f"    energy standing on that excess: {band[0]:.2f}-{band[1]:.2f}% "
+                  f"of the total above")
     frag = report.get("fragmentation") or {}
     if frag.get("buildings_measured"):
         print(f"  multi-mass parcels {frag['buildings']} "

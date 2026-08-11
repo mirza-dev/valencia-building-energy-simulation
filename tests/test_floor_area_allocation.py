@@ -197,3 +197,79 @@ def test_removing_the_excess_lowers_the_reference_ratio():
     lo, hi = ratio["ratio_without_rounding_excess"]
     assert lo <= hi < ratio["published_ratio"]
     assert ratio["share_of_district_energy_pct"] == pytest.approx(100.0, abs=0.5)
+
+
+# ---------------------------------------------------------------------------
+# `allocation_block`: the aggregate must survive ledgers `measure` would refuse
+# ---------------------------------------------------------------------------
+def test_the_block_reports_the_same_numbers_as_the_standalone_measurement(tmp_path):
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3),
+            _row("B", 100.0, 480.0, built=5, storeys_effective=5)]
+    full = faa.measure(_ledger(tmp_path, rows))
+    block = faa.allocation_block(rows)
+    assert block["measured"] is True
+    assert block["modelled_m2"] == full["area"]["modelled_m2"]
+    assert block["cadastral_m2"] == full["area"]["cadastral_m2"]
+    assert block["gap_pct_of_cadastral"] == full["area"]["gap_pct_of_cadastral"]
+    r_b, r_f = block["integer_storey_rounding"], full["decomposition"]["integer_storey_rounding"]
+    for key in ("buildings", "excess_m2", "share_of_gap_pct"):
+        assert r_b[key] == r_f[key], key
+
+
+def test_a_stock_without_any_cadastral_area_is_not_reported_as_zero_excess():
+    """Lecco: the rule never fired, which is not the same as 'no excess found'."""
+    rows = [{"refparcela": "L1", "status": "ok", "footprint_m2": 100.0,
+             "res_area_m2": 300.0, "built_storeys": 3, "ground_use": "terciario",
+             "tipo15_res_area_m2": None, "total_site_kwh_m2": 40.0}]
+    block = faa.allocation_block(rows)
+    assert block["measured"] is False
+    assert block["reason"] == "ledger_predates_fields"
+    assert "tipo15_res_area_m2" in block["missing_fields"]
+    assert "not a measurement of zero" in block["note"]
+    # The quantities must be absent, not present at 0.0.
+    assert "gap_m2" not in block and "integer_storey_rounding" not in block
+
+
+def test_the_block_never_raises_where_measure_would(tmp_path):
+    """`measure` refuses a missing field; the aggregate must not die with it."""
+    bad = _row("A")
+    del bad["tipo15_res_area_m2"]
+    with pytest.raises(faa.AllocationError):
+        faa.measure(_ledger(tmp_path, [bad]))
+    assert faa.allocation_block([bad])["measured"] is False
+    assert faa.allocation_block([])["measured"] is False
+
+
+def test_a_building_with_no_cadastral_record_is_counted_not_dropped_silently():
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3),
+            _row("B", 100.0, 0.0, built=5, storeys_effective=5)]
+    block = faa.allocation_block(rows)
+    assert block["buildings_measured"] == 1
+    assert block["buildings_without_cadastral_area"] == 1
+
+
+def test_the_energy_band_is_refused_rather_than_guessed_without_end_uses():
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3)]
+    del rows[0]["dhw_kwh_m2"]
+    block = faa.allocation_block(rows)
+    assert block["measured"] is True                      # area still sizeable
+    assert block["energy_on_rounding_excess"]["measured"] is False
+
+
+def test_the_block_names_the_published_fields_that_carry_the_excess():
+    """A reader should not have to work out which numbers are affected."""
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3)]
+    affects = faa.allocation_block(rows)["affects"]
+    assert "by_cluster[].vs_rai_pct" in affects
+    assert "totals.cadastral_total_site_kwh_m2" in affects
+
+
+def test_proxied_buildings_are_separated_when_the_stock_is_passed(tmp_path):
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3),
+            _row("B", 100.0, 250.0, built=5, storeys_effective=3)]
+    import geopandas as gpd
+    stock = gpd.read_file(_stock(tmp_path, {"B"}))
+    block = faa.allocation_block(rows, stock)
+    assert block["cadastral_area_provenance"]["checked"] is True
+    assert block["buildings_measured"] == 1
+    assert faa.allocation_block(rows)["cadastral_area_provenance"]["checked"] is False

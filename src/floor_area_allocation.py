@@ -53,6 +53,22 @@ REQUIRED_FIELDS = (
     "total_site_kwh_m2", "lighting_kwh_m2", "equipment_kwh_m2", "dhw_kwh_m2",
 )
 
+# Split for `allocation_block`, which reports whatever a ledger can support
+# instead of refusing the whole aggregate.  The area terms need only geometry
+# and the cadastral record; the energy band additionally needs the per-end-use
+# columns, and a ledger written before those existed can still be sized.
+AREA_FIELDS = ("refparcela", "footprint_m2", "tipo15_res_area_m2", "res_area_m2",
+               "built_storeys", "ground_use")
+ENERGY_FIELDS = ("total_site_kwh_m2", "lighting_kwh_m2", "equipment_kwh_m2",
+                 "dhw_kwh_m2")
+
+# Which published fields carry the excess, named so a reader does not have to
+# work it out.  Every one of these divides by cadastral dwelling area.
+AFFECTED_FIELDS = ("totals.cadastral_total_site_kwh_m2",
+                   "by_cluster[].cadastral_kwh_m2",
+                   "by_cluster[].vs_rai_pct",
+                   "by_cluster[].vs_rai_energy_ratio")
+
 
 class AllocationError(RuntimeError):
     """The ledger cannot be measured as asked.  Never guess a missing term."""
@@ -95,10 +111,15 @@ def _annotate(row: dict) -> dict:
     area = float(row["res_area_m2"])
     exact = c / f
     rule_bound = math.ceil(exact) < built
+    # `measure` validates REQUIRED_FIELDS first, so it always has an intensity.
+    # `allocation_block` may not: a ledger can carry geometry without the
+    # per-end-use columns, and sizing its area gap is still worth doing.
+    intensity = row.get("total_site_kwh_m2")
     return {
         **row,
         "_f": f, "_c": c, "_exact_storeys": exact,
-        "_area": area, "_energy": float(row["total_site_kwh_m2"]) * area,
+        "_area": area,
+        "_energy": float(intensity) * area if intensity is not None else None,
         "_built_storeys": built, "_rule_bound": rule_bound,
         # Where the rule bound, the excess is pure rounding and cannot reach a
         # full storey.  Where it did not, the excess is the sources disagreeing.
@@ -278,6 +299,116 @@ def _alternative_rules(ok: list[dict], cadastral: float) -> dict:
                                "vs_cadastral_pct": 0.0,
                                "note": "not buildable: storeys are integers"}
     return out
+
+
+def allocation_block(rows: list[dict], stock=None) -> dict:
+    """The area gap, carried inside the aggregate a reader actually opens.
+
+    `measure()` is the standalone analysis and refuses anything it cannot size,
+    which is right for a study and wrong here: `aggregate()` must survive a
+    ledger that predates these fields and a city whose stock has no cadastral
+    record at all.  So this follows the `zoning_block` contract - report what
+    the rows support, say so plainly when they support nothing, and never raise.
+
+    The distinction that matters: a stock with no Tipo15 is NOT a stock with no
+    excess.  It is one where the rule never fired, so there is nothing to
+    correct - and the block says which of the two it is rather than printing a
+    zero that reads as "measured, and it was none".
+    """
+    block: dict = {"measured": False,
+                   "rule": "residential_storeys_from_cadastre: ceil(cadastral/footprint)"}
+    if not rows:
+        block["reason"] = "no_rows"
+        return block
+
+    missing = [f for f in AREA_FIELDS if all(r.get(f) is None for r in rows)]
+    if missing:
+        block["reason"] = "ledger_predates_fields"
+        block["missing_fields"] = missing
+        block["note"] = ("this ledger carries no cadastral area record, so the "
+                         "storey rule never bound and there is no excess to "
+                         "size; this is not a measurement of zero")
+        return block
+
+    proxies = None
+    if stock is not None and getattr(stock, "columns", None) is not None:
+        if "res_area_proxy" in stock.columns:
+            proxies = set(stock.loc[stock["res_area_proxy"] == True,  # noqa: E712
+                                    "refparcela"].astype(str))
+
+    usable, skipped = [], 0
+    for row in rows:
+        if any(row.get(f) is None for f in AREA_FIELDS):
+            skipped += 1
+            continue
+        try:
+            usable.append(_annotate(row))
+        except AllocationError:
+            # footprint or cadastral area at zero: the rule cannot have bound.
+            skipped += 1
+
+    proxy_refs = proxies or set()
+    proxied = [r for r in usable if str(r["refparcela"]) in proxy_refs]
+    ok = [r for r in usable if str(r["refparcela"]) not in proxy_refs]
+    if not ok:
+        block["reason"] = "no_building_has_a_recorded_cadastral_area"
+        block["buildings_without_cadastral_area"] = skipped
+        block["buildings_proxied"] = len(proxied)
+        return block
+
+    modelled = sum(r["_area"] for r in ok)
+    cadastral = sum(r["_c"] for r in ok)
+    gap = modelled - cadastral
+    bound = [r for r in ok if r["_rule_bound"]]
+    rounding = sum(r["_excess"] for r in bound)
+
+    block.update({
+        "measured": True,
+        "buildings_measured": len(ok),
+        "buildings_without_cadastral_area": skipped,
+        "cadastral_area_provenance": _provenance(proxies, proxied, cadastral),
+        "modelled_m2": round(modelled, 1),
+        "cadastral_m2": round(cadastral, 1),
+        "gap_m2": round(gap, 1),
+        "gap_pct_of_cadastral": round(100.0 * gap / cadastral, 3) if cadastral else None,
+        "integer_storey_rounding": {
+            "buildings": len(bound),
+            "excess_m2": round(rounding, 1),
+            # Same precision as `measure()`'s own `pct`: the two files report
+            # this quantity side by side and must not disagree in the decimal.
+            "share_of_gap_pct": round(100.0 * rounding / gap, 3) if gap else None,
+            "median_fraction_of_a_storey":
+                round(st.median([r["_excess"] / r["_f"] for r in bound]), 3)
+                if bound else None,
+            "mechanism": "f * (ceil(c/f) - c/f); one-sided, under one footprint",
+        },
+        "alternative_rules": _alternative_rules(ok, cadastral),
+        "affects": list(AFFECTED_FIELDS),
+        "note": ("every kWh/m2 on the cadastral basis divides by the recorded "
+                 "dwelling area while the numerator carries energy delivered to "
+                 "the modelled excess above; the rounding term is the part the "
+                 "rule produces, the remainder is the two sources disagreeing"),
+    })
+
+    if all(r.get(f) is not None for f in ENERGY_FIELDS for r in ok):
+        energy = sum(r["_energy"] for r in ok)
+        proportional = sum((r["lighting_kwh_m2"] + r["equipment_kwh_m2"]) * r["_excess"]
+                           for r in bound)
+        full = sum(r["total_site_kwh_m2"] * r["_excess"] for r in bound)
+        dhw = sum(r["dhw_kwh_m2"] * r["_excess"] for r in bound)
+        block["energy_on_rounding_excess"] = {
+            "band_pct": [round(100.0 * proportional / energy, 3),
+                         round(100.0 * (full - dhw) / energy, 3)] if energy else None,
+            "band_gwh": [round(proportional / 1e6, 4), round((full - dhw) / 1e6, 4)],
+            "basis": ("lighting+equipment scale exactly with area; DHW is per "
+                      "person and does not scale; HVAC is the non-linear "
+                      "remainder, which is why this is a band"),
+        }
+    else:
+        block["energy_on_rounding_excess"] = {
+            "measured": False,
+            "reason": "ledger lacks the per-end-use columns the band needs"}
+    return block
 
 
 def reference_ratio(report: dict, aggregate_path: Path) -> dict:
