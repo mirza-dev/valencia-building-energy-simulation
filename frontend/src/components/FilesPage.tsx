@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
 import { api } from '../lib/api'
 import type { DatasetRecord, ProjectSettings } from '../lib/types'
+import { climatePairChanged, climatePairPatch, climatePairReady } from '../lib/climatePair'
 import { shortHash } from '../lib/productStock'
 import { useFeedback } from './FeedbackProvider'
 
@@ -58,6 +59,36 @@ function DatasetControl({
       <input type="file" accept={accept} disabled={busy} onChange={(event) => {
         const file = event.target.files?.[0]
         if (file) upload(kind, setting, file)
+        event.currentTarget.value = ''
+      }} />
+    </label>
+  </div>
+}
+
+function StagedDatasetControl({ label, kind, accept, value, datasets, onSelect, onUpload, busy }: {
+  label: string
+  kind: DatasetRecord['kind']
+  accept: string
+  value: string
+  datasets: DatasetRecord[]
+  onSelect: (id: string) => void
+  onUpload: (file: File) => void
+  busy: boolean
+}) {
+  const options = datasets.filter((dataset) => dataset.kind === kind)
+  return <div className="dataset-control">
+    <label>
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onSelect(event.target.value)} disabled={busy}>
+        <option value="" disabled>Select a validated file</option>
+        {options.map((dataset) => <option value={dataset.id} key={dataset.id}>{dataset.name}</option>)}
+      </select>
+    </label>
+    <label className="compact-upload">
+      <Upload size={14} /> Upload
+      <input type="file" accept={accept} disabled={busy} onChange={(event) => {
+        const file = event.target.files?.[0]
+        if (file) onUpload(file)
         event.currentTarget.value = ''
       }} />
     </label>
@@ -192,6 +223,26 @@ export default function FilesPage() {
     },
     onError: (error) => notify(error instanceof Error ? error.message : 'Extraction failed.', 'error'),
   })
+  // The EPW and the .ddy are activated together, never one at a time.  The
+  // engine refuses a pair from two different stations - the gate that catches
+  // a building simulated in one city with equipment sized for another - so
+  // switching a field on its own always leaves a mismatched pair and is
+  // rejected, which made moving off the verified climate impossible from here.
+  const [weatherDraft, setWeatherDraft] = useState('')
+  const [ddyDraft, setDdyDraft] = useState('')
+  useEffect(() => { setWeatherDraft(settings.data?.weather_dataset_id ?? '') }, [settings.data?.weather_dataset_id])
+  useEffect(() => { setDdyDraft(settings.data?.ddy_dataset_id ?? '') }, [settings.data?.ddy_dataset_id])
+  const climateUpload = useMutation({
+    mutationFn: ({ kind, file }: { kind: 'weather' | 'ddy'; file: File }) =>
+      api.uploadDataset(kind, file.name, file),
+    onSuccess: async (imported) => {
+      await refresh()
+      if (imported.kind === 'weather') setWeatherDraft(imported.id)
+      else setDdyDraft(imported.id)
+      notify(`${imported.name} validated. Activate the pair once both sides are chosen.`, 'success')
+    },
+    onError: (error) => notify(error instanceof Error ? error.message : 'Upload failed.', 'error'),
+  })
   const cityName = settings.data?.city_name ?? ''
   const [cityDraft, setCityDraft] = useState(cityName)
   const [groundDraft, setGroundDraft] = useState('')
@@ -213,6 +264,16 @@ export default function FilesPage() {
     const next = raw.trim() === '' ? null : Number(raw)
     if (next !== null && Number.isNaN(next)) { notify('Enter a temperature in °C.', 'error'); return }
     if (next !== current) activateMutation.mutate({ [field]: next } as Partial<ProjectSettings>)
+  }
+  const climateDraft = { weather: weatherDraft, ddy: ddyDraft, ground: groundDraft, mains: mainsDraft }
+  const climatePending = climatePairChanged(climateDraft, {
+    weather: settings.data?.weather_dataset_id ?? null,
+    ddy: settings.data?.ddy_dataset_id ?? null,
+  })
+  const activateClimatePair = () => {
+    const result = climatePairPatch(climateDraft)
+    if (!result.ok) { notify(result.reason, 'error'); return }
+    activateMutation.mutate(result.patch)
   }
   const ready = profile.data?.missing_inputs.length === 0 && Object.values(profile.data?.entrypoints ?? {}).every(Boolean)
   return <div className="product-page files-page">
@@ -311,8 +372,20 @@ export default function FilesPage() {
           <EvidenceRows dataset={active.tipo15_dataset_id} />
         </FileCard>}
         <FileCard icon={CloudSun} eyebrow="ANNUAL + SIZING WEATHER" title="Climate pair" description="A full annual EPW plus winter and summer DDY design days; activated and validated as one pair." status={Boolean(active.weather_dataset_id && active.ddy_dataset_id)}>
-          <DatasetControl label="Annual EPW" kind="weather" accept=".epw" active={active.weather_dataset_id} datasets={all} setting="weather_dataset_id" activate={activate} upload={upload} busy={busy} />
-          <DatasetControl label="Design days (DDY)" kind="ddy" accept=".ddy" active={active.ddy_dataset_id} datasets={all} setting="ddy_dataset_id" activate={activate} upload={upload} busy={busy} />
+          <StagedDatasetControl label="Annual EPW" kind="weather" accept=".epw" value={weatherDraft} datasets={all}
+            onSelect={setWeatherDraft} onUpload={(file) => climateUpload.mutate({ kind: 'weather', file })} busy={busy || climateUpload.isPending} />
+          <StagedDatasetControl label="Design days (DDY)" kind="ddy" accept=".ddy" value={ddyDraft} datasets={all}
+            onSelect={setDdyDraft} onUpload={(file) => climateUpload.mutate({ kind: 'ddy', file })} busy={busy || climateUpload.isPending} />
+          <button type="button" className="ghost"
+            disabled={busy || climateUpload.isPending || !climatePending || !climatePairReady(climateDraft)}
+            onClick={activateClimatePair}>
+            {climatePending ? 'Activate climate pair' : 'Pair active'}
+          </button>
+          <p className="product-empty-note">Both sides are sent in one activation. An EPW and a .ddy
+            from different stations are refused — that is the gate against a building simulated in
+            one city with equipment sized for another — so a half-changed pair could never be
+            saved. A climate this project was not verified on must also declare the ground
+            temperature above.</p>
           <div className="climate-evidence-grid"><EvidenceRows dataset={active.weather_dataset_id} /><EvidenceRows dataset={active.ddy_dataset_id} /></div>
         </FileCard>
         <FileCard icon={Box} eyebrow="OPENSTUDIO SOURCE" title="PlantillaOS template" description="The library model holding every required construction, schedule and space type. Its schedules and thermostats are the operating regime the results describe." status={Boolean(active.template_dataset_id)}>
