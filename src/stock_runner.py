@@ -124,6 +124,7 @@ LEDGER_METRICS = (
     "total_conditioned_area_m2", "footprint_m2", "large_footprint_single_zone",
     "n_floors_total", "n_floors_residential", "mixed_use_storeys_converted",
     "mixed_use_basis", "residential_storeys_effective",
+    "top_storey_fraction", "dwelling_area_m2",
     "built_storeys", "storey_cap_applied", "n_party_surfaces",
     "n_shading_surfaces", "n_windows", "window_area_m2",
     "padron_occupants", "occupants_applied", "occupants_source",
@@ -1482,6 +1483,11 @@ def _print_report(report: dict) -> None:
               f"{alloc['buildings_measured']} buildings); "
               f"{rounding['share_of_gap_pct']:.1f}% of it is the storey rule "
               f"rounding up on {rounding['buildings']}")
+        profile = alloc.get("loads_on_rounding_excess") or {}
+        if profile.get("dwelling_loads_on_excess") is False:
+            print(f"    excess carries no dwelling loads: the top storey was "
+                  f"scaled to its recorded fraction on "
+                  f"{profile.get('scaled_buildings')} buildings")
         band = (alloc.get("energy_on_rounding_excess") or {}).get("band_pct")
         if band:
             print(f"    energy standing on that excess: {band[0]:.2f}-{band[1]:.2f}% "

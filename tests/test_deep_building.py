@@ -633,3 +633,267 @@ def test_terciario_loads_carry_their_own_end_use_subcategory(pilot_model):
     residential = db._by_name(osm.getSpaceTypes(), db.RESIDENTIAL_SPACE_TYPE)
     for load in list(residential.lights()) + list(residential.electricEquipment()):
         assert load.endUseSubcategory() != db.TERCIARIO_END_USE_SUBCATEGORY
+
+
+# ---------------------------------------------------------------------------
+# The partial top storey
+# ---------------------------------------------------------------------------
+def test_top_storey_fraction_is_the_part_the_record_fills():
+    # 1500 m2 over a 562 m2 plate = 2.669 storeys, loaded as three (the rule
+    # rounds up), so the third is 0.669 full.
+    assert db.top_storey_fraction(1500.0, 562.0, 3) == pytest.approx(0.66904, abs=1e-5)
+
+
+def test_the_question_is_asked_about_the_storeys_actually_loaded():
+    """The bug the first version of this shipped with, pinned.
+
+    The geometric cap has already lowered the building to `ceil(c/f)` by the
+    time this runs, so asking against the BUILT count makes the rule look as
+    if it never bound and the layer silently never fires.  Same building, two
+    counts, and only the housing one gives an answer.
+    """
+    assert db.top_storey_fraction(1500.0, 562.0, 3) is not None   # as loaded
+    assert db.top_storey_fraction(1500.0, 562.0, 5) is None       # as built
+
+
+def test_top_storey_fraction_is_none_when_the_record_exceeds_the_model():
+    # The pilot: 5.18 storeys of record against 5 loaded.  The cadastre claims
+    # MORE dwelling than the model provides - the two-sided disagreement, a
+    # different question - so nothing here may be scaled away.
+    assert db.top_storey_fraction(2910.0, 562.0, 5) is None
+
+
+def test_top_storey_fraction_is_none_on_an_exact_integer_fill():
+    # Three storeys exactly: the top one is whole and must not be scaled.
+    assert db.top_storey_fraction(3 * 562.0, 562.0, 3) is None
+
+
+@pytest.mark.parametrize("cadastral", [None, 0, -1, "", "abc"])
+def test_top_storey_fraction_never_guesses_without_a_record(cadastral):
+    # A failed Tipo15 join, the single-building CLI, the Rai replica, a stock
+    # with no cadastre at all: none of them may have a storey emptied.
+    assert db.top_storey_fraction(cadastral, 562.0, 5) is None
+
+
+def test_the_block_parcel_keeps_a_fifth_of_its_top_storey():
+    # 3748901YJ2734H again: 38,158 m2 on a 17,272.5 m2 plate = 2.2092 storeys,
+    # capped to 3 and loaded as 3 - so the third is only 21 % dwelling.
+    assert db.residential_storeys_from_cadastre(38158.0, 17272.5, 15) == 3
+    assert db.top_storey_fraction(38158.0, 17272.5, 3) == pytest.approx(0.209176, abs=1e-6)
+
+
+def test_the_partial_storey_layer_runs_after_the_hvac_not_before():
+    """The ordering is load-bearing and the opposite of `apply_mixed_use_storeys`.
+
+    DHW and the PTHP COP split both resolve the dwelling space type by NAME, so
+    a storey moved onto a clone before them silently loses its hot water and is
+    sized as commercial.  Asserted against the source so that reordering the
+    calls fails here rather than in a 5-hour run.
+    """
+    import inspect
+
+    # Anchored on the CALL, not the name: the docstring above mentions this
+    # layer too, and a bare `index` would match the prose and pass regardless.
+    source = inspect.getsource(db.build_deep_model)
+    call = source.index("apply_partial_top_storey(osm,")
+    assert source.index("add_dhw_loop(osm,") < call
+    assert source.index("add_pthp_hvac(osm,") < call
+
+
+def _pilot_with_record(area: float, **kwargs):
+    row = db.load_building_row(PILOT).copy()
+    row["tipo15_res_area_m2"] = area
+    geometry = mb.clean_polygon(row.geometry)
+    neighbors = mb.load_neighbors(geometry, PILOT, mb.NEIGHBORS_SHP)
+    party = mb.find_party_walls(geometry, PILOT, mb.NEIGHBORS_SHP, neighbors=neighbors)
+    return db.build_deep_model(row, party, PILOT_OCCUPANTS,
+                               neighbors=neighbors, **kwargs)
+
+
+# The pilot forced rule-bound, so the layer has something to act on.  Its real
+# record covers 5.18 storeys and does not bind; 1500 m2 makes it 2.669, which
+# is the ordinary case across the stock (median fraction 0.625).
+PARTIAL_RECORD_M2 = 1500.0
+
+
+@pytest.fixture(scope="module")
+def partial_pilot():
+    return _pilot_with_record(PARTIAL_RECORD_M2)
+
+
+@pytest.fixture(scope="module")
+def unscaled_twin():
+    """The same building with the layer off - the pre-correction behaviour."""
+    return _pilot_with_record(PARTIAL_RECORD_M2, partial_top_storey=False)
+
+
+@pytest.mark.integration
+def test_partial_storey_scales_the_top_floor_only(partial_pilot):
+    osm, stats = partial_pilot
+    record = stats["deep_layers"]["partial_top_storey"]
+    fraction = record["fraction"]
+    assert 0.0 < fraction < 1.0
+
+    clone = db._by_name(osm.getSpaceTypes(),
+                        db.RESIDENTIAL_SPACE_TYPE + db.PARTIAL_TOP_STOREY_SUFFIX)
+    assert clone is not None, "the partial storey got no space type of its own"
+    assert len(list(clone.spaces())) == 1
+
+    # the scaled space really is the highest one
+    full = db._residential_space_type(osm)
+    def base(space):
+        return min(v.z() for srf in space.surfaces() for v in srf.vertices())
+    top = list(clone.spaces())[0]
+    assert all(base(top) > base(s) for s in full.spaces())
+
+
+@pytest.mark.integration
+def test_scaling_the_clone_leaves_the_other_storeys_untouched(partial_pilot):
+    """OpenStudio's `clone` SHARES load definitions - measured, not assumed.
+
+    Scaling a definition in place would have quietly scaled every dwelling
+    storey in the building.  This is the guard for that.
+    """
+    osm, stats = partial_pilot
+    fraction = stats["deep_layers"]["partial_top_storey"]["fraction"]
+    full = db._residential_space_type(osm)
+    clone = db._by_name(osm.getSpaceTypes(),
+                        db.RESIDENTIAL_SPACE_TYPE + db.PARTIAL_TOP_STOREY_SUFFIX)
+
+    full_w = list(full.lights())[0].lightsDefinition().wattsperSpaceFloorArea().get()
+    part_w = list(clone.lights())[0].lightsDefinition().wattsperSpaceFloorArea().get()
+    assert full_w == pytest.approx(4.4, rel=1e-6)      # the CTE norm, unmoved
+    assert part_w == pytest.approx(4.4 * fraction, rel=1e-6)
+
+    full_e = list(full.electricEquipment())[0].electricEquipmentDefinition() \
+        .wattsperSpaceFloorArea().get()
+    part_e = list(clone.electricEquipment())[0].electricEquipmentDefinition() \
+        .wattsperSpaceFloorArea().get()
+    assert full_e == pytest.approx(4.4, rel=1e-6)
+    assert part_e == pytest.approx(4.4 * fraction, rel=1e-6)
+
+
+@pytest.mark.integration
+def test_the_partial_storey_does_not_lose_people(partial_pilot):
+    """The trap this layer exists to avoid creating.
+
+    Density is set on the dwelling area, not the geometric one, precisely so
+    that scaling the top storey redistributes the residents rather than
+    deleting a quarter of them - which is what a geometric basis would do, and
+    DHW (computed from the head count, not the area) would then no longer match
+    the gains.
+    """
+    osm, stats = partial_pilot
+    people = sum(space.numberOfPeople()
+                 for space_type in (db._residential_space_type(osm),
+                                    db._by_name(osm.getSpaceTypes(),
+                                                db.RESIDENTIAL_SPACE_TYPE
+                                                + db.PARTIAL_TOP_STOREY_SUFFIX))
+                 for space in space_type.spaces())
+    # rel tolerance absorbs the 6-decimal rounding of the reported density,
+    # the same allowance the unscaled occupancy test makes
+    assert people == pytest.approx(stats["occupants_applied"], rel=1e-4)
+    assert stats["dwelling_area_m2"] == pytest.approx(PARTIAL_RECORD_M2, abs=0.5)
+
+
+@pytest.mark.integration
+def test_the_partial_storey_keeps_its_envelope_leakage(partial_pilot):
+    """Only the occupant-coupled ventilation follows the people.
+
+    The storey physically exists, so its airtightness and its summer-night
+    purge are the same as any other floor's.
+    """
+    osm, stats = partial_pilot
+    fraction = stats["deep_layers"]["partial_top_storey"]["fraction"]
+    full = db._residential_space_type(osm)
+    clone = db._by_name(osm.getSpaceTypes(),
+                        db.RESIDENTIAL_SPACE_TYPE + db.PARTIAL_TOP_STOREY_SUFFIX)
+
+    def by_kind(space_type):
+        # Three objects, and BOTH envelope ones must be checked - collapsing
+        # them under one key makes the result depend on iteration order.
+        out = {}
+        for i in space_type.spaceInfiltrationDesignFlowRates():
+            name = i.nameString().lower()
+            if db.OCCUPANCY_INFILTRATION_MARKER in name:
+                out["occupancy"] = i
+            elif "constante" in name:
+                out["airtightness"] = i
+            elif "nocturna" in name:
+                out["summer_night"] = i
+        return out
+
+    a, b = by_kind(full), by_kind(clone)
+    assert set(a) == set(b) == {"occupancy", "airtightness", "summer_night"}
+    assert b["occupancy"].flowperSpaceFloorArea().get() == pytest.approx(
+        a["occupancy"].flowperSpaceFloorArea().get() * fraction, rel=1e-6)
+    # the storey is really there, so its shell behaves like any other floor's
+    assert b["airtightness"].airChangesperHour().get() == pytest.approx(0.2, rel=1e-9)
+    assert b["summer_night"].airChangesperHour().get() == pytest.approx(4.0, rel=1e-9)
+
+
+@pytest.mark.integration
+def test_the_partial_storey_changes_no_geometry(partial_pilot, unscaled_twin):
+    """The whole point of scaling loads instead of the shell.
+
+    Compared against the SAME building with the layer switched off, so the only
+    difference between the two is the scaling.  Identical plate, storeys and
+    openings means the frozen builder saw identical inputs and its hash cannot
+    have moved.  (The pilot's own unmodified model is a different building here
+    - its record does not bind, so it keeps all five storeys.)
+    """
+    _, partial = partial_pilot
+    _, plain = unscaled_twin
+    for key in ("footprint_m2", "n_floors_total", "n_floors_residential",
+                "n_windows", "window_area_m2", "n_party_surfaces",
+                "n_shading_surfaces", "res_area_m2"):
+        assert partial[key] == plain[key], key
+    assert partial["deep_layers"]["partial_top_storey"]["geometry_changed"] is False
+
+
+@pytest.mark.integration
+def test_the_layer_is_inert_where_the_rule_never_bound(pilot_model):
+    """The pilot's own record does not bind, so nothing may have happened.
+
+    This is the single-building CLI, the Rai replica and every Tipo15-less
+    stock in one assertion: the layer must be invisible unless there is a
+    recorded partial storey to act on.
+    """
+    osm, stats = pilot_model
+    assert stats["top_storey_fraction"] is None
+    assert stats["dwelling_area_m2"] == stats["res_area_m2"]
+    assert "partial_top_storey" not in stats["deep_layers"]
+    assert db._by_name(osm.getSpaceTypes(),
+                       db.RESIDENTIAL_SPACE_TYPE + db.PARTIAL_TOP_STOREY_SUFFIX) is None
+
+
+@pytest.mark.integration
+def test_turning_the_layer_off_reproduces_the_unscaled_model(unscaled_twin):
+    """The A/B off-state must be the pre-correction behaviour exactly.
+
+    One decision point drives both the dwelling-area basis and the scaling, so
+    switching it off has to restore the geometric basis too - otherwise a v8
+    comparison would be measuring two changes at once.
+    """
+    osm, stats = unscaled_twin
+    assert stats["top_storey_fraction"] is None
+    assert stats["dwelling_area_m2"] == stats["res_area_m2"]
+    assert "partial_top_storey" not in stats["deep_layers"]
+    assert db._by_name(osm.getSpaceTypes(),
+                       db.RESIDENTIAL_SPACE_TYPE + db.PARTIAL_TOP_STOREY_SUFFIX) is None
+
+
+@pytest.mark.integration
+def test_the_new_fields_survive_into_the_ledger(partial_pilot):
+    """Writing a value is not the same as the ledger carrying it.
+
+    The v5 ground-use near-miss: a policy resolved correctly, written into
+    stats, and dropped by the runner's column allowlist one layer later.  This
+    checks the model's own output against the actual allowlist.
+    """
+    import stock_runner as sr
+
+    _, stats = partial_pilot
+    for field in ("top_storey_fraction", "dwelling_area_m2"):
+        assert field in stats, f"the model never wrote {field}"
+        assert field in sr.LEDGER_METRICS, f"the ledger would drop {field}"

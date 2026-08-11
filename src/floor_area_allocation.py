@@ -390,6 +390,32 @@ def allocation_block(rows: list[dict], stock=None) -> dict:
                  "rule produces, the remainder is the two sources disagreeing"),
     })
 
+    # Whether the rows were produced with the partial top storey scaled.  The
+    # KEY decides it, not its value: a building the rule never bound carries
+    # `top_storey_fraction: null` under that profile and no key at all before
+    # it.  This changes what the gap MEANS - the floor is still modelled, but
+    # it no longer carries dwelling loads - so the block must not keep quoting
+    # a band that was true of a different model.
+    profile = _load_profile(ok)
+    block["loads_on_rounding_excess"] = profile
+    if profile["dwelling_loads_on_excess"] is not True:
+        # Withdrawn for `False` AND for `None`: the band is only meaningful if
+        # these rows are KNOWN to carry dwelling loads on the excess.  An
+        # unresolved profile is not a licence to publish it anyway.
+        if profile["dwelling_loads_on_excess"] is False:
+            block["note"] = (
+                "the modelled floor still exceeds the record, but the excess is "
+                "the unscaled part of a partial top storey and carries no "
+                "dwelling lighting, equipment or occupants; what remains on it "
+                "is envelope and the thermostat holding a storey that exists")
+            reason = ("loads on the excess were scaled out at build time; "
+                      "the pre-correction band does not describe these rows")
+        else:
+            reason = ("these rows are not one run: some carry the partial top "
+                      "storey and some do not, so no single band describes them")
+        block["energy_on_rounding_excess"] = {"measured": False, "reason": reason}
+        return block
+
     if all(r.get(f) is not None for f in ENERGY_FIELDS for r in ok):
         energy = sum(r["_energy"] for r in ok)
         proportional = sum((r["lighting_kwh_m2"] + r["equipment_kwh_m2"]) * r["_excess"]
@@ -409,6 +435,29 @@ def allocation_block(rows: list[dict], stock=None) -> dict:
             "measured": False,
             "reason": "ledger lacks the per-end-use columns the band needs"}
     return block
+
+
+def _load_profile(rows: list[dict]) -> dict:
+    """Did these rows come from a model that scales the partial top storey?
+
+    A mixed answer is reported as unknown rather than resolved to a majority.
+    It should be unreachable - the profile fingerprint changes with the source,
+    so a ledger cannot be resumed across the two - and if it ever appears, the
+    honest reading is that something merged two runs, not that most rows win.
+    """
+    marked = sum(1 for r in rows if "top_storey_fraction" in r)
+    if marked == len(rows):
+        return {"dwelling_loads_on_excess": False,
+                "basis": "every row carries `top_storey_fraction`",
+                "scaled_buildings": sum(1 for r in rows
+                                        if r.get("top_storey_fraction") is not None)}
+    if marked == 0:
+        return {"dwelling_loads_on_excess": True,
+                "basis": "no row carries `top_storey_fraction`: built before "
+                         "the partial top storey existed"}
+    return {"dwelling_loads_on_excess": None,
+            "basis": f"{marked} of {len(rows)} rows carry `top_storey_fraction` - "
+                     "these are not one run and must not be read as one"}
 
 
 def reference_ratio(report: dict, aggregate_path: Path) -> dict:

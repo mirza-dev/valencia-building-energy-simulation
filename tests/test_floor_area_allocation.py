@@ -273,3 +273,66 @@ def test_proxied_buildings_are_separated_when_the_stock_is_passed(tmp_path):
     assert block["cadastral_area_provenance"]["checked"] is True
     assert block["buildings_measured"] == 1
     assert faa.allocation_block(rows)["cadastral_area_provenance"]["checked"] is False
+
+
+# ---------------------------------------------------------------------------
+# What the block says once the partial top storey exists
+# ---------------------------------------------------------------------------
+def test_the_band_is_withdrawn_once_the_loads_were_scaled_out():
+    """The claim it made stops being true, so it must stop making it.
+
+    The gap survives the correction - that floor is still modelled - but it no
+    longer carries dwelling lighting, equipment or occupants, so a band derived
+    from those intensities describes a model that is no longer being run.
+    """
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3,
+                 top_storey_fraction=0.5),
+            _row("B", 100.0, 480.0, built=5, storeys_effective=5,
+                 top_storey_fraction=None)]
+    block = faa.allocation_block(rows)
+
+    assert block["measured"] is True
+    assert block["gap_m2"] > 0                      # the area gap is still real
+    assert block["loads_on_rounding_excess"]["dwelling_loads_on_excess"] is False
+    assert block["loads_on_rounding_excess"]["scaled_buildings"] == 1
+    assert block["energy_on_rounding_excess"]["measured"] is False
+    assert "no dwelling" in block["note"]
+
+
+def test_the_band_is_still_reported_for_rows_built_before_the_correction():
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3),
+            _row("B", 100.0, 480.0, built=5, storeys_effective=5)]
+    block = faa.allocation_block(rows)
+    assert block["loads_on_rounding_excess"]["dwelling_loads_on_excess"] is True
+    assert block["energy_on_rounding_excess"]["band_pct"] is not None
+
+
+def test_a_key_absent_and_a_key_null_are_different_facts():
+    """`top_storey_fraction: null` is a measurement, a missing key is not.
+
+    Under the correction most buildings report null - the rule bound but the
+    fill was exact, or it did not bind at all.  Reading that as "not corrected"
+    would put the withdrawn band back on rows it does not describe.
+    """
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3,
+                 top_storey_fraction=None),
+            _row("B", 100.0, 480.0, built=5, storeys_effective=5,
+                 top_storey_fraction=None)]
+    block = faa.allocation_block(rows)
+    assert block["loads_on_rounding_excess"]["dwelling_loads_on_excess"] is False
+    assert block["loads_on_rounding_excess"]["scaled_buildings"] == 0
+
+
+def test_a_ledger_mixing_both_profiles_is_refused_not_resolved():
+    """Should be unreachable - the fingerprint stops a resume across the two.
+
+    If it ever appears, something merged two runs, and the honest answer is
+    that these are not one measurement rather than letting a majority decide.
+    """
+    rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3,
+                 top_storey_fraction=0.5),
+            _row("B", 100.0, 480.0, built=5, storeys_effective=5)]
+    block = faa.allocation_block(rows)
+    assert block["loads_on_rounding_excess"]["dwelling_loads_on_excess"] is None
+    assert "not one run" in block["loads_on_rounding_excess"]["basis"]
+    assert "band_pct" not in block["energy_on_rounding_excess"]

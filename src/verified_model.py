@@ -329,7 +329,7 @@ LOCKED_SOURCE_HASHES: dict[str, str] = {
     "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
     "run_simulation.py": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
     "model_config.py": "ab388f646b89d74834ff53af07454f559012082f48f50197bb4ddec30ddc91da",
-    "deep_building.py": "1a7a92045b16b94d53aad86b26182264bb3b4bfac15ba5200b5e6318a61b8820",
+    "deep_building.py": "4d328c6b03d0508ac6cd4e10ccd341138a55e2fe4e2c42d5402a4dff2053550b",
 }
 
 

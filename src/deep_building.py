@@ -389,13 +389,22 @@ def residential_storeys_from_cadastre(cadastral_area_m2, footprint_m2,
     receives dwelling occupancy, schedules, thermostat and DHW.  Across the
     district 842,462 m2 - 24.6 % of the modelled floor area - is affected.
 
-    The rule is the fewest whole storeys whose gross floor plate can contain the
-    cadastral dwelling area.  `ceil` is deliberate: a gross footprint storey is
-    larger than the net `sfc` recorded inside it, so rounding down would strip
-    housing from buildings that are entirely residential.  The tolerance this
-    implies scales with height on its own - a 5-storey block must be 25 % over
-    before it loses a storey, an 8-storey one 14 % - which is the correct
-    geometry, and it is why no calibration constant appears here.
+    The rule is the fewest whole storeys whose floor plate can contain the
+    cadastral dwelling area.  `ceil` is deliberate: rounding down would strip
+    housing from buildings that are entirely residential, and it cannot be
+    undone downstream, whereas rounding up leaves a top storey that is merely
+    part full - which `apply_partial_top_storey` then loads for the part the
+    record accounts for.  The tolerance this implies scales with height on its
+    own - a 5-storey block must be 25 % over before it loses a storey, an
+    8-storey one 14 % - which is the correct geometry, and it is why no
+    calibration constant appears here.
+
+    An earlier version of this note justified `ceil` differently: that a gross
+    footprint storey is larger than the net `sfc` recorded inside it.  That
+    premise is WRONG and the official CAT specification settles it - Tipo 15
+    position 442 is `superficie CONSTRUIDA`, already gross, against position
+    452 for `suelo`.  The rounding is a rounding, not a gross-to-net
+    allowance, and the honest place to absorb it is the partial storey below.
 
     Without cadastral evidence the built storey count is returned unchanged, so
     a building whose Tipo15 join failed is never silently shrunk.
@@ -459,6 +468,184 @@ def apply_mixed_use_storeys(osm, keep_residential: int) -> dict:
         "space_type": GROUND_TERCIARIO_SPACE_TYPE,
         "converted_spaces": converted,
         "in_floor_area_basis": False,
+    }
+
+
+PARTIAL_TOP_STOREY_SUFFIX = " (partial top storey)"
+
+
+def top_storey_fraction(cadastral_area_m2, footprint_m2,
+                        housing_storeys: int):
+    """How much of the top housing storey the cadastral record actually fills.
+
+    `housing_storeys` is the count SIMULATED AS HOUSING - the output of
+    `residential_storeys_from_cadastre` after the mixed-use conversion, not the
+    number built.  That distinction is the whole subtlety: the geometric cap
+    already lowers the building to `ceil(c/f)` storeys, so by the time this
+    runs the rule can no longer be seen "binding".  Asking the question against
+    the built count instead makes the layer silently never fire - which is
+    exactly what the first version of this did, and what its test caught.
+
+    The question is therefore asked about the finished model: does the recorded
+    dwelling area fit inside the storeys being loaded as dwellings, and if so
+    how much of the top one is left over?  One subtraction answers it.
+
+    `residential_storeys_from_cadastre` rounds UP, so a record covering 2.21
+    storeys is loaded as three.  The third is not a whole dwelling floor and
+    never was: on Benicalap v8 that rounding is 96.1 % of the whole
+    modelled-versus-recorded floor gap - +161,726 m2 across 442 buildings - and
+    the same arithmetic over all 26,452 Valencia buildings gives +8.10 %
+    against the city's cadastral record, against the district's +8.16 %.  It is
+    the stock's behaviour, not one district's.
+
+    Returns None when there is nothing to scale, and None rather than 1.0 on
+    purpose - "no partial storey" and "a storey that happens to be full" are
+    different facts and must not print alike.  Three ways to get None:
+
+    * no cadastral record - a building whose Tipo15 join failed is never
+      silently emptied;
+    * a record LARGER than the storeys being loaded (fraction >= 1) - the
+      cadastre claims more floor than the model provides, which is the
+      two-sided geometry-versus-record disagreement, a different question with
+      a different answer, and scaling here would quietly fold the two together;
+    * an exact integer fill, where the top storey is whole.
+    """
+    try:
+        cadastral = float(cadastral_area_m2)
+        footprint = float(footprint_m2)
+    except (TypeError, ValueError):
+        return None
+    if not (cadastral > 0 and footprint > 0):
+        return None
+    fraction = cadastral / footprint - (int(housing_storeys) - 1)
+    if not 0.0 < fraction < 1.0:
+        return None
+    return fraction
+
+
+def apply_partial_top_storey(osm, fraction: float) -> dict:
+    """Scale the top dwelling storey's internal gains to the recorded fraction.
+
+    The geometry is deliberately left alone.  That storey physically exists -
+    it has walls, a roof, windows and a thermostat - and the measurement that
+    settled this says shrinking it buys almost nothing: splitting whole
+    buildings into their real sub-masses moved energy by -0.50 % per modelled
+    m2, because 90.1 % of the total is per-area normative load and only 9.9 %
+    is simulated HVAC.  The gains are what the cadastre says are partial, so
+    the gains are what move.  Leaving the shell intact also keeps the frozen
+    builder out of this entirely: no geometry input changes, so its hash does
+    not move and party walls, shading and glazing are untouched.
+
+    Runs LAST - AFTER `add_dhw_loop` and `add_pthp_hvac`, which is the exact
+    OPPOSITE of `apply_mixed_use_storeys`, and the inversion is load-bearing.
+    Both of those resolve the dwelling space type BY NAME: a storey moved onto
+    a clone before them would lose its hot water and be sized with the 3.0
+    commercial COP instead of 4.07.  Moved onto the clone afterwards it keeps
+    both, which is correct - it is still housing, only less of it.
+
+    Only the occupant-coupled ventilation follows the people.  The 0.2 ACH
+    airtightness and the summer-night 4 ACH are envelope behaviour of a storey
+    that is really there, so they stay at full strength.
+
+    OpenStudio's `clone` copies the load OBJECTS but SHARES their definitions -
+    measured, not assumed - so scaling a definition in place would silently
+    scale every storey in the building.  Each definition is therefore cloned
+    first: the same guard `apply_real_occupancy` uses, and the lesson a
+    thermal-bridge bug taught this file on 2026-07-05.
+    """
+    if not 0.0 < fraction < 1.0:
+        raise ValueError(f"fraction must be in (0, 1), got {fraction!r}")
+
+    residential = _residential_space_type(osm)
+    spaces = sorted(residential.spaces(),
+                    key=lambda s: min(v.z() for srf in s.surfaces()
+                                      for v in srf.vertices()))
+    if not spaces:
+        raise RuntimeError(
+            f"'{RESIDENTIAL_SPACE_TYPE}' holds no space to scale - "
+            "run this after the re-typing layers, not before")
+    top = spaces[-1]
+
+    clone = residential.clone(osm).to_SpaceType().get()
+    clone.setName(residential.nameString() + PARTIAL_TOP_STOREY_SUFFIX)
+
+    def _rename(definition):
+        return definition.nameString() + PARTIAL_TOP_STOREY_SUFFIX
+
+    scaled = {}
+    for people in clone.people():
+        definition = people.peopleDefinition()
+        density = definition.peopleperSpaceFloorArea()
+        if not density.is_initialized():
+            raise RuntimeError(
+                f"'{definition.nameString()}' states occupancy as m2/person; "
+                "this layer must run after `apply_real_occupancy`, which "
+                "rewrites it as person/m2")
+        copy = definition.clone(osm).to_PeopleDefinition().get()
+        copy.setName(_rename(definition))
+        if not copy.setPeopleperSpaceFloorArea(density.get() * fraction):
+            raise RuntimeError("could not scale the top storey occupancy")
+        people.setPeopleDefinition(copy)
+        scaled["people_per_m2"] = round(density.get() * fraction, 6)
+
+    for lights in clone.lights():
+        definition = lights.lightsDefinition()
+        watts = definition.wattsperSpaceFloorArea()
+        if not watts.is_initialized():
+            raise RuntimeError(
+                f"'{definition.nameString()}' is not stated per floor area - "
+                "the template contract changed")
+        copy = definition.clone(osm).to_LightsDefinition().get()
+        copy.setName(_rename(definition))
+        if not copy.setWattsperSpaceFloorArea(watts.get() * fraction):
+            raise RuntimeError("could not scale the top storey lighting")
+        lights.setLightsDefinition(copy)
+        scaled["lighting_w_m2"] = round(watts.get() * fraction, 4)
+
+    for equipment in clone.electricEquipment():
+        definition = equipment.electricEquipmentDefinition()
+        watts = definition.wattsperSpaceFloorArea()
+        if not watts.is_initialized():
+            raise RuntimeError(
+                f"'{definition.nameString()}' is not stated per floor area - "
+                "the template contract changed")
+        copy = definition.clone(osm).to_ElectricEquipmentDefinition().get()
+        copy.setName(_rename(definition))
+        if not copy.setWattsperSpaceFloorArea(watts.get() * fraction):
+            raise RuntimeError("could not scale the top storey equipment")
+        equipment.setElectricEquipmentDefinition(copy)
+        scaled["equipment_w_m2"] = round(watts.get() * fraction, 4)
+
+    rescaled = 0
+    for inf in clone.spaceInfiltrationDesignFlowRates():
+        if OCCUPANCY_INFILTRATION_MARKER not in inf.nameString().lower():
+            continue
+        flow = inf.flowperSpaceFloorArea()
+        if not flow.is_initialized():
+            raise RuntimeError(
+                f"'{inf.nameString()}' is not stated per floor area - "
+                "the template contract changed")
+        if not inf.setFlowperSpaceFloorArea(flow.get() * fraction):
+            raise RuntimeError(f"could not rescale '{inf.nameString()}'")
+        scaled["occupancy_ventilation_m3s_m2"] = round(flow.get() * fraction, 9)
+        rescaled += 1
+    if rescaled == 0:
+        raise RuntimeError(
+            "occupancy-driven infiltration object not found on the cloned "
+            f"'{RESIDENTIAL_SPACE_TYPE}' - the template contract changed")
+
+    top.setSpaceType(clone)
+    return {
+        "fraction": round(float(fraction), 6),
+        "space": top.nameString(),
+        "space_type": clone.nameString(),
+        "scaled": scaled,
+        "infiltration_objects_rescaled": rescaled,
+        "unscaled": ["constant 0.2 ACH airtightness",
+                     "summer-night 4 ACH",
+                     "DHW (per person, not per area)"],
+        "geometry_changed": False,
+        "full_storeys_remaining": len(spaces) - 1,
     }
 
 
@@ -1333,7 +1520,8 @@ def config_for_building(row, base=None):
 def build_deep_model(row, party_geom, occupants: float, *, config=None,
                      neighbors=None, litres_per_person_day: float | None = None,
                      glaze_ground: bool = True, window_frames: bool = True,
-                     climate=None, ground_use: str | None = None):
+                     climate=None, ground_use: str | None = None,
+                     partial_top_storey: bool = True):
     """Build the geometry/envelope with the frozen builder, then add the layers.
 
     `climate` is a `climate.ClimateSet`.  Left unset, every climate-dependent
@@ -1345,6 +1533,14 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
     dwelling floor, in the basis).  Left unset it is read from the row - a
     prepared stock carries the policy-resolved `ground_use` column - and falls
     back to "terciario", the historical behaviour byte for byte.
+
+    `partial_top_storey` scales the top dwelling storey's gains to the fraction
+    the cadastre records instead of loading it as a whole floor.  It is on by
+    default because the unscaled version is the measured error, and it is a
+    parameter at all so the two can be run against each other on one building.
+    It is inert wherever there is no cadastral record - the single-building
+    CLI, the Rai replica, any prepared stock without Tipo15 - so turning it on
+    cannot move a run that has nothing to scale.
     """
     # The cluster envelope is resolved here, on top of whatever template/weather
     # config the caller supplied, so a `--template` or `--climate` override never
@@ -1452,10 +1648,28 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
     stats["mixed_use_storeys_converted"] = built_res_storeys - keep_res_storeys
     stats["mixed_use_basis"] = "cadastral_tipo15" if has_cadastral else "unchecked_no_tipo15"
 
+    # The storey rule rounds up, so the top kept storey is usually only part
+    # dwelling.  Decided ONCE, here, and used in two places far apart: the
+    # dwelling area every per-person quantity is spread over (immediately
+    # below) and the load scaling itself (after the HVAC, for the ordering
+    # reason in `apply_partial_top_storey`).  Two decision points would let the
+    # off-state drift away from reproducing v8 byte for byte.
+    top_fraction = (top_storey_fraction(cadastral_area, footprint_m2, keep_res_storeys)
+                    if partial_top_storey else None)
+    # `res_area_m2` stays GEOMETRIC and is not touched: the frozen QA compares
+    # it against what EnergyPlus reports as net conditioned area, every kWh/m2
+    # is on it, and `aggregate()` recovers total kWh by multiplying back
+    # through it.  The dwelling area is a second, smaller basis used only where
+    # a quantity is per dwelling rather than per conditioned m2 - it equals the
+    # cadastral record by construction, since footprint x (kept - 1 + fraction)
+    # is footprint x (cadastral / footprint).
+    dwelling_area_m2 = (round(footprint_m2 * (keep_res_storeys - 1 + top_fraction), 1)
+                        if top_fraction is not None else res_area_m2)
+
     # A padron head count that cannot fit the recorded floor area is capped
     # before it reaches the model, so DHW and occupant gains stay physical.
     padron_occupants = occupants
-    occupants = cap_occupants_to_density_floor(occupants, res_area_m2)
+    occupants = cap_occupants_to_density_floor(occupants, dwelling_area_m2)
 
     if ground_is_residential:
         # Order matters: glazing looks the ground space up through its buffer
@@ -1469,17 +1683,21 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
             stats["n_windows"] += layers["ground_glazing"]["ground_windows"]
         layers["ground"] = apply_residential_ground(osm)
         layers["mixed_use"] = apply_mixed_use_storeys(osm, keep_res_storeys)
-        layers["occupancy"] = apply_real_occupancy(osm, occupants, res_area_m2)
+        layers["occupancy"] = apply_real_occupancy(osm, occupants, dwelling_area_m2)
     else:
         # Mixed-use re-typing first: occupancy and the PTHP COP split both
         # resolve through the residential space type, so a storey converted
         # after them would keep dwelling occupants and a dwelling heat pump.
         layers = {"mixed_use": apply_mixed_use_storeys(osm, keep_res_storeys)}
-        layers["occupancy"] = apply_real_occupancy(osm, occupants, res_area_m2)
+        layers["occupancy"] = apply_real_occupancy(osm, occupants, dwelling_area_m2)
         layers["ground"] = apply_rai_ground_regime(osm)
     stats["ground_use"] = ground_use
+    # Density is judged on the floor people actually live on.  Where the top
+    # storey is partial that is the smaller, recorded area - so the verdict
+    # gets stricter, not looser, which is the right direction for a check whose
+    # job is to catch head counts that cannot fit.
     plausibility = occupancy_plausibility(
-        occupants, res_area_m2, row.get("num_vivend"), capped_from=padron_occupants)
+        occupants, dwelling_area_m2, row.get("num_vivend"), capped_from=padron_occupants)
     layers["occupancy"]["plausibility"] = plausibility
     layers["occupancy"]["padron_occupants"] = round(padron_occupants, 1)
     stats["occupancy_plausibility"] = plausibility["status"]
@@ -1510,6 +1728,14 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
                                  litres_per_person_day=litres_per_person_day,
                                  climate=climate)
     layers["hvac"] = add_pthp_hvac(osm, climate=climate)
+    # AFTER the HVAC, not before - see `apply_partial_top_storey`.  Both the
+    # DHW loop and the PTHP COP split resolve the dwelling space type by name,
+    # so the storey has to still BE that type while they run.
+    if top_fraction is not None:
+        layers["partial_top_storey"] = apply_partial_top_storey(osm, top_fraction)
+    stats["top_storey_fraction"] = (round(top_fraction, 6)
+                                    if top_fraction is not None else None)
+    stats["dwelling_area_m2"] = dwelling_area_m2
     if climate is not None:
         # the weather file the frozen builder embedded is replaced here, in the
         # same post-build pattern as every other layer
@@ -1598,7 +1824,8 @@ def simulate_deep_building(refparcela: str, out_dir: Path, *,
                            gis_path: Path | None = None,
                            neighbors_path: Path | None = None,
                            provenance: dict | None = None,
-                           climate=None, config=None) -> tuple[dict, bool]:
+                           climate=None, config=None,
+                           partial_top_storey: bool = True) -> tuple[dict, bool]:
     """Full deep chain for ONE building: model -> layers -> E+ -> results -> QA.
 
     Mirrors ``sim.simulate_building`` but always runs the real PTHP system, so
@@ -1631,7 +1858,8 @@ def simulate_deep_building(refparcela: str, out_dir: Path, *,
 
     osm, stats = build_deep_model(row, party, occupants, neighbors=neighbors,
                                   litres_per_person_day=litres_per_person_day,
-                                  climate=climate, config=config)
+                                  climate=climate, config=config,
+                                  partial_top_storey=partial_top_storey)
     stats["occupants_source"] = occupants_source
     stats["zero_policy"] = zero_policy
     stats["climate"] = climate.name if climate is not None else "valencia_iwec (built in)"
@@ -1727,6 +1955,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Rai-aligned DHW demand at 50 C, ~80 %% of the CTE 60 C "
                              "energy reference (default 28 l/person/day)")
     parser.add_argument("--gis", type=Path, help="cadastre shapefile override")
+    parser.add_argument("--no-partial-top-storey", dest="partial_top_storey",
+                        action="store_false",
+                        help="load the top dwelling storey as a whole floor even "
+                             "where the cadastre records only part of it (the "
+                             "pre-2026-08-12 behaviour; for A/B comparison)")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--quiet", action="store_true")
     return parser.parse_args(argv)
@@ -1744,7 +1977,8 @@ def main(argv: list[str] | None = None) -> int:
             args.refparcela, out_dir,
             zero_policy=args.zero_policy,
             litres_per_person_day=args.litres_per_person_day,
-            gis_path=args.gis)
+            gis_path=args.gis,
+            partial_top_storey=args.partial_top_storey)
     except Exception as exc:                       # noqa: BLE001 - CLI boundary
         log.error("deep run failed: %s", exc)
         return 2
