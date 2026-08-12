@@ -55,8 +55,8 @@ from workbench.city_service import (
     create_city_job, list_city_run_summaries, list_city_runs,
 )
 from workbench.lhs_service import (
-    compare_lhs, create_lhs_job, lhs_detail, lhs_figure, lhs_preflight,
-    list_lhs_runs,
+    compare_lhs, create_lhs_job, lhs_artifact, lhs_detail, lhs_figure,
+    lhs_preflight, list_lhs_runs,
 )
 from workbench.model_graph import (
     enrich_scene_construction_ids, extract_model_graph, public_artifact_metadata,
@@ -1416,6 +1416,21 @@ def get_lhs_figure(run_id: str, name: str):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return FileResponse(path, filename=name, media_type="image/png")
+
+
+@app.get("/api/lhs/runs/{run_id}/artifacts/{name}")
+def get_lhs_artifact(run_id: str, name: str):
+    try:
+        path, media_type = lhs_artifact(run_id, name)
+    except KeyError as exc:
+        raise not_found(str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return FileResponse(path, filename=name, media_type=media_type)
 
 
 @app.get("/api/lhs/runs/{run_id}")

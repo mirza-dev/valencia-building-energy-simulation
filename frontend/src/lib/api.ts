@@ -300,6 +300,9 @@ export const api = {
   ),
   lhsFigureUrl: (id: string, name: 'histograms.png' | 'tornado.png') =>
     absoluteApiUrl(`/api/lhs/runs/${encodeURIComponent(id)}/figures/${name}`),
+  lhsArtifactUrl: (id: string, name: 'runs.csv' | 'histograms.png' | 'tornado.png') =>
+    absoluteApiUrl(`/api/lhs/runs/${encodeURIComponent(id)}/artifacts/${name}`),
+  lhsExportUrl: (id: string) => absoluteApiUrl(`/api/runs/${encodeURIComponent(id)}/export`),
   job: (id: string) => request<JobRecord>(`/api/jobs/${id}`),
   runs: () => request<RunRecord[]>('/api/runs'),
   run: (id: string) => request<RunRecord>(`/api/runs/${id}`),

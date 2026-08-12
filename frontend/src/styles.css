@@ -1706,6 +1706,13 @@ button:disabled { opacity: .5; }
 .output-section > header span { display: grid; gap: 2px; }
 .output-section > header strong { font-size: 12px; }
 .output-section > header small { color: var(--muted); font-size: 9px; }
+/* The sampling study's own downloads and plots. The figures wrap rather than
+   scroll: they are read side by side on a wide screen and stacked on a narrow
+   one, and neither may push the page into a horizontal scroll. */
+.lhs-downloads { display: flex; flex-wrap: wrap; gap: 6px; }
+.lhs-figures { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 10px 12px; }
+.lhs-figures img { flex: 1 1 320px; min-width: 0; max-width: 100%; height: auto; border: 1px solid var(--line); background: #fff; }
+.output-section > header + .output-interpretation-note { margin: 0; border: 0; border-bottom: 1px solid var(--line); }
 .product-table-scroll { overflow: auto; }
 .product-table { width: 100%; border-collapse: collapse; font-size: 10px; }
 .product-table th { height: 34px; padding: 0 9px; position: sticky; top: 0; color: #63706a; background: #eef1ec; border-bottom: 1px solid var(--line-strong); text-align: left; font: 8px var(--mono); letter-spacing: .04em; white-space: nowrap; }

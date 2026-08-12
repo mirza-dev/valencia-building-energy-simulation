@@ -260,3 +260,37 @@ def test_lhs_api_exposes_preflight_history_detail_compare_figure_and_job_creatio
         created = client.post("/api/lhs/runs")
         assert created.status_code == 202
         assert created.json()["kind"] == "lhs"
+
+
+def test_lhs_downloads_are_allowlisted_and_carry_their_real_media_type(tmp_path, monkeypatch):
+    """The sample ledger must not be handed over labelled as an image.
+
+    The figure route hard-codes `image/png`, which is right for the two plots
+    and wrong for `runs.csv`; the download route therefore takes the media type
+    from the allowlist, and anything not on that list never resolves to a path.
+    """
+    ledger = tmp_path / "runs.csv"
+    ledger.write_text("wall_u,heating_kwh_m2\n1.4,16.9\n", encoding="utf-8")
+    plot = tmp_path / "tornado.png"
+    plot.write_bytes(b"png")
+
+    def fake_artifact(_run_id, name):
+        return ({"runs.csv": (ledger, "text/csv"),
+                 "tornado.png": (plot, "image/png")}[name])
+
+    monkeypatch.setattr(api_module, "lhs_artifact", fake_artifact)
+    with TestClient(api_module.app) as client:
+        csv = client.get("/api/lhs/runs/lhs-run/artifacts/runs.csv")
+        assert csv.status_code == 200
+        assert csv.headers["content-type"].startswith("text/csv")
+        assert "wall_u" in csv.text
+        png = client.get("/api/lhs/runs/lhs-run/artifacts/tornado.png")
+        assert png.headers["content-type"].startswith("image/png")
+
+    # and the allowlist itself refuses anything else, so a filename from the
+    # request can never be turned into a path
+    with pytest.raises(ValueError):
+        lhs_service.lhs_artifact("lhs-run", "../../var/workbench.sqlite3")
+    with pytest.raises(ValueError):
+        lhs_service.lhs_artifact("lhs-run", "results.json")
+    assert set(lhs_service.DOWNLOADABLE) >= lhs_service.FIGURE_NAMES

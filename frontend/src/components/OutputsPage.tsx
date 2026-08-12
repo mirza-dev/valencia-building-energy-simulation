@@ -20,6 +20,80 @@ function number(value?: number, digits = 2) {
   return value == null || !Number.isFinite(value) ? '—' : value.toLocaleString('en-GB', { maximumFractionDigits: digits })
 }
 
+// The three outputs the sampling study reports, with the label each one needs
+// so a reader cannot mistake a pilot-building figure for a stock figure.
+const LHS_OUTPUTS = [
+  ['heating_kwh_m2', 'Space heating', 'kWh/m²'],
+  ['cooling_kwh_m2', 'Space cooling', 'kWh/m²'],
+  ['co2_kg_m2', 'Carbon', 'kgCO₂/m²'],
+] as const
+
+/**
+ * Uncertainty evidence, kept deliberately apart from the stock totals above.
+ *
+ * Two things this must never do. It must not imply that the interval belongs
+ * to the district total: the study samples one pilot building on the demand
+ * chain, while the totals on this page come from the whole-stock chain, where
+ * roughly nine tenths of the energy is a per-area norm the study does not vary.
+ * And it must not print statistics from a run whose engine sources have since
+ * changed - a stale band beside current numbers is exactly the failure this
+ * page keeps having to retract, so an outdated run shows its provenance and
+ * withholds its numbers rather than dressing them as today's.
+ */
+function UncertaintySection() {
+  const runs = useQuery({ queryKey: ['lhs-runs'], queryFn: api.lhsRuns })
+  const newest = (runs.data ?? [])[0]
+  const detail = useQuery({
+    queryKey: ['lhs-run', newest?.id], queryFn: () => api.lhsRun(newest!.id), enabled: Boolean(newest?.id),
+  })
+  if (runs.isLoading || !newest) return null
+
+  const run = detail.data ?? newest
+  const verified = run.verification?.ok !== false && run.verification_status === 'VERIFIED'
+  const current = run.current_compatibility?.current !== false
+  const changed = run.current_compatibility?.changed_roles ?? []
+  const statistics = run.result?.summary.statistics ?? {}
+  const settings = run.result?.settings
+  const usable = verified && current && run.result?.qa.scientific_status === 'VALIDATED'
+
+  return <section className="output-section">
+    <header><div><BarChart3 size={17} /><span><strong>Uncertainty study (Latin hypercube)</strong>
+      <small>{settings ? `${settings.n} samples · seed ${settings.seed} · ${run.refparcela || 'pilot building'}` : 'Sampling study'} — a band on the pilot building&apos;s demand, not on the totals above.</small>
+    </span></div>
+      {usable && <nav className="lhs-downloads">
+        <a className="secondary-button" href={api.lhsArtifactUrl(run.id, 'runs.csv')}><Download size={14} /> Sample ledger (.csv)</a>
+        <a className="secondary-button" href={api.lhsArtifactUrl(run.id, 'histograms.png')} target="_blank" rel="noreferrer"><Image size={14} /> Distributions (.png)</a>
+        <a className="secondary-button" href={api.lhsArtifactUrl(run.id, 'tornado.png')} target="_blank" rel="noreferrer"><Image size={14} /> Sensitivity (.png)</a>
+        <a className="secondary-button" href={api.lhsExportUrl(run.id)}><PackageCheck size={14} /> Signed ZIP</a>
+      </nav>}
+    </header>
+
+    {!verified ? <div className="output-interpretation-note"><AlertTriangle size={17} /><div>
+      <strong>This study&apos;s artifacts did not verify</strong>
+      <p>Its statistics are withheld: {run.verification?.status ?? run.verification_status}.</p>
+    </div></div> : !current ? <div className="output-interpretation-note"><AlertTriangle size={17} /><div>
+      <strong>This study describes an earlier configuration of the engine</strong>
+      <p>Its evidence is intact and still traceable, but {changed.length} engine source{changed.length === 1 ? ' has' : 's have'} changed since it ran, so its interval is not a confidence interval for anything on this page. Re-run the study to restore one.</p>
+      <small><code>{changed.join(' · ')}</code></small>
+    </div></div> : <>
+      <div className="product-table-scroll"><table className="product-table"><thead><tr>
+        <th>Output</th><th>P5</th><th>Median</th><th>P95</th><th>Mean</th>
+      </tr></thead><tbody>
+        {LHS_OUTPUTS.map(([key, label, unit]) => {
+          const value = statistics[key]
+          return <tr key={key}><td>{label} <small>{unit}</small></td>
+            <td>{number(value?.p5, 2)}</td><td>{number(value?.median, 2)}</td>
+            <td>{number(value?.p95, 2)}</td><td>{number(value?.mean, 2)}</td></tr>
+        })}
+      </tbody></table></div>
+      <figure className="lhs-figures">
+        <img src={api.lhsFigureUrl(run.id, 'histograms.png')} alt="Sampled output distributions with the deterministic baselines drawn on them" loading="lazy" />
+        <img src={api.lhsFigureUrl(run.id, 'tornado.png')} alt="Rank correlation of each sampled variable with each output" loading="lazy" />
+      </figure>
+    </>}
+  </section>
+}
+
 export default function OutputsPage() {
   const [selected, setSelected] = useState('')
   const [query, setQuery] = useState('')
@@ -112,6 +186,9 @@ export default function OutputsPage() {
           </tbody></table></div>
         </section>
       </> : <section className="output-pending"><AlertTriangle size={24} /><strong>{detail.data?.running ? 'Aggregate pending while the run continues' : 'No aggregate is available for this run'}</strong><p>The building ledger remains inspectable below.</p></section>}
+
+      <UncertaintySection />
+
 
       {selected && <section className="output-section ledger-section">
         <header><div><FileSearch size={17} /><span><strong>Building ledger</strong><small>{ledger.data?.total.toLocaleString() ?? '—'} matching terminal records</small></span></div>

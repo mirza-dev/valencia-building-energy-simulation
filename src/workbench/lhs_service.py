@@ -14,6 +14,13 @@ from workbench.lhs_adapter import OUTPUT_COLUMNS, inspect_lhs, run_lhs, source_p
 
 
 FIGURE_NAMES = {"histograms.png", "tornado.png"}
+# What a reader may download one file at a time. The signed export carries the
+# whole run; this is the shortcut for the three files anyone actually opens.
+DOWNLOADABLE = {
+    "runs.csv": "text/csv",
+    "histograms.png": "image/png",
+    "tornado.png": "image/png",
+}
 
 
 def _require_ready() -> dict[str, Any]:
@@ -226,9 +233,13 @@ def list_lhs_runs() -> list[dict[str, Any]]:
     return [lhs_detail(run["id"]) for run in db.list_runs_by_type("lhs")]
 
 
-def lhs_figure(run_id: str, name: str) -> Path:
-    if name not in FIGURE_NAMES:
-        raise ValueError("Unsupported LHS figure")
+def _verified_artifact(run_id: str, name: str, kind: str) -> Path:
+    """Resolve one committed LHS file behind the integrity gate.
+
+    The gate is the point: a tampered or unverified run must not hand out the
+    evidence that would make it look believable, and the name has to come from
+    an allowlist so a path can never be assembled from the request.
+    """
     run = db.get_run(run_id)
     if run is None:
         raise KeyError(run_id)
@@ -236,11 +247,30 @@ def lhs_figure(run_id: str, name: str) -> Path:
         raise ValueError("Requested run is not an LHS run")
     verification = service.verify_run_artifacts(run_id)
     if not verification["ok"]:
-        raise PermissionError(f"LHS figure is not verified: {verification['status']}")
+        raise PermissionError(f"LHS {kind} is not verified: {verification['status']}")
     path = Path(run["artifact_dir"]) / name
     if not path.is_file():
         raise FileNotFoundError(name)
     return path
+
+
+def lhs_figure(run_id: str, name: str) -> Path:
+    if name not in FIGURE_NAMES:
+        raise ValueError("Unsupported LHS figure")
+    return _verified_artifact(run_id, name, "figure")
+
+
+def lhs_artifact(run_id: str, name: str) -> tuple[Path, str]:
+    """The files a reader may take away, with the media type they really are.
+
+    `lhs_figure` serves PNG and says so in the header.  The sample ledger is a
+    CSV and must not be handed over labelled as an image, so the media type
+    travels with the allowlist rather than being hard-coded at the route.
+    """
+    media_type = DOWNLOADABLE.get(name)
+    if media_type is None:
+        raise ValueError("Unsupported LHS artifact")
+    return _verified_artifact(run_id, name, "artifact"), media_type
 
 
 def compare_lhs(left_id: str, right_id: str) -> dict[str, Any]:
