@@ -60,6 +60,7 @@ import deep_building as db
 import eu_footprint_flags as euf
 import floor_area_allocation as faa
 import model_builder as mb
+import results_layer as rl
 import stock_input_policy as sip
 import template_contract as tpl
 import verified_model as vm
@@ -461,6 +462,33 @@ def _config_for(refparcela: str):
     })
 
 
+EVENT_MODE = "microclimate_event"
+
+
+def _event_stamp(plan: dict | None = None) -> dict:
+    """What kind of run this is, for every row including the failed ones.
+
+    Measured 2026-08-12: without this the ledger of an 8-day event run was
+    schema-identical to an annual one.  The per-area columns held 1.02-1.26
+    kWh/m2 instead of ~52, `total_site_co2_t_yr` held an 8-day figure in a
+    field named per-year, and the slice fingerprint lived only in
+    `run_config.json` - so `aggregate()` and the map layer, which read the
+    ledger, could not tell the two apart and labelled the event as annual.
+    A file has to say what it is.
+    """
+    # Callable from the parent as well as a worker: the excluded rows are
+    # written before the pool starts, and an unstamped exclusion made the
+    # ledger look like two runs mixed together (measured, first event run).
+    plan = plan if plan is not None else _WORKER.get("event_plan")
+    if plan is None:
+        return {}
+    window = [int(v) for v in plan["window"]]
+    return {"run_mode": EVENT_MODE,
+            "event_days": int(plan["days"]),
+            "event_window": (f"{window[0]:02d}-{window[1]:02d}"
+                             f"..{window[2]:02d}-{window[3]:02d}")}
+
+
 def _event_for(refparcela: str) -> dict | None:
     """This building's slot in the microclimate plan, or None for an annual run.
 
@@ -496,17 +524,22 @@ def run_one(task: tuple[str, str | None] | str) -> dict:
     out_dir = Path(_WORKER["out_dir"])
     # the full identity travels on every row, so what produced it can always be
     # established from the ledger alone
+    # The run mode rides on every row, the failed ones included: a building the
+    # slice refused is part of the evidence about that slice's reach.
     base = {"refparcela": refparcela, "cluster": cluster,
+            **_event_stamp(),
             **{key: _WORKER[key] for key in IDENTITY_FIELDS}}
+    event = None
     try:
         envelope = _WORKER.get("envelopes", {}).get(refparcela)
+        event = _event_for(refparcela)
         summary, qa_passed = vm.simulate_verified_building(
             refparcela, out_dir,
             zero_policy=_WORKER["zero_policy"],
             gis_path=Path(_WORKER["prepared_gis"]),
             neighbors_path=Path(_WORKER["context_gis"]),
             floor_u=None if envelope is None else envelope.get("floor_u"),
-            event=_event_for(refparcela),
+            event=event,
             climate=_WORKER.get("climate"),
             config=_config_for(refparcela),
         )
@@ -539,6 +572,11 @@ def run_one(task: tuple[str, str | None] | str) -> dict:
     # run started and reaches the row without passing through the model.  Off
     # unless --eu was given, so a ledger written without it is unchanged.
     row.update(_WORKER.get("eu_flags", {}).get(refparcela, {}))
+    if event is not None:
+        # The offset this building actually ran at.  Without it the map of an
+        # event run can colour the consequence but not the cause.
+        row.update({"delta_peak_k": event["delta_peak_k"],
+                    "delta_base_k": event["delta_base_k"]})
     return row
 
 
@@ -769,6 +807,12 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
     Areas and energies come straight from the per-building records; nothing is
     re-derived, so a total can always be traced back to the buildings behind it.
     """
+    # Kept before the dedupe: `energy_period` must see the ledger as written.
+    # It reads the run mode, and a superseded row can only ever raise the mixed
+    # alarm, never suppress it - whereas answering from deduped rows here while
+    # `write_results_layer` answered from raw ones let one file carry two
+    # different periods (review finding, 2026-08-12).
+    raw_rows = list(rows)
     rows = latest_per_reference(rows)
     # Only `ok` feeds the totals: `failed_qa` rows carry numbers, but numbers
     # that failed their own cross-check against EnergyPlus.
@@ -786,6 +830,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
                 "buildings_excluded": sum(1 for r in rows
                                           if r.get("status") == "excluded"),
                 "coverage": coverage_block(rows, ok, stock),
+                "energy_period": rl.energy_period(raw_rows),
                 "zoning": zoning_block(pd.DataFrame(ok)),
                 "fragmentation": euf.fragmentation_block(pd.DataFrame(ok)),
                 "floor_area_allocation": faa.allocation_block(ok, stock),
@@ -944,6 +989,9 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
                                    if r.get("status") == "failed_qa"),
         "buildings_excluded": sum(1 for r in rows if r.get("status") == "excluded"),
         "coverage": coverage_block(rows, ok, stock),
+        # Beside the totals, not only inside the map block: a reader looking at
+        # `total_site_gwh` has to be able to see what period it covers.
+        "energy_period": rl.energy_period(raw_rows),
         "zoning": zoning_block(frame),
         "fragmentation": euf.fragmentation_block(frame),
         "floor_area_allocation": faa.allocation_block(ok, stock),
@@ -1404,6 +1452,7 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
             # an exclusion is a ledger row like any other and carries the same
             # identity, or resume could not tell which run excluded it
             ledger.append({**item, "status": "excluded",
+                           **_event_stamp(event_plan),
                            **{key: fingerprints[key] for key in IDENTITY_FIELDS}})
 
         if runnable:
@@ -1429,9 +1478,17 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
                             # whose producing run cannot be established - one
                             # dead worker cost the remaining days of a stock run
                             # (review finding, 2026-08-03).
+                            # The event stamp belongs here too, and for the
+                            # same reason as the identity: without it one dead
+                            # worker leaves a single unstamped row, the ledger
+                            # reads as two run modes, and the whole event run
+                            # is reported as `mixed` - reintroducing exactly
+                            # the annual mislabel the stamp exists to prevent
+                            # (review finding, 2026-08-12).
                             row = {"refparcela": ref, "status": "failed",
                                    "reason": f"worker_{type(exc).__name__}",
                                    "message": str(exc)[:400],
+                                   **_event_stamp(event_plan),
                                    **{key: fingerprints[key] for key in IDENTITY_FIELDS}}
                         watchdog.finished(ref)
                         ledger.append(row)
@@ -1450,6 +1507,10 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
     report["elapsed_minutes"] = round((time.time() - started) / 60, 2)
     report["ledger"] = str(ledger_path)
     report["provenance"] = provenance_block(rows, [ledger_path])
+    # The map of the result, written next to the numbers rather than left for
+    # the reader to reconstruct with a spreadsheet join.  The full export packs
+    # the run directory, so it travels with the signed package automatically.
+    report["results_layer"] = rl.write_results_layer(rows, stock, out_dir)
     (out_dir / "aggregate.json").write_text(
         json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     return report
@@ -1461,6 +1522,12 @@ def _print_report(report: dict) -> None:
           f"| excluded {report['buildings_excluded']} "
           f"| QA fail {report['qa_failed']} "
           f"| unexplained severe {report['unexplained_severes']}")
+    period = report.get("energy_period") or {}
+    if period.get("period") not in (None, "annual", "no_rows"):
+        # Printed above the totals, not below: the qualifier has to be read
+        # before the numbers it qualifies, and an event window is not a year.
+        print(f"  ENERGY PERIOD: {period.get('unit') or period['period']}"
+              + (f" ({period['event_window']})" if period.get("event_window") else ""))
     totals = report.get("totals") or {}
     if totals:
         print(f"  heating {totals['heating_gwh']} GWh | cooling {totals['cooling_gwh']} "
@@ -1521,6 +1588,41 @@ def _print_report(report: dict) -> None:
                   f"{'' if ratio is None else f'{ratio:.2f}x':>7}")
     print(f"  elapsed {report.get('elapsed_minutes')} min")
 
+
+
+def _carry_forward_layer(block: dict, out_dir: Path) -> dict:
+    """Keep the record of a layer this pass could not write but did not remove.
+
+    `aggregate.json` is rewritten whole, so re-aggregating a finished run
+    without `--stock` would otherwise stamp `written: false` onto a directory
+    that still holds the GeoPackage and the heat map - and the Outputs screen
+    gates both download buttons on that flag, so the run would appear to have
+    lost artefacts that are sitting right there (review finding, 2026-08-12).
+    A file's record has to describe the directory it is in.
+
+    The carried block says it was carried, because it was written from an
+    earlier state of the ledger and this pass cannot vouch for it: silently
+    presenting a stale record as current would trade one wrong statement for
+    another.
+    """
+    if block.get("written") or block.get("reason") != "no_stock_geometry":
+        return block
+    previous = Path(out_dir) / "aggregate.json"
+    if not previous.exists():
+        return block
+    try:
+        old = json.loads(previous.read_text(encoding="utf-8")).get("results_layer")
+    except Exception:                               # noqa: BLE001 - unreadable
+        return block
+    if not isinstance(old, dict) or not old.get("written"):
+        return block
+    if not (Path(out_dir) / str(old.get("layer") or rl.LAYER_FILENAME)).exists():
+        return block
+    return {**old, "carried_forward":
+            "written by an earlier pass and left untouched: this re-aggregation "
+            "ran without `--stock`, so no layer could be rebuilt.  It reflects "
+            "the ledger as it stood then, which may not be the ledger beside it "
+            "now; re-run `--aggregate` with `--stock` to rewrite it."}
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the verified model over a stock")
@@ -1593,9 +1695,16 @@ def main(argv: list[str] | None = None) -> int:
         # and resumed leaves an aggregate written by whichever version of this
         # module the long-lived process had loaded; re-aggregating has to make
         # the file on disk agree with the ledger, not just print to the screen.
+        # Re-aggregating is also how a run that predates the layer gets one:
+        # give it `--stock` and the map is written from the ledger it already
+        # has, without simulating anything again.
+        layer = _carry_forward_layer(
+            rl.write_results_layer(rows, stock, args.aggregate.parent),
+            args.aggregate.parent)
         (args.aggregate.parent / "aggregate.json").write_text(
             json.dumps({**report, "ledger": str(args.aggregate),
-                        "provenance": provenance_block(rows, [args.aggregate])},
+                        "provenance": provenance_block(rows, [args.aggregate]),
+                        "results_layer": layer},
                        indent=2, ensure_ascii=False), encoding="utf-8")
         _print_report(report)
         return 0

@@ -191,6 +191,8 @@ export const api = {
   },
   stockLog: (name: string) => requestText(`/api/stock/runs/${encodeURIComponent(name)}/log`),
   stockLedgerCsvUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/ledger.csv`),
+  stockResultsLayerUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/results.gpkg`),
+  stockHeatmapUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/results.png`),
   stockArtifactUrl: (name: string, reference: string, filename: string) => absoluteApiUrl(
     `/api/stock/runs/${encodeURIComponent(name)}/buildings/${encodeURIComponent(reference)}/${encodeURIComponent(filename)}`,
   ),

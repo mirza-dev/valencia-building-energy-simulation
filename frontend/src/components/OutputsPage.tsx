@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, BarChart3, Building2, CheckCircle2, Download, ExternalLink, FileSearch, PackageCheck, Search } from 'lucide-react'
+import { AlertTriangle, BarChart3, Building2, CheckCircle2, Download, ExternalLink, FileSearch, Image, Map, PackageCheck, Search } from 'lucide-react'
 import { api } from '../lib/api'
 import { formatProductBytes } from '../lib/productStock'
 import type { ProductLedgerRow } from '../lib/types'
@@ -44,6 +44,14 @@ export default function OutputsPage() {
   })
   const summary = detail.data?.summary
   const totals = summary?.totals
+  // A microclimate event run fills the same fields as an annual one, so these
+  // labels are read off the run rather than assumed.  A run that predates the
+  // period being recorded was annual.
+  const period = summary?.energy_period
+  const isEvent = period?.period === 'microclimate_event'
+  const perPeriod = isEvent
+    ? (period?.event_days ? `${period.event_days}-day event` : 'event window')
+    : 'year'
   const rejected = summary
     ? summary.buildings_failed + summary.buildings_failed_qa
     : 0
@@ -63,7 +71,7 @@ export default function OutputsPage() {
       <div><span>03 / EVIDENCE</span><h1>Outputs</h1><p>Read aggregate results, audit every building and open the files preserved by the runner.</p></div>
       <div className="output-run-picker"><label><span>RUN</span><select value={selected} onChange={(event) => { setSelected(event.target.value); setOffset(0); setBuilding(null); setExportPlan(null) }}>
         {(runs.data?.runs ?? []).map((run) => <option key={run.run} value={run.run}>{run.run}{run.running ? ' · RUNNING' : ''}</option>)}
-      </select></label>{selected && <><a className="secondary-button" href={api.stockLedgerCsvUrl(selected)}><Download size={14} /> Building CSV</a><button className="secondary-button" disabled={detail.data?.running || exportPlanMutation.isPending} onClick={() => exportPlanMutation.mutate()}><PackageCheck size={14} /> {exportPlanMutation.isPending ? 'Sizing…' : 'Full signed ZIP'}</button></>}</div>
+      </select></label>{selected && <><a className="secondary-button" href={api.stockLedgerCsvUrl(selected)}><Download size={14} /> Building CSV</a>{summary?.results_layer?.written && <a className="secondary-button" href={api.stockResultsLayerUrl(selected)} title={`One feature per building in ${summary.results_layer.crs ?? 'the run projection'}, plus ${Object.keys(summary.results_layer.zone_layers ?? {}).join(' and ') || 'no'} roll-up layers, styled on opening — drag into QGIS`}><Map size={14} /> GIS layer (.gpkg)</a>}{summary?.results_layer?.heatmap?.written && <a className="secondary-button" href={api.stockHeatmapUrl(selected)} title={`${(summary.results_layer.heatmap.panels ?? []).length} panels; buildings with no result drawn grey — a picture for a report, no GIS needed`}><Image size={14} /> Heat map (.png)</a>}<button className="secondary-button" disabled={detail.data?.running || exportPlanMutation.isPending} onClick={() => exportPlanMutation.mutate()}><PackageCheck size={14} /> {exportPlanMutation.isPending ? 'Sizing…' : 'Full signed ZIP'}</button></>}</div>
     </header>
 
     <div className="product-scroll outputs-scroll">
@@ -73,11 +81,19 @@ export default function OutputsPage() {
         <a className={`primary-button ${exportConfirmed ? '' : 'disabled-link'}`} aria-disabled={!exportConfirmed} href={exportConfirmed ? api.stockExportUrl(selected) : undefined}><Download size={14} /> Create & download</a>
       </section>}
       {summary ? <>
+        {isEvent && <section className="export-plan-banner" role="note">
+          <Image size={20} /><div><strong>Microclimate event run — these are not annual figures</strong>
+          <p>Every energy figure on this page, in the building table and in the downloads covers {period?.unit ?? 'the event window'}{period?.event_window ? ` (${period.event_window})` : ''}. Fields named per-year in the exported files hold a figure for this window only.</p></div>
+        </section>}
+        {period?.period === 'mixed' && <section className="export-plan-banner" role="note">
+          <Image size={20} /><div><strong>This ledger holds more than one run mode</strong>
+          <p>Its rows are not all per the same period, so no total on this page can be read as one number. Aggregate each run into its own directory.</p></div>
+        </section>}
         <section className="output-kpi-grid">
-          <article><span>TOTAL SITE ENERGY</span><strong>{number(totals?.total_site_gwh)}</strong><small>GWh / year · modelled subset</small></article>
+          <article><span>TOTAL SITE ENERGY</span><strong>{number(totals?.total_site_gwh)}</strong><small>GWh / {perPeriod} · modelled subset</small></article>
           <article title={totals?.area_basis_note}><span>RESIDENTIAL-AREA EUI</span><strong>{number(totals?.area_weighted_total_site_kwh_m2, 1)}</strong><small>kWh/m² · geometric residential storeys</small></article>
           <article className="accent"><span>CADASTRAL EUI</span><strong>{number(totals?.cadastral_total_site_kwh_m2, 1)}</strong><small>kWh/m² · Tipo15 residential area</small></article>
-          <article><span>CARBON</span><strong>{number(totals?.carbon_total_site_t_yr, 0)}</strong><small>tCO₂ / year · total site</small></article>
+          <article><span>CARBON</span><strong>{number(totals?.carbon_total_site_t_yr, 0)}</strong><small>tCO₂ / {perPeriod} · total site</small></article>
           <article><span>COVERAGE</span><strong>{number(summary.coverage.building_coverage_pct, 1)}%</strong><small>{summary.buildings_ok.toLocaleString()} OK · {summary.buildings_failed} failed · {summary.buildings_failed_qa} QA rejected · {summary.buildings_excluded} excluded</small></article>
           <article className={rejected || summary.qa_failed || summary.unexplained_severes ? 'danger' : 'pass'}><span>RESULT STATUS</span><strong>{rejected || summary.qa_failed || summary.unexplained_severes ? 'REVIEW' : 'PASS'}</strong><small>{summary.buildings_failed} runtime failed · {summary.buildings_failed_qa} QA rejected · accepted rows: {summary.unexplained_severes} unexplained severe</small></article>
         </section>

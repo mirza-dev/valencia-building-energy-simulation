@@ -382,6 +382,17 @@ export interface ProductStockSummary {
   qa_failed: number
   unexplained_severes: number
   implausible_occupancy: number
+  // What period the energy figures cover.  An annual run and a microclimate
+  // event run fill the same fields, so the totals below cannot be labelled
+  // `/ year` unconditionally.  Absent on runs finished before it was recorded,
+  // and those were annual.
+  energy_period?: {
+    period: 'annual' | 'microclimate_event' | 'mixed' | 'no_rows'
+    unit: string | null
+    event_days?: number | null
+    event_window?: string | null
+    note?: string
+  } | null
   totals: {
     heating_gwh: number
     cooling_gwh: number
@@ -396,6 +407,24 @@ export interface ProductStockSummary {
     area_basis_note?: string
   }
   by_cluster: ProductClusterSummary[]
+  // Absent from every run finished before the layer existed, which is why the
+  // download is offered on `written` rather than on the run being complete.
+  results_layer?: {
+    written: boolean
+    features?: number
+    crs?: string | null
+    reason?: string
+    context_fields?: string[]
+    derived_fields?: string[]
+    zone_layers?: Record<string, number>
+    style?: { written: boolean; field?: string; breaks?: number[]; reason?: string }
+    heatmap?: {
+      written: boolean
+      panels?: string[]
+      buildings_without_result?: number
+      reason?: string
+    }
+  }
   provenance?: Record<string, unknown>
 }
 

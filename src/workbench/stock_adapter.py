@@ -37,6 +37,7 @@ from typing import Any
 
 import geopandas as gpd
 
+import results_layer as rl
 import stock_input_policy as sip
 import stock_runner as sr
 import verified_model as vm
@@ -550,6 +551,38 @@ def summary(name: str) -> dict[str, Any]:
         return json.loads(cached.read_text(encoding="utf-8"))
     rows = sr.read_ledger(out_dir / "ledger.jsonl")
     return sr.aggregate(rows)
+
+
+def results_layer(name: str) -> Path:
+    """The run's GIS layer, or a refusal that says which case this is.
+
+    A run finished before the layer existed simply has no file, and telling the
+    reader that is more useful than a bare 404: the layer can be produced from
+    the ledger it already has, without simulating anything again.
+    """
+    return _result_artifact(name, rl.LAYER_FILENAME)
+
+
+def results_heatmap(name: str) -> Path:
+    """The run's printable heat map, or the same refusal.
+
+    A separate artefact rather than a rendering of the layer on request: it is
+    written once beside the ledger, so what a reader downloads is the same
+    picture that went into the signed package.
+    """
+    import results_maps as rm
+
+    return _result_artifact(name, rm.MAP_FILENAME)
+
+
+def _result_artifact(name: str, filename: str) -> Path:
+    path = run_directory(name) / filename
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{name} has no {filename}; runs finished before this file existed "
+            f"can produce it with "
+            f"`stock_runner.py --aggregate <ledger> --stock <prepared.gpkg>`")
+    return path
 
 
 def ledger_rows(name: str) -> list[dict[str, Any]]:

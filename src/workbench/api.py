@@ -1674,6 +1674,29 @@ def stock_ledger_csv(name: str):
         headers={"Content-Disposition": f'attachment; filename="{name}_buildings.csv"'})
 
 
+@app.get("/api/stock/runs/{name}/results.gpkg")
+def stock_results_layer(name: str):
+    """The run's results as a GeoPackage, ready to open in QGIS."""
+    try:
+        path = stock_adapter.results_layer(name)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(
+        path, media_type="application/geopackage+sqlite3",
+        filename=f"{name}_buildings.gpkg")
+
+
+@app.get("/api/stock/runs/{name}/results.png")
+def stock_results_heatmap(name: str):
+    """The run's heat map, for a reader who will not open a GIS."""
+    try:
+        path = stock_adapter.results_heatmap(name)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(path, media_type="image/png",
+                        filename=f"{name}_heatmap.png")
+
+
 @app.get("/api/stock/runs/{name}/ledger")
 def stock_ledger_page(
     name: str,
