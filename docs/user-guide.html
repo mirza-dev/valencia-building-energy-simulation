@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Valencia Stock Energy Workbench — Visual Guide</title>
+<title>Valencia Stock Energy Workbench — User Guide</title>
 <style>
   @page { size: A4; margin: 15mm 15mm 16mm 15mm; }
 
@@ -122,17 +122,34 @@
   .brk{page-break-before:always}
   a{color:var(--blue)}
   @media print{ a{text-decoration:none} }
+
+  /* ── usage sections ───────────────────────────────────────── */
+  .steps{counter-reset:st; list-style:none; padding-left:0; margin:.6em 0 .85em}
+  .steps>li{counter-increment:st; position:relative; padding-left:31px; margin:.55em 0; page-break-inside:avoid}
+  .steps>li::before{
+    content:counter(st); position:absolute; left:0; top:0;
+    width:21px; height:21px; border-radius:50%; background:var(--blue); color:#fff;
+    font-size:8.8pt; font-weight:700; text-align:center; line-height:21px;
+  }
+  .steps>li>b{display:block; font-size:10.2pt; margin-bottom:1px}
+  .steps>li>small{display:block; font-size:9.1pt; color:var(--soft); line-height:1.45}
+  .ui{
+    display:inline-block; font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    font-size:8.4pt; font-weight:700; background:var(--blue); color:#fff;
+    border-radius:3px; padding:1px 6px; white-space:nowrap;
+  }
+  .ui.g{background:var(--green)} .ui.a{background:var(--amber)} .ui.r{background:var(--red)}
 </style>
 </head>
 <body>
 
 <!-- ═════════════════════ COVER ═════════════════════ -->
 <section class="cover">
-  <div class="eyebrow">Visual Guide</div>
+  <div class="eyebrow">User Guide</div>
   <h1>Valencia Stock Energy Workbench</h1>
   <p class="sub">
-    How the flow runs, which source supplies which value at every step, and how
-    to read every number it produces.
+    How to load a city's data, start a simulation, and read every number that
+    comes out — screen by screen, in the order you will use them.
   </p>
 
   <figure style="margin-top:12mm">
@@ -168,22 +185,376 @@
     </svg>
   </figure>
 
+
   <div class="frame">
-    <div class="f1"><b>Normative estimate</b><small>Lighting, appliances and hot water follow Spanish standard densities — 90 % of the total.</small></div>
+    <div class="f1"><b>Normative in origin</b><small>Lighting and appliances follow a standard density per m², hot water a standard draw per person — 90 % of the total.</small></div>
     <div class="f2"><b>HVAC is simulated</b><small>Heating and cooling come from real building physics over 8,760 hours.</small></div>
     <div class="f3"><b>Verified, not validated</b><small>Scored against a published reference model. Never compared with a meter.</small></div>
   </div>
 
   <div class="meta">
+    <div><b>Three screens, in this order</b><br>Files → Run → Outputs</div>
+    <div><b>Runs on your own machine</b><br><code>http://127.0.0.1:8765</code></div>
     <div><b>Example run throughout</b><br>Benicalap district · <code>benicalap_v8</code></div>
-    <div><b>Verified profile</b><br><code>80b3d4dafcdb7190…</code></div>
     <div><b>Engine</b><br>EnergyPlus 25.2.0 · OpenStudio 3.11.0</div>
-    <div><b>Installation</b><br>See <code>docs/getting-started.md</code></div>
   </div>
 </section>
 
 <!-- ═════════════════════ 1 ═════════════════════ -->
-<h2><span class="num">1</span>The whole flow, on one page</h2>
+<h2><span class="num">1</span>Start here</h2>
+
+<p class="lead">
+  Everything runs locally. The browser is only the interface — no data leaves
+  the machine, and closing the tab does not stop a run.
+</p>
+
+<ol class="steps">
+  <li><b>Install once.</b>
+    <small>From the unpacked project folder: <code>./scripts/install.sh</code> on
+    macOS or Linux, <code>.\scripts\install.ps1</code> in PowerShell on Windows.
+    It builds the interface, checks that EnergyPlus 25.2.0 really executes, and
+    stops if the toolchain is wrong instead of failing later mid-run.</small></li>
+  <li><b>Start the application.</b>
+    <small><code>./scripts/start.sh</code> or <code>.\scripts\start.ps1</code>.
+    It opens at <code>http://127.0.0.1:8765/#/files</code>. Keep the terminal
+    window open — that process is the engine.</small></li>
+  <li><b>Look at the top-right of the screen before anything else.</b>
+    <small>Files shows <span class="ui g">RUN READY</span> or
+    <span class="ui r">INPUTS REQUIRED</span> with the missing item named. Run
+    and Outputs show the verified profile fingerprint — the identity of the
+    physics that will produce your numbers.</small></li>
+  <li><b>Stop with a single <code>Ctrl+C</code>.</b>
+    <small>Every finished building is already written to disk, so an
+    interrupted run is resumed, not restarted.</small></li>
+</ol>
+
+<div class="good">
+  <b>You can explore before you simulate anything</b>
+  The product ships with a completed district run, so Outputs is fully
+  populated on first launch. Open it, click a building, open its EnergyPlus
+  file — all of §4 works before you have run a single simulation of your own.
+</div>
+
+<div class="note">
+  <b>If a screen refuses to do something</b>
+  It is a gate, not a fault. The engine records what it cannot support instead
+  of inventing a default — a rejected file names the column it lacked, and a
+  blocked run names its missing input. Read the message; it is the diagnosis.
+</div>
+
+<!-- ═════════════════════ 2 ═════════════════════ -->
+<h2><span class="num">2</span>Files — load the four inputs</h2>
+
+<p class="lead">
+  A run needs four things: what the buildings are, how much of them is housing,
+  what the weather does, and which library of constructions to build from.
+  Nothing starts until all four are active.
+</p>
+
+<ol class="steps">
+  <li><b>Press <span class="ui">Upload</span> on a card and pick the file.</b>
+    <small>It is checked first and only becomes active if it passes. A file
+    that fails is refused with the reason — it never becomes a silent partial
+    input.</small></li>
+  <li><b>Or choose an already-validated file from the card's dropdown.</b>
+    <small>Every file you have ever uploaded stays selectable, so you can
+    switch between two GIS versions without re-uploading either.</small></li>
+  <li><b>Check that all four cards read <span class="ui g">ACTIVE</span>.</b>
+    <small>A card still marked <span class="ui r">REQUIRED</span> is what is
+    holding the run back. The climate card needs both halves — the annual EPW
+    and the design days — before it turns.</small></li>
+  <li><b>Confirm the header says <span class="ui g">RUN READY</span>, then go to Run.</b>
+    <small>That badge is the engine's own answer, not a UI guess: it resolves
+    every input and every entry point it will need.</small></li>
+</ol>
+
+<figure>
+  <svg viewBox="0 0 760 366" role="img" aria-label="The four input files: what each contributes, which fields the engine reads, and the gate each must pass before activation">
+    <g font-family="Helvetica,Arial">
+      <!-- card 1 -->
+      <rect x="4" y="6" width="370" height="170" rx="7" fill="#fff" stroke="#1f4e79" stroke-width="1.4"/>
+      <path d="M11,6 h356 a7,7 0 0 1 7,7 v19 H4 V13 a7,7 0 0 1 7,-7 z" fill="#e8f0f7"/>
+      <text x="18" y="25" font-size="9" font-weight="700" fill="#1f4e79" letter-spacing="1.2">GEOMETRY + IDENTITY</text>
+      <text x="18" y="52" font-size="13" font-weight="700" fill="#16202c">Building GIS</text>
+      <text x="18" y="70" font-size="9.2" fill="#5a6875">The cadastre itself: one row per parcel, carrying the shape,</text>
+      <text x="18" y="83" font-size="9.2" fill="#5a6875">the height, the typology class and the people.</text>
+      <text x="18" y="104" font-size="8.6" font-weight="700" fill="#1f4e79">FIELDS THE ENGINE READS</text>
+      <text x="18" y="119" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">refparcela · altura_max · cluster</text>
+      <text x="18" y="132" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">pob_total · num_vivend · nombre · geometry</text>
+      <line x1="18" y1="142" x2="360" y2="142" stroke="#e3e9ef"/>
+      <text x="18" y="156" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
+      <text x="56" y="156" font-size="8.8" fill="#16202c">Required fields present, geometry readable,</text>
+      <text x="56" y="168" font-size="8.8" fill="#16202c">coordinate system recorded.</text>
+
+      <!-- card 2 -->
+      <rect x="386" y="6" width="370" height="170" rx="7" fill="#fff" stroke="#1d6b45" stroke-width="1.4"/>
+      <path d="M393,6 h356 a7,7 0 0 1 7,7 v19 H386 V13 a7,7 0 0 1 7,-7 z" fill="#e7f4ec"/>
+      <text x="400" y="25" font-size="9" font-weight="700" fill="#1d6b45" letter-spacing="1.2">RESIDENTIAL AREA + USE</text>
+      <text x="400" y="52" font-size="13" font-weight="700" fill="#16202c">Tipo15 companion</text>
+      <text x="400" y="70" font-size="9.2" fill="#5a6875">The cadastre's floor-by-floor record: how much dwelling</text>
+      <text x="400" y="83" font-size="9.2" fill="#5a6875">area exists, on which floor, for what use.</text>
+      <text x="400" y="104" font-size="8.6" font-weight="700" fill="#1d6b45">FIELDS THE ENGINE READS</text>
+      <text x="400" y="119" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">31_pc  (joins to refparcela)</text>
+      <text x="400" y="132" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">252_planta · 428_uso · 442_sup_Residencial</text>
+      <line x1="400" y1="142" x2="742" y2="142" stroke="#e3e9ef"/>
+      <text x="400" y="156" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
+      <text x="438" y="156" font-size="8.8" fill="#16202c">All four columns parseable; the join to parcel</text>
+      <text x="438" y="168" font-size="8.8" fill="#16202c">references is measured and reported, not assumed.</text>
+
+      <!-- card 3 -->
+      <rect x="4" y="190" width="370" height="170" rx="7" fill="#fff" stroke="#8a5a12" stroke-width="1.4"/>
+      <path d="M11,190 h356 a7,7 0 0 1 7,7 v19 H4 v-19 a7,7 0 0 1 7,-7 z" fill="#fdf3e3"/>
+      <text x="18" y="209" font-size="9" font-weight="700" fill="#8a5a12" letter-spacing="1.2">ANNUAL + SIZING WEATHER</text>
+      <text x="18" y="236" font-size="13" font-weight="700" fill="#16202c">Climate pair</text>
+      <text x="18" y="254" font-size="9.2" fill="#5a6875">Two files that must agree with each other: the year that is</text>
+      <text x="18" y="267" font-size="9.2" fill="#5a6875">simulated, and the extremes the equipment is sized on.</text>
+      <text x="18" y="288" font-size="8.6" font-weight="700" fill="#8a5a12">WHAT EACH ONE DRIVES</text>
+      <text x="18" y="303" font-size="8.8" fill="#16202c"><tspan font-family="Menlo,monospace">.epw</tspan> — every one of the 8,760 simulated hours</text>
+      <text x="18" y="316" font-size="8.8" fill="#16202c"><tspan font-family="Menlo,monospace">.ddy</tspan> — heat-pump capacity in stage 8</text>
+      <line x1="18" y1="326" x2="360" y2="326" stroke="#e3e9ef"/>
+      <text x="18" y="340" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
+      <text x="56" y="340" font-size="8.8" fill="#16202c">A complete 8,760-hour year; a winter and a summer</text>
+      <text x="56" y="352" font-size="8.8" fill="#16202c">design day. The two are cross-checked as one pair.</text>
+
+      <!-- card 4 -->
+      <rect x="386" y="190" width="370" height="170" rx="7" fill="#fff" stroke="#6b3f8c" stroke-width="1.4"/>
+      <path d="M393,190 h356 a7,7 0 0 1 7,7 v19 H386 v-19 a7,7 0 0 1 7,-7 z" fill="#f0eaf6"/>
+      <text x="400" y="209" font-size="9" font-weight="700" fill="#6b3f8c" letter-spacing="1.2">OPENSTUDIO SOURCE</text>
+      <text x="400" y="236" font-size="13" font-weight="700" fill="#16202c">PlantillaOS template</text>
+      <text x="400" y="254" font-size="9.2" fill="#5a6875">The library every model is assembled from. It carries no</text>
+      <text x="400" y="267" font-size="9.2" fill="#5a6875">geometry — the geometry is built per building.</text>
+      <text x="400" y="288" font-size="8.6" font-weight="700" fill="#6b3f8c">WHAT IT SUPPLIES</text>
+      <text x="400" y="303" font-size="8.8" fill="#16202c">constructions and materials · schedules · space types</text>
+      <text x="400" y="316" font-size="8.8" fill="#16202c">equipment definitions · thermostat set points</text>
+      <line x1="400" y1="326" x2="742" y2="326" stroke="#e3e9ef"/>
+      <text x="400" y="340" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
+      <text x="438" y="340" font-size="8.8" fill="#16202c">Every construction, schedule and space type the engine</text>
+      <text x="438" y="352" font-size="8.8" fill="#16202c">will ask for must already exist — and no geometry.</text>
+    </g>
+  </svg>
+  <figcaption>
+    <b>Nothing is hard-coded into the program.</b> A newer cadastre, a different
+    weather year or a modified template can be swapped in from this screen
+    without touching any code — provided it passes its gate.
+  </figcaption>
+</figure>
+
+<h3>What each file must contain to be accepted</h3>
+
+<table>
+  <thead><tr><th style="width:21%">Input</th><th style="width:15%">Accepted</th><th>The gate it has to pass</th></tr></thead>
+  <tbody>
+    <tr><td><b>Building GIS</b></td><td><code>.gpkg</code> <code>.shp</code> <code>.geojson</code> <code>.zip</code></td>
+        <td>Must carry <code>refparcela</code>, <code>altura_max</code> and geometry. The typology field and the district names are read from it — those are what the Run screen offers you as scopes. A shapefile must be uploaded with its sidecars.</td></tr>
+    <tr><td><b>Tipo15 companion</b></td><td><code>.csv</code></td>
+        <td>Semicolon-delimited, Latin-1, containing <code>31_pc</code>, <code>252_planta</code>, <code>428_uso</code> and <code>442_sup_Residencial</code>. It is refused if no parcel reference or no positive residential area survives parsing.</td></tr>
+    <tr><td><b>Annual EPW</b></td><td><code>.epw</code></td>
+        <td>At least 8,760 hourly rows — a partial year is refused. The site header is read, and whether the file carries design conditions is recorded.</td></tr>
+    <tr><td><b>Design days (DDY)</b></td><td><code>.ddy</code></td>
+        <td>At least one <code>WinterDesignDay</code> and one <code>SummerDesignDay</code>. The standard 99.6 % heating and 0.4 % cooling days are then selected by name, not guessed.</td></tr>
+    <tr><td><b>PlantillaOS template</b></td><td><code>.osm</code></td>
+        <td>All twenty-four named roles the chain binds to — space types, constructions, the eight materials, thermostats, hot water, window frame, blind — must be present. It is a library, not a building: the geometry is built from your GIS, never taken from here.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  An active card shows its evidence underneath: the <b>snapshot checksum</b>, the
+  contract it satisfied, the row count, the coordinate system, and the managed
+  path the file was copied to. That is what you quote when someone asks which
+  data a result came from.
+</p>
+
+<div class="note">
+  <b>Why every file is hashed</b>
+  Each file is copied into managed storage and its checksum recorded. A run
+  resolves the active set once and stamps those checksums into every result row
+  — so any row can later be traced to the exact bytes that produced it.
+</div>
+
+<!-- ═════════════════════ 3 ═════════════════════ -->
+<h2><span class="num">3</span>Run — start a simulation</h2>
+
+<p class="lead">
+  Scope first, then the engine's own preflight, then start. The preflight is not
+  a preview of the run — it is the same screening code the run itself uses.
+</p>
+
+<ol class="steps">
+  <li><b>Choose a scope.</b>
+    <small><span class="ui">Selected buildings</span> for one or a handful of
+    cadastral references — the fastest way to test anything.
+    <span class="ui">One district</span> for every eligible building in a named
+    district. <span class="ui a">All Valencia</span> for the full stock: hours
+    of work and a large amount of disk.</small></li>
+  <li><b>Fill in what that scope needs, and name the run.</b>
+    <small>References are typed or pasted, separated by spaces, commas or new
+    lines. The name is what you will resume with later, so make it one you will
+    recognise; the field shows you the filesystem-safe version it will
+    use.</small></li>
+  <li><b>Press <span class="ui">Run preflight</span> and read the five numbers.</b>
+    <small><b>In scope</b> is what your choice selected. <b>Runnable</b> is what
+    survived screening. <b>Excluded</b> is the difference — and it is itemised
+    by reason. <b>Estimated time</b> and <b>estimated storage</b> are what the
+    run will actually cost you.</small></li>
+  <li><b>For the full city only, tick the acknowledgement.</b>
+    <small>It confirms you have read the exclusion count, the duration and the
+    storage estimate. Nothing else in the product asks you to confirm
+    anything.</small></li>
+  <li><b>Press <span class="ui">Start run</span>.</b>
+    <small>Six buildings are simulated in parallel; each finished building is
+    flushed to disk before the next begins.</small></li>
+</ol>
+
+<div class="kpi">
+  <div><span>In scope</span><strong>1,012</strong><small>every building the district selection contains</small></div>
+  <div><span>Runnable</span><strong class="hi">968</strong><small>passed geometry and data screening</small></div>
+  <div><span>Excluded</span><strong>44</strong><small>itemised by reason — footprint out of range, simplification tolerance, duplicate reference</small></div>
+</div>
+<p style="font-size:8.8pt; color:var(--soft); margin-top:-.4em">
+  Preflight for the Benicalap example, before the run that produced every other
+  number in this guide.
+</p>
+
+<h3>While it runs</h3>
+
+<p>
+  The live panel shows the percentage complete, the count of terminal records,
+  and a running split of <span class="ui g">OK</span> ·
+  <span class="ui r">FAILED</span> · <span class="ui a">EXCLUDED</span> with CPU
+  time. Those counts are read back from the flushed ledger on disk, not from the
+  running process's memory — so what you are watching is what has actually been
+  written. The last 160 KB of engine output is shown underneath.
+</p>
+
+<div class="note">
+  <b>Stopping is safe, and resuming is exact</b>
+  <span class="ui">Stop safely</span> lets the buildings in flight finish and
+  leaves the ledger intact. <span class="ui">Resume same run</span> then
+  continues from the first unfinished building — but only if the inputs and the
+  physics are still identical. If either changed, resume is refused rather than
+  producing a run that spans two versions of itself.
+</div>
+
+<div class="warn">
+  <b>A failed building is not a failed run</b>
+  Each building is isolated: one that fails is written to the ledger with its
+  error and the run continues. The Benicalap example finished with 967 OK, 44
+  excluded and 1 failed — the failure is visible in Outputs, not hidden in a log.
+</div>
+
+<!-- ═════════════════════ 4 ═════════════════════ -->
+<h2><span class="num">4</span>Outputs — read, audit, export</h2>
+
+<p class="lead">
+  Pick a run at the top of the screen. Finished runs and the running one are all
+  listed; the shipped example is there from the first launch.
+</p>
+
+<h3>The six figures at the top</h3>
+
+<div class="kpi">
+  <div><span>Total site energy</span><strong>109.76</strong><small>GWh / year · <b>modelled subset only</b>, never extrapolated to the buildings that were excluded</small></div>
+  <div><span>Geometric EUI</span><strong>46.9</strong><small>kWh/m² · divided by footprint × residential storeys</small></div>
+  <div><span>Cadastral EUI</span><strong class="hi">50.9</strong><small>kWh/m² · divided by recorded dwelling area — the comparable one</small></div>
+  <div><span>Carbon</span><strong>34,723</strong><small>tCO₂ / year · rests on an assumed fuel mix (see §7)</small></div>
+  <div><span>Coverage</span><strong>95.6 %</strong><small>967 simulated · 44 excluded · 1 failed — 98.1 % by footprint area</small></div>
+  <div><span>QA status</span><strong style="color:#1d6b45">PASS</strong><small>0 quality-check failures · 0 unexplained engine errors</small></div>
+</div>
+
+<p>
+  The small print under each figure is the basis, and it is there because it
+  changes what the number means — §6 shows how much. Underneath, the cluster
+  table repeats all of this per building type, with the published reference
+  value and the difference from it in the last two columns.
+</p>
+
+<h3>Auditing one building</h3>
+
+<ol class="steps">
+  <li><b>Search the ledger.</b>
+    <small>By cadastral reference, by typology, or by error text. The status
+    filter narrows it to <span class="ui g">ok</span>,
+    <span class="ui r">failed</span> or <span class="ui a">excluded</span>; a
+    hundred rows are shown at a time.</small></li>
+  <li><b>Click any row.</b>
+    <small>A panel opens with that building's status, typology, intensity, QA
+    verdict and — if it failed — the error that stopped it.</small></li>
+  <li><b>Open the files the run preserved for it.</b>
+    <small>Five per building, listed below. They open read-only in a new
+    tab.</small></li>
+</ol>
+
+<table>
+  <thead><tr><th style="width:27%">Preserved file</th><th>What you use it for</th></tr></thead>
+  <tbody>
+    <tr><td><code>eplustbl.htm</code></td><td>EnergyPlus's own result tables for that building — areas, loads, end uses, unmet hours. The primary evidence.</td></tr>
+    <tr><td><code>deep_layers.json</code></td><td>What each stage did to this specific building, plus the quality checks that compared the model against what EnergyPlus reported.</td></tr>
+    <tr><td><code>model_python.osm</code></td><td>The OpenStudio model as built. Open it in OpenStudio to inspect the geometry directly.</td></tr>
+    <tr><td><code>eplusout.err</code></td><td>Every warning and error the engine raised. Read this first when a building looks wrong.</td></tr>
+    <tr><td><code>verified_profile.json</code></td><td>The exact physics profile that produced the row — every locked parameter, stamped at run time.</td></tr>
+  </tbody>
+</table>
+
+<h3>Getting the results out</h3>
+
+<ul>
+  <li><b><span class="ui">Building CSV</span></b> — the whole searchable ledger as one
+  table, one row per building. This is the file to open in a spreadsheet.</li>
+  <li><b><span class="ui">GIS layer (.gpkg)</span></b> — the same rows with the
+  geometry already attached, so the result opens straight in QGIS with no join
+  to make. Drag it in and it arrives already coloured on
+  <code>total_site_kwh_m2</code>; switch the column under <span class="ui">
+  Properties → Symbology</span> for any of the others — heating, cooling, hot
+  water, electricity, gas, CO₂, energy per resident, energy per dwelling. There
+  is no separate heating file and no separate cooling file: they are columns of
+  this one, which is why they can never disagree with each other.
+  <br>The file holds three layers. <code>results</code> is one feature per
+  building; <code>by_cluster</code> and <code>by_district</code> are the same
+  result dissolved into typology and district polygons, each carrying its own
+  totals, its floor-area-weighted intensity, and both a <code>buildings</code>
+  and a <code>buildings_measured</code> count so a zone coloured on part of its
+  stock cannot be read as if it covered all of it.
+  <br>Two things are worth knowing before you total anything from it.
+  Buildings that failed or were screened out are <em>in</em> the layer, with
+  their <code>status</code> and <code>reason</code> and empty energies — a gap
+  in coverage should be visible on the map, not silently missing from it. And a
+  cadastral reference drawn as several footprints becomes <em>one</em> feature
+  holding all of them, so summing a column gives the run's own total rather than
+  that total multiplied by however many polygons a parcel happens to have. The
+  file is also inside the full ZIP.</li>
+  <li><b><span class="ui">Heat map (.png)</span></b> — the same three quantities
+  drawn as a picture, for a report or an email where nobody is going to install
+  a GIS. Buildings with no result are drawn grey rather than left out, and the
+  caption says how many they were: on a printed map a missing building looks
+  exactly like open ground. The colour scale is clipped to the 2nd–98th
+  percentile so a handful of extreme buildings cannot flatten every other one
+  into a single shade. A quantity that is the same in every building — space
+  heating during an August event, for instance — is dropped rather than drawn,
+  and the caption names it: a panel of one flat colour looks like a measurement
+  and is not one.</li>
+  <li><b>Both files come out of a microclimate event run too</b>, and both say
+  so. An event covers a window of days, not a year, so the numbers are roughly
+  a fiftieth of the annual ones: the picture is labelled
+  <code>kWh/m² over the 8-day event</code> instead of <code>kWh/m²·yr</code>,
+  <code>aggregate.json</code> carries an <code>energy_period</code> block naming
+  the window, and every row in the layer carries <code>run_mode</code>,
+  <code>event_days</code> and the temperature offset the building actually ran
+  at (<code>delta_peak_k</code>) — so the map can be coloured on the cause as
+  well as the consequence. Read the fields named per-year
+  (<code>total_site_co2_t_yr</code>) as belonging to that window only. Only the
+  buildings the slice reaches are in an event run at all, so the layer's extent
+  is the slice's extent, not the city's.</li>
+  <li><b>Signed building package</b> — one building: its model, its preserved
+  outputs, its ledger row, and a signed manifest. Use it to send a single
+  result to someone who needs to check it.</li>
+  <li><b><span class="ui">Full signed ZIP</span></b> — the entire run. It first
+  measures the real file count and uncompressed size and asks you to confirm,
+  because a full-city package is large. The archive carries an Ed25519-signed
+  manifest, so a recipient can verify nothing was altered in transit.</li>
+</ul>
+
+<!-- ═════════════════════ 5 ═════════════════════ -->
+<h2><span class="num">5</span>What the engine does with your files</h2>
 
 <p class="lead">
   Four files go in. Every building in scope gets its own model, its own annual
@@ -238,7 +609,7 @@
 
       <rect x="20" y="208" width="122" height="46" rx="5" fill="#fff" stroke="#a8620a"/>
       <text x="81" y="228" font-size="10" font-weight="700" fill="#16202c" text-anchor="middle">Build model</text>
-      <text x="81" y="243" font-size="8.4" fill="#5a6875" text-anchor="middle">9 stages · §2</text>
+      <text x="81" y="243" font-size="8.4" fill="#5a6875" text-anchor="middle">9 stages · §5</text>
 
       <line x1="146" y1="231" x2="176" y2="231" stroke="#a8620a" stroke-width="1.5" marker-end="url(#ar2)"/>
 
@@ -313,12 +684,11 @@
   </figcaption>
 </figure>
 
-<!-- ═════════════════════ 2 ═════════════════════ -->
-<h2><span class="num">2</span>Which source, which value, at every stage</h2>
+<div style="page-break-inside:avoid">
+<h3>Which source supplies which value, at every stage</h3>
 
 <p class="lead">
-  This is what happens inside <em>Build model</em>. Each stage names the file it
-  reads and the exact field it takes from it.
+  Each stage is labelled with the file it consumes and the exact field it reads.
 </p>
 
 <figure>
@@ -408,95 +778,16 @@
   <figcaption>
     <b>Stage 2 is the one that changed most recently</b>, and it is the
     difference between conditioning 2.76 and 3.84 million m² across this
-    district. It is drawn on the next page.
+    district. It is drawn in §6.
   </figcaption>
 </figure>
-
-<!-- ═════════════════════ 3 ═════════════════════ -->
-<h2><span class="num">3</span>The four inputs, and the gate each must pass</h2>
-
-<figure>
-  <svg viewBox="0 0 760 366" role="img" aria-label="The four input files: what each contributes, which fields the engine reads, and the gate each must pass before activation">
-    <g font-family="Helvetica,Arial">
-      <!-- card 1 -->
-      <rect x="4" y="6" width="370" height="170" rx="7" fill="#fff" stroke="#1f4e79" stroke-width="1.4"/>
-      <path d="M11,6 h356 a7,7 0 0 1 7,7 v19 H4 V13 a7,7 0 0 1 7,-7 z" fill="#e8f0f7"/>
-      <text x="18" y="25" font-size="9" font-weight="700" fill="#1f4e79" letter-spacing="1.2">GEOMETRY + IDENTITY</text>
-      <text x="18" y="52" font-size="13" font-weight="700" fill="#16202c">Building GIS</text>
-      <text x="18" y="70" font-size="9.2" fill="#5a6875">The cadastre itself: one row per parcel, carrying the shape,</text>
-      <text x="18" y="83" font-size="9.2" fill="#5a6875">the height, the typology class and the people.</text>
-      <text x="18" y="104" font-size="8.6" font-weight="700" fill="#1f4e79">FIELDS THE ENGINE READS</text>
-      <text x="18" y="119" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">refparcela · altura_max · cluster</text>
-      <text x="18" y="132" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">pob_total · num_vivend · nombre · geometry</text>
-      <line x1="18" y1="142" x2="360" y2="142" stroke="#e3e9ef"/>
-      <text x="18" y="156" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
-      <text x="56" y="156" font-size="8.8" fill="#16202c">Required fields present, geometry readable,</text>
-      <text x="56" y="168" font-size="8.8" fill="#16202c">coordinate system recorded.</text>
-
-      <!-- card 2 -->
-      <rect x="386" y="6" width="370" height="170" rx="7" fill="#fff" stroke="#1d6b45" stroke-width="1.4"/>
-      <path d="M393,6 h356 a7,7 0 0 1 7,7 v19 H386 V13 a7,7 0 0 1 7,-7 z" fill="#e7f4ec"/>
-      <text x="400" y="25" font-size="9" font-weight="700" fill="#1d6b45" letter-spacing="1.2">RESIDENTIAL AREA + USE</text>
-      <text x="400" y="52" font-size="13" font-weight="700" fill="#16202c">Tipo15 companion</text>
-      <text x="400" y="70" font-size="9.2" fill="#5a6875">The cadastre's floor-by-floor record: how much dwelling</text>
-      <text x="400" y="83" font-size="9.2" fill="#5a6875">area exists, on which floor, for what use.</text>
-      <text x="400" y="104" font-size="8.6" font-weight="700" fill="#1d6b45">FIELDS THE ENGINE READS</text>
-      <text x="400" y="119" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">31_pc  (joins to refparcela)</text>
-      <text x="400" y="132" font-size="8.8" font-family="Menlo,monospace" fill="#16202c">252_planta · 428_uso · 442_sup_Residencial</text>
-      <line x1="400" y1="142" x2="742" y2="142" stroke="#e3e9ef"/>
-      <text x="400" y="156" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
-      <text x="438" y="156" font-size="8.8" fill="#16202c">All four columns parseable; the join to parcel</text>
-      <text x="438" y="168" font-size="8.8" fill="#16202c">references is measured and reported, not assumed.</text>
-
-      <!-- card 3 -->
-      <rect x="4" y="190" width="370" height="170" rx="7" fill="#fff" stroke="#8a5a12" stroke-width="1.4"/>
-      <path d="M11,190 h356 a7,7 0 0 1 7,7 v19 H4 v-19 a7,7 0 0 1 7,-7 z" fill="#fdf3e3"/>
-      <text x="18" y="209" font-size="9" font-weight="700" fill="#8a5a12" letter-spacing="1.2">ANNUAL + SIZING WEATHER</text>
-      <text x="18" y="236" font-size="13" font-weight="700" fill="#16202c">Climate pair</text>
-      <text x="18" y="254" font-size="9.2" fill="#5a6875">Two files that must agree with each other: the year that is</text>
-      <text x="18" y="267" font-size="9.2" fill="#5a6875">simulated, and the extremes the equipment is sized on.</text>
-      <text x="18" y="288" font-size="8.6" font-weight="700" fill="#8a5a12">WHAT EACH ONE DRIVES</text>
-      <text x="18" y="303" font-size="8.8" fill="#16202c"><tspan font-family="Menlo,monospace">.epw</tspan> — every one of the 8,760 simulated hours</text>
-      <text x="18" y="316" font-size="8.8" fill="#16202c"><tspan font-family="Menlo,monospace">.ddy</tspan> — heat-pump capacity in stage 8</text>
-      <line x1="18" y1="326" x2="360" y2="326" stroke="#e3e9ef"/>
-      <text x="18" y="340" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
-      <text x="56" y="340" font-size="8.8" fill="#16202c">A complete 8,760-hour year; a winter and a summer</text>
-      <text x="56" y="352" font-size="8.8" fill="#16202c">design day. The two are cross-checked as one pair.</text>
-
-      <!-- card 4 -->
-      <rect x="386" y="190" width="370" height="170" rx="7" fill="#fff" stroke="#6b3f8c" stroke-width="1.4"/>
-      <path d="M393,190 h356 a7,7 0 0 1 7,7 v19 H386 v-19 a7,7 0 0 1 7,-7 z" fill="#f0eaf6"/>
-      <text x="400" y="209" font-size="9" font-weight="700" fill="#6b3f8c" letter-spacing="1.2">OPENSTUDIO SOURCE</text>
-      <text x="400" y="236" font-size="13" font-weight="700" fill="#16202c">PlantillaOS template</text>
-      <text x="400" y="254" font-size="9.2" fill="#5a6875">The library every model is assembled from. It carries no</text>
-      <text x="400" y="267" font-size="9.2" fill="#5a6875">geometry — the geometry is built per building.</text>
-      <text x="400" y="288" font-size="8.6" font-weight="700" fill="#6b3f8c">WHAT IT SUPPLIES</text>
-      <text x="400" y="303" font-size="8.8" fill="#16202c">constructions and materials · schedules · space types</text>
-      <text x="400" y="316" font-size="8.8" fill="#16202c">equipment definitions · thermostat set points</text>
-      <line x1="400" y1="326" x2="742" y2="326" stroke="#e3e9ef"/>
-      <text x="400" y="340" font-size="8.6" font-weight="700" fill="#5a6875">GATE</text>
-      <text x="438" y="340" font-size="8.8" fill="#16202c">Every construction, schedule and space type the engine</text>
-      <text x="438" y="352" font-size="8.8" fill="#16202c">will ask for must already exist — and no geometry.</text>
-    </g>
-  </svg>
-  <figcaption>
-    <b>Nothing is hard-coded into the program.</b> A newer cadastre, a different
-    weather year or a modified template can be swapped in from this screen
-    without touching any code — provided it passes its gate.
-  </figcaption>
-</figure>
-
-<div class="note">
-  <b>Why every file is hashed</b>
-  Each file is copied into managed storage and its checksum recorded. A run
-  resolves the active set once and stamps those checksums into every result row
-  — so any row can later be traced to the exact bytes that produced it.
 </div>
 
-<!-- ═════════════════════ 4 ═════════════════════ -->
-<h2><span class="num">4</span>The two things that move the number most</h2>
+<!-- ═════════════════════ 6 ═════════════════════ -->
+<h2><span class="num">6</span>Reading the numbers honestly</h2>
 
-<h3>Stage 2 — a parcel is not always one building</h3>
+<div style="page-break-inside:avoid">
+<h3>A parcel is not always one building</h3>
 
 <figure>
   <svg viewBox="0 0 760 250" role="img" aria-label="Before and after the storey cap on parcel 3748901YJ2734H: from 16 storeys and 276,366 square metres conditioned to 3 storeys and 51,819">
@@ -554,6 +845,7 @@
     storeys are limited to what the cadastre can actually account for.
   </figcaption>
 </figure>
+</div>
 
 <div class="warn">
   <b>What the cap does not fix</b>
@@ -564,6 +856,7 @@
   second-order — but it is real, and it stays on the list in §7.
 </div>
 
+<div style="page-break-inside:avoid">
 <h3>Which floor area is the number divided by?</h3>
 
 <figure>
@@ -608,33 +901,17 @@
     on the Outputs screen a like-for-like comparison.
   </figcaption>
 </figure>
-
-<!-- ═════════════════════ 5 ═════════════════════ -->
-<h2><span class="num">5</span>Reading the Outputs screen</h2>
-
-<p class="lead">
-  These are the six figures at the top of the screen, filled in with the
-  Benicalap run. The small print under each one is the basis — it is there
-  because it changes what the number means.
-</p>
-
-<div class="kpi">
-  <div><span>Total site energy</span><strong>109.76</strong><small>GWh / year · <b>modelled subset only</b>, never extrapolated to the buildings that were excluded</small></div>
-  <div><span>Geometric EUI</span><strong>46.9</strong><small>kWh/m² · divided by footprint × residential storeys</small></div>
-  <div><span>Cadastral EUI</span><strong class="hi">50.9</strong><small>kWh/m² · divided by recorded dwelling area — the comparable one</small></div>
-  <div><span>Carbon</span><strong>34,723</strong><small>tCO₂ / year · rests on an assumed fuel mix (see §7)</small></div>
-  <div><span>Coverage</span><strong>95.6 %</strong><small>967 simulated · 44 excluded · 1 failed — 98.1 % by footprint area</small></div>
-  <div><span>QA status</span><strong style="color:#1d6b45">PASS</strong><small>0 quality-check failures · 0 unexplained engine errors</small></div>
 </div>
 
+<div style="page-break-inside:avoid">
 <h3>Where the energy actually comes from</h3>
 
 <figure>
-  <svg viewBox="0 0 760 152" role="img" aria-label="Composition of total site energy: 90.1 percent from standard densities, 9.9 percent from simulated physics">
+  <svg viewBox="0 0 760 152" role="img" aria-label="Composition of total site energy: 71.6 percent fixed density per square metre, 18.5 percent hot water drawn per person but simulated, 9.9 percent building physics">
     <g font-family="Helvetica,Arial">
       <rect x="8" y="28" width="283.2" height="42" fill="#4a7ba7"/>
       <rect x="291.2" y="28" width="254.2" height="42" fill="#6f9bc2"/>
-      <rect x="545.4" y="28" width="139.2" height="42" fill="#9dbdd8"/>
+      <rect x="545.4" y="28" width="139.2" height="42" fill="#4f8f6d"/>
       <rect x="684.6" y="28" width="33.0" height="42" fill="#a8620a"/>
       <rect x="717.6" y="28" width="31.5" height="42" fill="#c98b3d"/>
       <rect x="749.1" y="28" width="9.5" height="42" fill="#e0b877"/>
@@ -647,39 +924,40 @@
         <text x="150" y="86">lighting</text><text x="418" y="86">appliances</text><text x="615" y="86">hot water</text>
       </g>
 
-      <path d="M8,86 v8 h676.6 v-8" fill="none" stroke="#4a7ba7" stroke-width="1.6"/>
-      <text x="346" y="110" font-size="11" font-weight="700" fill="#4a7ba7" text-anchor="middle">90.1 % — fixed standard densities, not simulated</text>
+      <!-- Three brackets, not two.  Hot water is normative in the litres it
+           draws but simulated in the energy that heats them, so it belongs to
+           neither neighbour; folding it into the fixed-density band was the
+           one thing a reader could reasonably get wrong here. -->
+      <path d="M8,86 v8 h537.4 v-8" fill="none" stroke="#4a7ba7" stroke-width="1.6"/>
+      <text x="276.7" y="110" font-size="11" font-weight="700" fill="#4a7ba7" text-anchor="middle">71.6 % — fixed density per m², not simulated</text>
+      <path d="M545.4,86 v8 h139.2 v-8" fill="none" stroke="#1d6b45" stroke-width="1.6"/>
+      <text x="615" y="110" font-size="10" font-weight="700" fill="#1d6b45" text-anchor="middle">18.5 % — per person,</text>
+      <text x="615" y="121" font-size="9.5" font-weight="700" fill="#1d6b45" text-anchor="middle">conversion simulated</text>
       <path d="M684.6,86 v8 h74 v-8" fill="none" stroke="#a8620a" stroke-width="1.6"/>
       <text x="721" y="110" font-size="10" font-weight="700" fill="#a8620a" text-anchor="middle">9.9 % physics</text>
 
-      <!-- the three narrow segments, spelled out under their own bracket -->
+      <!-- the three narrow segments, too small to label inside the bar -->
       <g font-size="9" fill="#16202c" text-anchor="end">
-        <text x="758" y="128">heat 4.4 %  ·  cool 4.2 %</text>
-        <text x="758" y="141">fans + pumps 1.3 %</text>
+        <text x="758" y="140">heating 4.4 %  ·  cooling 4.2 %  ·  fans + pumps 1.3 %</text>
       </g>
     </g>
   </svg>
   <figcaption>
-    <b>This is the single most important fact about the result.</b> Only heating,
-    cooling, fans and pumps come out of building physics. Work on insulation,
-    shading or thermal bridges therefore moves under a tenth of the headline —
-    which does not make it worthless, but does tell you what the headline is
-    sensitive to.
+    <b>Three kinds of number here, not two.</b> Lighting and appliances are a
+    fixed density per m²: a norm applied to floor area, never simulated. Hot
+    water is normative only in its <i>draw</i> — a standard 28 litres per person
+    per day applied to each building's real registered population — while the
+    energy that heats those litres is genuinely simulated: a 97 % boiler, a
+    50 °C setpoint, mains temperature read from the climate file. Only the last
+    band is envelope and HVAC physics:
+    <b>work on insulation, shading or thermal bridges moves under a tenth of the
+    headline</b> — which does not make it worthless, but does tell you what the
+    headline is sensitive to.
   </figcaption>
 </figure>
+</div>
 
-<table>
-  <thead><tr><th style="width:24%">Below the KPIs</th><th>What it gives you</th></tr></thead>
-  <tbody>
-    <tr><td><strong>Cluster totals</strong></td><td>One row per TABULA class, with <em>both</em> denominators side by side, the reference study's published intensity (“Rai reference”) and the percentage difference against it.</td></tr>
-    <tr><td><strong>Building ledger</strong></td><td>Every building as its own searchable row: status, cluster, intensity, energy, CO₂, occupancy plausibility, QA verdict. Filterable by <code>ok</code>, <code>failed</code> or <code>excluded</code>.</td></tr>
-    <tr><td><strong>Preserved files</strong></td><td>Opening one building gives five files kept from its own run: <code>eplustbl.htm</code> (the EnergyPlus results table), <code>deep_layers.json</code> (what each stage did to this building, plus its QA checks), <code>model_python.osm</code>, <code>eplusout.err</code> and <code>verified_profile.json</code>.</td></tr>
-    <tr><td><strong>Export</strong></td><td>The building table as CSV, or a signed package — one building or the whole run — with an Ed25519 manifest.</td></tr>
-  </tbody>
-</table>
-
-<!-- ═════════════════════ 6 ═════════════════════ -->
-<h2><span class="num">6</span>How to check that we are not fooling ourselves</h2>
+<h3>How to check that we are not fooling ourselves</h3>
 
 <p class="lead">
   The tool rebuilds a building published by the reference author — from the
@@ -714,7 +992,6 @@
   <li><strong>Self-describing rows.</strong> Each row carries the fingerprints of the inputs, the policy and the engine that produced it, so one row can be traced without the rest of the run.</li>
 </ul>
 
-<!-- ═════════════════════ 7 ═════════════════════ -->
 <h2><span class="num">7</span>Where this stands — my own notes</h2>
 
 <p class="lead">
@@ -752,7 +1029,7 @@
   <ul>
     <li><b>The full-city run.</b> The engine already screens 25,094 of the 26,452 parcels as buildable. I am deliberately not launching it until the envelope question above is settled — a five-day run on an assumption I expect to change is a waste of five days.</li>
     <li><b>Extending the envelope data</b>, which is the item that gates the full-city run.</li>
-    <li><b>Transferring the method to a second city.</b> A full-stock run on Lecco completed and verified itself internally, but it has no external validation, so I label it a transferability scenario rather than a result.</li>
+    <li><b>Transferring the method to a second city.</b> A full-stock run on Lecco completed and verified itself internally, but it has no external validation, so I label it a transferability scenario rather than a result — and I ran it from the command line, because the Workbench itself still has no city selector.</li>
   </ul>
 </div>
 
@@ -763,6 +1040,7 @@
     <li><b>Put an uncertainty band on the numbers</b> by re-running the sampling study against the current configuration. Until then every figure is a point estimate with no stated spread.</li>
     <li><b>Separate HVAC by space type</b> so the residential subtotal becomes a real split rather than an upper bound. This needs an extra output table and a re-run.</li>
     <li><b>Calibrate against measured consumption.</b> This is the one that would change the standing of everything else — until measured data arrives, no number here can be presented as real consumption, only as what the standards and the physics imply.</li>
+    <li><b>Make this work for any city, from the Files screen alone.</b> The climate side already does: upload any city's EPW and DDY, and the pair is validated, named from the file's own header, and its sizing days chosen by name. The rest is still Valencia-shaped — the companion file must carry the Spanish cadastral columns, the GIS must carry <code>refparcela</code> and <code>altura_max</code>, the reference column I compare against exists only for Valencia, and the third scope button still reads <span class="ui">All Valencia</span>. Two constants also travel unchanged into every climate bundle I build — ground temperature 18 °C and mains water 10 °C — because they were verified here and cannot be recovered from an EPW; for another climate they would have to be supplied, not inherited. The target is that loading four files is the whole job.</li>
   </ol>
 </div>
 
@@ -785,7 +1063,7 @@
   <tbody>
     <tr><td><code>refparcela</code></td><td>The cadastral reference identifying a parcel. The primary key everywhere in this tool.</td></tr>
     <tr><td>Cluster</td><td>A TABULA class combining building type with construction period P01–P07. Twenty-one exist in Valencia.</td></tr>
-    <tr><td>EUI</td><td>Energy Use Intensity — annual energy over floor area, in kWh/m². Meaningless unless the basis is stated (§4).</td></tr>
+    <tr><td>EUI</td><td>Energy Use Intensity — annual energy over floor area, in kWh/m². Meaningless unless the basis is stated (§6).</td></tr>
     <tr><td>Tipo15</td><td>The cadastral companion file listing dwellings floor by floor: how many, what use, how much area.</td></tr>
     <tr><td><code>pob_total</code></td><td>Registered residents per building, from the municipal register — actual residence, not design occupancy.</td></tr>
     <tr><td>EPW / DDY</td><td>The annual hourly weather file, and the extreme design days used to size equipment.</td></tr>
@@ -794,7 +1072,7 @@
 
 <hr style="margin:1.8em 0 .9em; border:none; border-top:2.5px solid var(--blue)">
 <p style="font-size:8.6pt; color:var(--soft)">
-  Valencia Stock Energy Workbench · Visual Guide · Example run
+  Valencia Stock Energy Workbench · User Guide · Example run
   <code>benicalap_v8</code> · Verified profile <code>80b3d4dafcdb7190…</code><br>
   Installation and updates: <code>docs/getting-started.md</code> ·
   Scientific scope and validation record: <code>docs/results/README.md</code>
