@@ -553,6 +553,32 @@ def test_re_aggregating_without_the_stock_keeps_the_layer_on_disk(tmp_path):
     assert "carried_forward" in carried
 
 
+def test_re_aggregating_keeps_how_long_the_run_took(tmp_path):
+    """A re-aggregation corrects what it can recompute, not what it cannot.
+
+    `elapsed_minutes` is timed by the simulation pass, so a later `--aggregate`
+    has no way to derive it.  Dropping it would quietly delete the one field
+    that records what the directory cost to produce - the same failure the
+    layer carry-forward exists to prevent.
+    """
+    import stock_runner as sr
+
+    (tmp_path / "aggregate.json").write_text(
+        json.dumps({"elapsed_minutes": 323.47}), encoding="utf-8")
+    assert sr._carry_forward_elapsed(tmp_path) == {"elapsed_minutes": 323.47}
+
+
+def test_elapsed_is_not_invented_when_there_is_nothing_to_carry(tmp_path):
+    """No previous file, an unreadable one, or one without the field: say nothing."""
+    import stock_runner as sr
+
+    assert sr._carry_forward_elapsed(tmp_path) == {}
+    (tmp_path / "aggregate.json").write_text("{ not json", encoding="utf-8")
+    assert sr._carry_forward_elapsed(tmp_path) == {}
+    (tmp_path / "aggregate.json").write_text(json.dumps({"totals": {}}), encoding="utf-8")
+    assert sr._carry_forward_elapsed(tmp_path) == {}
+
+
 def test_a_carried_layer_is_refused_when_the_file_is_gone(tmp_path):
     """Carrying the record forward is only honest while the file is there."""
     import stock_runner as sr

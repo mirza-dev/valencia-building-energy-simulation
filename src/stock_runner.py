@@ -56,6 +56,7 @@ import geopandas as gpd
 import pandas as pd
 
 import climate as cl
+import coverage_bias as cb
 import deep_building as db
 import eu_footprint_flags as euf
 import floor_area_allocation as faa
@@ -686,15 +687,18 @@ def coverage_block(rows: list[dict], ok: list[dict],
     the district's energy - it is the energy of the modellable part of it.
 
     The area-weighted intensity is NOT neutral either, and this block used to
-    claim it was.  The excluded buildings are not a random sample: the geometry
-    gates fall hardest on large, complex buildings, and footprint correlates
-    with EUI among the buildings that DID run (Spearman -0.552 on the Benicalap
-    v3 ledger; large quartile 42.6 kWh/m2 against small quartile 57.4).
-    Dropping large low-EUI buildings therefore biases the modellable subset's
-    intensity UPWARD relative to the full stock.  So the intensity is the EUI
-    of the modellable subset, stated as such - not an unbiased estimate of the
-    whole district's.  With the 20 000 m2 ceiling the missing share is small
-    (~1.6 % of footprint city-wide) but the direction is known and recorded.
+    claim it was, then claimed the opposite for too long.  Until 2026-08-12 the
+    note here was a constant: exclusions concentrate in large buildings,
+    Spearman -0.552, subset biased upward.  That was true of the Benicalap v3
+    ledger, when the footprint ceiling was 5 000 m2 and the gates refused 123
+    large buildings.  The ceiling went to 20 000 m2 on 2026-08-03, those
+    buildings run now, and what is left over are the small ones the simplifier
+    cannot hold - so the skew reversed while the sentence did not.
+
+    A remembered constant printed beside a number it no longer describes is the
+    failure mode this project keeps meeting.  So the direction is no longer
+    asserted: `coverage_bias.bias_block` measures it from the run's own rows and
+    bounds the truncation, and the note is written from that measurement.
     """
     in_scope = {str(r.get("refparcela")) for r in rows if r.get("refparcela")}
     produced = {str(r["refparcela"]) for r in ok}
@@ -706,14 +710,18 @@ def coverage_block(rows: list[dict], ok: list[dict],
         "buildings_without_result": len(missing),
         "building_coverage_pct": (round(100.0 * len(produced) / len(in_scope), 2)
                                   if in_scope else 0.0),
-        "note": ("totals are summed over buildings_with_result only, so an "
-                 "absolute GWh figure under-reports by the missing share. The "
-                 "area-weighted intensity is the EUI of the modellable subset, "
-                 "not an unbiased estimate of the whole scope: exclusions "
-                 "concentrate in large buildings and footprint anti-correlates "
-                 "with EUI (Spearman -0.552, Benicalap v3), so the subset's "
-                 "intensity is biased upward relative to the full stock."),
+        "bias": cb.bias_block(rows, ok, stock),
     }
+    # The prose lives where a reader meets the number, but it is now written
+    # from the measurement rather than carried forward as a constant.
+    measured_note = (block["bias"] or {}).get("note")
+    block["note"] = measured_note or (
+        "totals are summed over buildings_with_result only, so an absolute GWh "
+        "figure under-reports by the missing share, and the area-weighted "
+        "intensity is the EUI of the modellable subset rather than an unbiased "
+        "estimate of the whole scope. This run does not carry what is needed to "
+        "size that skew - see coverage.bias.reason - so no direction is claimed."
+    )
 
     if stock is None or not in_scope or "refparcela" not in stock.columns:
         return block
@@ -1624,6 +1632,25 @@ def _carry_forward_layer(block: dict, out_dir: Path) -> dict:
             "the ledger as it stood then, which may not be the ledger beside it "
             "now; re-run `--aggregate` with `--stock` to rewrite it."}
 
+def _carry_forward_elapsed(out_dir: Path) -> dict:
+    """Keep how long the simulation pass took, which no later pass can know.
+
+    `elapsed_minutes` is timed by `run_stock`, so re-aggregating a finished run
+    would drop it - and it is the one field in the file that records what the
+    directory cost to produce.  Same principle as `_carry_forward_layer`: a
+    re-aggregation corrects what it can recompute and must not quietly delete
+    what it cannot.
+    """
+    previous = Path(out_dir) / "aggregate.json"
+    if not previous.exists():
+        return {}
+    try:
+        elapsed = json.loads(previous.read_text(encoding="utf-8")).get("elapsed_minutes")
+    except Exception:                               # noqa: BLE001 - unreadable
+        return {}
+    return {"elapsed_minutes": elapsed} if elapsed is not None else {}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the verified model over a stock")
     parser.add_argument("--scope", default="clusters",
@@ -1703,6 +1730,7 @@ def main(argv: list[str] | None = None) -> int:
             args.aggregate.parent)
         (args.aggregate.parent / "aggregate.json").write_text(
             json.dumps({**report, "ledger": str(args.aggregate),
+                        **_carry_forward_elapsed(args.aggregate.parent),
                         "provenance": provenance_block(rows, [args.aggregate]),
                         "results_layer": layer},
                        indent=2, ensure_ascii=False), encoding="utf-8")

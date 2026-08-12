@@ -8,8 +8,79 @@
     "buildings_with_result": 967,
     "buildings_without_result": 45,
     "building_coverage_pct": 95.55,
-    "note": "totals are summed over buildings_with_result only, so an absolute GWh figure under-reports by the missing share. The area-weighted intensity is the EUI of the modellable subset, not an unbiased estimate of the whole scope: exclusions concentrate in large buildings and footprint anti-correlates with EUI (Spearman -0.552, Benicalap v3), so the subset's intensity is biased upward relative to the full stock.",
+    "bias": {
+      "measured": true,
+      "basis": "cadastral_residential_area",
+      "energy_convention": "intensity_times_residential_area",
+      "buildings_without_result": 45,
+      "complete_coverage": false,
+      "buildings_in_scope": 1012,
+      "cadastral_area_measured_m2": 2157843.4,
+      "cadastral_area_missing_m2": 32440.0,
+      "cadastral_area_coverage_pct": 98.519,
+      "total_measured_gwh": 109.76248,
+      "total_truncation_pct": {
+        "low": 1.503,
+        "high": 1.545
+      },
+      "total_full_scope_gwh": {
+        "low": 111.4126,
+        "high": 111.45777
+      },
+      "intensity_subset_kwh_m2": 50.867,
+      "intensity_full_scope_kwh_m2": 50.887,
+      "intensity_bias_pct": -0.041,
+      "intensity_bias_direction": "negligible",
+      "footprint_bands": [
+        {
+          "footprint_from_m2": null,
+          "footprint_to_m2": 206.1,
+          "buildings": 242,
+          "intensity_kwh_m2": 54.881,
+          "missing_buildings": 29
+        },
+        {
+          "footprint_from_m2": 206.1,
+          "footprint_to_m2": 350.7,
+          "buildings": 242,
+          "intensity_kwh_m2": 53.293,
+          "missing_buildings": 9
+        },
+        {
+          "footprint_from_m2": 350.7,
+          "footprint_to_m2": 564.6,
+          "buildings": 241,
+          "intensity_kwh_m2": 51.577,
+          "missing_buildings": 6
+        },
+        {
+          "footprint_from_m2": 564.6,
+          "footprint_to_m2": 1088.4,
+          "buildings": 145,
+          "intensity_kwh_m2": 50.022,
+          "missing_buildings": 0
+        },
+        {
+          "footprint_from_m2": 1088.4,
+          "footprint_to_m2": null,
+          "buildings": 97,
+          "intensity_kwh_m2": 49.749,
+          "missing_buildings": 1
+        }
+      ],
+      "footprint_skew": {
+        "measured_median_footprint_m2": 350.7,
+        "missing_median_footprint_m2": 168.9,
+        "missing_are": "smaller"
+      },
+      "note": "totals are summed over the buildings that produced a result, which carry 98.519 % of the scope's cadastral residential area, so the published total under-reports the full scope by 1.503-1.545 %. The buildings without a result are smaller than the rest (median footprint 168.9 against 350.7 m2). Their intensity skew leaves the published 50.867 kWh/m2 within 0.041 % of a full-scope estimate, which is too small to correct for - but it is measured here rather than assumed from the coverage percentage."
+    },
+    "note": "totals are summed over the buildings that produced a result, which carry 98.519 % of the scope's cadastral residential area, so the published total under-reports the full scope by 1.503-1.545 %. The buildings without a result are smaller than the rest (median footprint 168.9 against 350.7 m2). Their intensity skew leaves the published 50.867 kWh/m2 within 0.041 % of a full-scope estimate, which is too small to correct for - but it is measured here rather than assumed from the coverage percentage.",
     "footprint_coverage_pct": 98.1
+  },
+  "energy_period": {
+    "period": "annual",
+    "unit": "kWh/m²·yr"
   },
   "zoning": {
     "threshold_m2": 5000.0,
@@ -19,6 +90,76 @@
     "residential_area_pct": 9.23,
     "total_site_pct": 8.03,
     "note": "buildings above the threshold have no core/perimeter split; they are included in every total above and this is the share they account for"
+  },
+  "fragmentation": {
+    "rule_version": 1,
+    "assignment_rule": "an EU footprint belongs to the cadastral parcel that contains its representative point; each footprint is assigned to at most one parcel",
+    "scheme": "one_extruded_prism_per_cadastral_parcel"
+  },
+  "floor_area_allocation": {
+    "measured": true,
+    "rule": "residential_storeys_from_cadastre: ceil(cadastral/footprint)",
+    "buildings_measured": 956,
+    "buildings_without_cadastral_area": 0,
+    "cadastral_area_provenance": {
+      "checked": true,
+      "excluded_buildings": 11,
+      "excluded_cadastral_m2": 66256.3,
+      "excluded_share_of_cadastral_pct": 3.07,
+      "note": "their Tipo15 area came from the cluster ratio, so comparing modelled area against it would measure the filling rule"
+    },
+    "modelled_m2": 2259911.6,
+    "cadastral_m2": 2091587.0,
+    "gap_m2": 168324.6,
+    "gap_pct_of_cadastral": 8.048,
+    "integer_storey_rounding": {
+      "buildings": 442,
+      "excess_m2": 161725.7,
+      "share_of_gap_pct": 96.08,
+      "median_fraction_of_a_storey": 0.372,
+      "mechanism": "f * (ceil(c/f) - c/f); one-sided, under one footprint"
+    },
+    "alternative_rules": {
+      "ceil": {
+        "modelled_m2": 2259915.7,
+        "vs_cadastral_pct": 8.05
+      },
+      "round": {
+        "modelled_m2": 2042060.1,
+        "vs_cadastral_pct": -2.37
+      },
+      "floor": {
+        "modelled_m2": 1796278.7,
+        "vs_cadastral_pct": -14.12
+      },
+      "exact_fractional": {
+        "modelled_m2": 2091587.0,
+        "vs_cadastral_pct": 0.0,
+        "note": "not buildable: storeys are integers"
+      }
+    },
+    "affects": [
+      "totals.cadastral_total_site_kwh_m2",
+      "by_cluster[].cadastral_kwh_m2",
+      "by_cluster[].vs_rai_pct",
+      "by_cluster[].vs_rai_energy_ratio"
+    ],
+    "note": "every kWh/m2 on the cadastral basis divides by the recorded dwelling area while the numerator carries energy delivered to the modelled excess above; the rounding term is the part the rule produces, the remainder is the two sources disagreeing",
+    "loads_on_rounding_excess": {
+      "dwelling_loads_on_excess": true,
+      "basis": "no row carries `top_storey_fraction`: built before the partial top storey existed"
+    },
+    "energy_on_rounding_excess": {
+      "band_pct": [
+        5.137,
+        5.786
+      ],
+      "band_gwh": [
+        5.49,
+        6.1832
+      ],
+      "basis": "lighting+equipment scale exactly with area; DHW is per person and does not scale; HVAC is the non-linear remainder, which is why this is a band"
+    }
   },
   "qa_failed": 0,
   "unexplained_severes": 0,
@@ -275,8 +416,8 @@
     "mean": 60.1,
     "max": 1130.1
   },
-  "elapsed_minutes": 323.47,
   "ledger": "out/stock/benicalap_v8/ledger.jsonl",
+  "elapsed_minutes": 323.47,
   "provenance": {
     "identity": {
       "run_identity": "fcff5de8e508fc82f7102d85f9ed7f4fbb5595cd2018b988dc9f3ad9032e550b",
@@ -296,5 +437,67 @@
       }
     ],
     "merge_rule": "latest_per_reference: when a refparcela appears more than once, the last row in ledger order wins"
+  },
+  "results_layer": {
+    "written": true,
+    "layer": "results_buildings.gpkg",
+    "features": 1012,
+    "ledger_rows": 1012,
+    "rows_without_geometry": 0,
+    "footprints_dissolved": 7,
+    "crs": "EPSG:25830",
+    "by_status": {
+      "ok": 967,
+      "excluded": 44,
+      "failed": 1
+    },
+    "geometry_rule": "one feature per refparcela; multi-footprint parcels are dissolved so a sum over the layer is not multiplied by footprint count",
+    "status_rule": "every ledger row is drawn; failed and excluded buildings carry NULL energies so a coverage gap is visible rather than absent",
+    "context_fields": [
+      "cluster",
+      "nombre",
+      "pob_total",
+      "num_vivend",
+      "altura_max"
+    ],
+    "derived_fields": [
+      "total_site_kwh_per_person",
+      "total_site_kwh_per_dwelling"
+    ],
+    "derived_rule": "per-person and per-dwelling energy are NULL, not zero, where the building has no registered residents or dwellings",
+    "energy_period": {
+      "period": "annual",
+      "unit": "kWh/m²·yr"
+    },
+    "zone_layers": {
+      "by_cluster": 18,
+      "by_district": 1
+    },
+    "style": {
+      "written": true,
+      "decimals": 1,
+      "field": "total_site_kwh_m2",
+      "breaks": [
+        44.3,
+        47.9,
+        50.9,
+        55.6
+      ],
+      "sidecar": "results_buildings.qml"
+    },
+    "bytes": 2334720,
+    "heatmap": {
+      "written": true,
+      "image": "results_heatmap.png",
+      "unit": "kWh/m²·yr",
+      "panels": [
+        "total_site_kwh_m2",
+        "space_heating_kwh_m2",
+        "cooling_kwh_m2"
+      ],
+      "buildings_drawn": 1012,
+      "buildings_without_result": 45,
+      "bytes": 901079
+    }
   }
 }

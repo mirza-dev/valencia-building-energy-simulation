@@ -241,10 +241,14 @@ lighting and equipment scale linearly with floor, so the area correction
 dominates — but the shape error is real and is not corrected.
 
 **Coverage is stated, not implied.** 967 of 1 012 buildings in scope — 95.6 % of
-buildings and **98.1 %** of the footprint. So the 109.76 GWh figure is the energy
-of the modellable district, not of the district. The intensity is not neutral to
-that gap either: footprint anti-correlates with EUI among the buildings that did
-run, so excluding large buildings biases the subset's intensity upward. Nine
+buildings, **98.1 %** of the footprint and **98.5 %** of the cadastral dwelling
+area. So the 109.76 GWh figure is the energy of the modellable district, not of
+the district, and the missing 1.5 % of area bounds the shortfall at **1.50–1.55 %**
+(111.41–111.46 GWh if the absent buildings are imputed). The intensity survives
+that gap better than the total: the exclusions are systematically *small*
+buildings — median footprint 169 m² against 351 m², two storeys against five —
+and small buildings run hotter per m², so 50.87 kWh/m² sits **0.04 % below** an
+unbiased full-scope estimate of 50.89. Nine
 buildings above the single-zone threshold carry 9.2 % of the area and 8.0 % of
 the energy on a coarser zoning assumption; that share is reported rather than
 buried.
@@ -287,6 +291,30 @@ the count, but **19 % of the district's floor area**, one of them 17,272 m² ove
 
 The verification is unaffected and was re-run to prove it: Rai's building is
 954.8 m², far from either ceiling, and all 13 gates came back bit-identical.
+
+### A third retracted claim: the exclusion bias reversed and the sentence did not
+
+Raising the ceiling changed who gets excluded, and this page did not follow.
+Until 2026-08-12 it stated — as did the guide, and `coverage.note` in every
+`aggregate.json` — that "exclusions concentrate in large buildings and footprint
+anti-correlates with EUI (Spearman **−0.552**), so the subset's intensity is
+biased **upward**." That was measured on the Benicalap **v3** ledger, when the
+ceiling was 5,000 m² and the gate refused 123 large buildings. It is not true of
+v8. Measured on v8's own rows:
+
+| | claimed (v3) | measured (v8) |
+|---|---:|---:|
+| exclusions are | large | **small** — median footprint 169 m² vs 351 |
+| Spearman, footprint vs intensity | −0.552 | **−0.140** |
+| intensity bias | upward | **−0.041 %**, downward and negligible |
+
+The direction reversed because the buildings that used to dominate the exclusions
+now run. What survived was the sentence, printed beside numbers it had stopped
+describing — the same failure as the two retractions above, and the reason the
+note is no longer a constant: `coverage.bias` now measures the skew from the run's
+own exclusions and bounds the truncation, so a stale claim cannot outlive the run
+it was true of. No published number changes; what changes is what may be said
+about it.
 
 ### How much of a mixed-use block is shops
 
