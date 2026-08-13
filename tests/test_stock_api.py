@@ -267,3 +267,120 @@ def test_selected_package_is_complete_and_ed25519_signed(monkeypatch, tmp_path: 
         manifest = json.loads(archive.read("export_manifest.json"))
         signature = json.loads(archive.read("export_manifest.sig.json"))
     assert integrity.verify_signed_manifest(manifest, signature)
+
+
+# ---------------------------------------------------------------------------
+# Counting a live ledger
+#
+# The full city writes ~25,000 rows and the Run screen polls every two seconds,
+# so re-parsing the whole file per poll would spend more than a core on bytes
+# that have not changed - while six EnergyPlus workers want the same machine.
+# These lock the incremental tally: it must agree with a full parse, notice new
+# rows, and never carry a previous run's count into a directory that was reused.
+# ---------------------------------------------------------------------------
+def _ledger(path: Path, rows: list[dict]) -> None:
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows),
+                    encoding="utf-8")
+
+
+def _rows(count: int, status: str = "ok") -> list[dict]:
+    return [{"refparcela": f"R{i}", "status": status, "seconds": 1.5}
+            for i in range(count)]
+
+
+def test_counting_a_ledger_agrees_with_reading_all_of_it(tmp_path):
+    from stock_runner import read_ledger
+
+    ledger = tmp_path / "ledger.jsonl"
+    _ledger(ledger, _rows(40) + _rows(3, "failed") + _rows(7, "excluded"))
+
+    expected: dict[str, int] = {}
+    seconds = 0.0
+    for row in read_ledger(ledger):
+        expected[str(row["status"])] = expected.get(str(row["status"]), 0) + 1
+        seconds += float(row["seconds"])
+
+    counts, total = stock_adapter._tally(ledger)
+    assert counts == expected
+    assert total == pytest.approx(seconds)
+
+
+def test_rows_appended_after_the_first_count_are_counted(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    _ledger(ledger, _rows(10))
+    assert stock_adapter._tally(ledger)[0] == {"ok": 10}
+
+    with ledger.open("a", encoding="utf-8") as handle:
+        for row in _rows(5, "failed"):
+            handle.write(json.dumps(row) + "\n")
+    assert stock_adapter._tally(ledger)[0] == {"ok": 10, "failed": 5}
+
+
+def test_a_row_that_is_still_being_written_is_counted_once(tmp_path):
+    """A read can land between the row and its newline; the half must wait."""
+    ledger = tmp_path / "ledger.jsonl"
+    complete = json.dumps({"refparcela": "R9", "status": "ok", "seconds": 2.0})
+    _ledger(ledger, _rows(3))
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(complete[:20])
+    assert stock_adapter._tally(ledger)[0] == {"ok": 3}
+
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(complete[20:] + "\n")
+    assert stock_adapter._tally(ledger)[0] == {"ok": 4}
+
+
+def test_a_directory_reused_by_a_new_run_does_not_inherit_the_old_count(tmp_path):
+    """Otherwise the screen would report buildings this run never simulated."""
+    ledger = tmp_path / "ledger.jsonl"
+    _ledger(ledger, _rows(30))
+    assert stock_adapter._tally(ledger)[0] == {"ok": 30}
+
+    _ledger(ledger, _rows(4))              # started again, same name
+    assert stock_adapter._tally(ledger)[0] == {"ok": 4}
+
+
+# ---------------------------------------------------------------------------
+# The duration a person plans a multi-day run around
+# ---------------------------------------------------------------------------
+def test_the_time_estimate_is_measured_from_finished_runs(tmp_path, monkeypatch):
+    """A rate carried over from an older engine would be wrong by hours."""
+    stock_root = tmp_path / "stock"
+    old, new = stock_root / "older", stock_root / "newer"
+    for path, mean in ((old, 30.0), (new, 61.5)):
+        path.mkdir(parents=True)
+        (path / "aggregate.json").write_text(
+            json.dumps({"seconds_per_building": {"median": 40.0, "mean": mean}}),
+            encoding="utf-8")
+    os.utime(old / "aggregate.json", (1_000_000, 1_000_000))
+    os.utime(new / "aggregate.json", (2_000_000, 2_000_000))
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    rate, basis = stock_adapter._seconds_per_building()
+    assert rate == 61.5                      # the newest run, not the first found
+    assert "newer" in basis
+
+
+def test_an_installation_with_no_finished_run_says_so(tmp_path, monkeypatch):
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "empty")
+    rate, basis = stock_adapter._seconds_per_building()
+    assert rate == stock_adapter.SECONDS_PER_BUILDING
+    assert basis == "default"
+
+
+def test_the_rate_is_the_mean_because_the_workers_share_one_queue(tmp_path, monkeypatch):
+    """Benicalap v8: 968 buildings, 3 workers, mean 60.1 s -> it took 323.47 min.
+
+    The median was 40.2 s and the slowest building 1130 s; estimating from the
+    median would have promised 217 minutes for a run that took 323.
+    """
+    stock_root = tmp_path / "stock"
+    (stock_root / "v8").mkdir(parents=True)
+    (stock_root / "v8" / "aggregate.json").write_text(
+        json.dumps({"seconds_per_building": {"median": 40.2, "mean": 60.1}}),
+        encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    rate, _ = stock_adapter._seconds_per_building()
+    predicted = 968 * rate / 3 / 60
+    assert predicted == pytest.approx(323.47, rel=0.01)

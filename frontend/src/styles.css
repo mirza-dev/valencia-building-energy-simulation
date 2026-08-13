@@ -1645,6 +1645,7 @@ button:disabled { opacity: .5; }
 .preflight-metrics > div:last-child { border-right: 0; }
 .preflight-metrics span { color: var(--faint); font-size: 8px; }
 .preflight-metrics strong { font: 12px var(--mono); }
+.preflight-basis { margin: 0; padding: 7px 9px; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; }
 .exclusion-list { padding: 7px 9px; display: flex; flex-wrap: wrap; gap: 5px; border-top: 1px solid var(--line); }
 .exclusion-list span { padding: 3px 6px; display: flex; gap: 5px; background: #f2f3ef; color: var(--muted); font-size: 8px; }
 .run-confirm { margin: 10px 14px 0; padding: 9px; display: flex; align-items: start; gap: 7px; border: 1px solid #dcb96a; background: #fff8e5; font-size: 10px; }

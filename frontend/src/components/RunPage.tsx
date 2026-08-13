@@ -150,6 +150,10 @@ export default function RunPage() {
               <div><span>Estimated time</span><strong>{formatDuration(preflight.estimated_minutes)}</strong></div>
               <div><span>Estimated storage</span><strong>{formatProductBytes(preflight.estimated_bytes)}</strong></div>
             </div>
+            {/* A multi-day run is planned around this number, so say where it
+                came from: a rate carried over from an older engine would be
+                wrong by hours. */}
+            {preflight.estimated_rate_basis && <p className="preflight-basis">Time assumes {preflight.estimated_seconds_per_building}&thinsp;s per building, {preflight.estimated_rate_basis}.</p>}
             {Object.keys(preflight.exclusion_reasons ?? {}).length > 0 && <div className="exclusion-list">{Object.entries(preflight.exclusion_reasons ?? {}).map(([reason, value]) => <span key={reason}><code>{value}</code>{reason}</span>)}</div>}
           </> : <p>Missing inputs: {preflight.missing_inputs?.join(', ')}</p>}
         </section>}

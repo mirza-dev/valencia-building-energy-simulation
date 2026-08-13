@@ -66,8 +66,16 @@ SERVABLE_ARTIFACTS = {
     "qa_report.txt": "text/plain",
 }
 
-# Measured on Benicalap v6: 967 buildings, 6 workers, median 40.6 s each.
-SECONDS_PER_BUILDING = 40.6
+# Fallback only, for an installation that has never finished a run: the real
+# figure is read from the runs on disk (`_seconds_per_building`).
+#
+# It is a MEAN, not a median.  The workers pull from one queue, so the wall
+# clock is (buildings x mean) / workers; the per-building times are heavily
+# right-skewed - Benicalap v8 had a median of 40.2 s against a mean of 60.1 s
+# and a slowest building of 1130 s - so estimating from the median understates
+# a long run by a third.  Checked against v8: 968 x 60.1 / 3 workers = 323 min,
+# and the run took 323.47.
+SECONDS_PER_BUILDING = 60.1
 BYTES_PER_BUILDING_FULL = 5.8 * 1024 ** 2
 BYTES_PER_BUILDING_SUMMARY = 1.05 * 1024 ** 2
 _EXPORT_LOCK = threading.Lock()
@@ -242,6 +250,36 @@ def district_options(inputs: InputSet | None = None) -> list[str]:
     return sorted(stock["nombre"].dropna().astype(str).unique().tolist())
 
 
+def _seconds_per_building() -> tuple[float, str]:
+    """How long a building takes here, measured rather than remembered.
+
+    The estimate a person plans a multi-day run around should come from this
+    machine's own finished runs, not from a figure someone measured once: the
+    engine has since capped storey counts and scaled the top storey, and every
+    such change moves the time per building.  The newest finished run wins, and
+    the basis is returned so the screen can say where the number came from.
+    """
+    newest: tuple[float, float, str] | None = None
+    if STOCK_ROOT.exists():
+        for path in STOCK_ROOT.iterdir():
+            summary = path / "aggregate.json"
+            if not summary.is_file():
+                continue
+            try:
+                mean = json.loads(summary.read_text(encoding="utf-8")) \
+                    .get("seconds_per_building", {}).get("mean")
+                stamp = summary.stat().st_mtime
+            except (OSError, json.JSONDecodeError, AttributeError):
+                continue
+            if not isinstance(mean, (int, float)) or mean <= 0:
+                continue
+            if newest is None or stamp > newest[0]:
+                newest = (stamp, float(mean), path.name)
+    if newest is None:
+        return SECONDS_PER_BUILDING, "default"
+    return newest[1], f"measured on {newest[2]}"
+
+
 def preflight(scope: str, *, district: str | None = None,
               references: list[str] | None = None,
               inputs: InputSet | None = None,
@@ -280,7 +318,8 @@ def preflight(scope: str, *, district: str | None = None,
 
     per_building = (BYTES_PER_BUILDING_FULL if keep == "full"
                     else BYTES_PER_BUILDING_SUMMARY)
-    seconds = len(runnable) * SECONDS_PER_BUILDING / max(1, workers)
+    rate, rate_basis = _seconds_per_building()
+    seconds = len(runnable) * rate / max(1, workers)
     return {
         "ok": True,
         "scope": scope,
@@ -290,6 +329,8 @@ def preflight(scope: str, *, district: str | None = None,
         "excluded": len(exclusions),
         "exclusion_reasons": reasons,
         "estimated_minutes": round(seconds / 60.0, 1),
+        "estimated_seconds_per_building": round(rate, 1),
+        "estimated_rate_basis": rate_basis,
         "estimated_bytes": int(len(runnable) * per_building),
         "policy_fingerprint": counters.get("policy_fingerprint"),
         "stock_source_fingerprint": counters.get("stock_source_fingerprint"),
@@ -504,18 +545,70 @@ def is_running(pid: int) -> bool:
 # ---------------------------------------------------------------------------
 # Reading results
 # ---------------------------------------------------------------------------
+# Counting a ledger means parsing it, and the interface asks for the counts
+# every two seconds while a run is live - `list_runs` once per run directory on
+# top of that.  On a district that is cheap.  On the full city the ledger
+# reaches ~60 MB, a full parse costs ~1.5 s, and the polling would spend more
+# than a core re-reading bytes that have not changed, competing with the
+# EnergyPlus workers for the same machine.  The ledger is append-only by
+# construction (opened "a", flushed and fsynced per row), so the tally can be
+# carried forward and only the newly appended bytes parsed.
+_TALLY_CACHE: dict[str, dict[str, Any]] = {}
+_TALLY_LOCK = threading.Lock()
+
+
+def _tally(ledger: Path) -> tuple[dict[str, int], float]:
+    """Statuses and CPU seconds, parsing only what was appended since last time."""
+    try:
+        stat = ledger.stat()
+    except OSError:
+        return {}, 0.0
+    key = str(ledger)
+    with _TALLY_LOCK:
+        state = _TALLY_CACHE.get(key)
+        # A different inode, or a file that has grown shorter, is a different
+        # ledger under the same name - a re-run that reused the directory.
+        # Carrying the old tally forward would report buildings that this run
+        # never simulated, so the count starts again from nothing.
+        if (state is None or state["inode"] != stat.st_ino
+                or stat.st_size < state["offset"]):
+            state = {"inode": stat.st_ino, "offset": 0, "counts": {},
+                     "seconds": 0.0}
+        if stat.st_size > state["offset"]:
+            with ledger.open("rb") as handle:
+                handle.seek(state["offset"])
+                chunk = handle.read(stat.st_size - state["offset"])
+            # Stop at the last newline.  A row is fsynced whole, but a read can
+            # still land between the write and the newline; counting half a line
+            # now and the rest on the next call would double-count the row.
+            end = chunk.rfind(b"\n")
+            if end >= 0:
+                counts = dict(state["counts"])
+                seconds = state["seconds"]
+                for line in chunk[:end].decode("utf-8", "replace").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    status = str(row.get("status"))
+                    counts[status] = counts.get(status, 0) + 1
+                    seconds += float(row.get("seconds") or 0.0)
+                state = {"inode": stat.st_ino, "offset": state["offset"] + end + 1,
+                         "counts": counts, "seconds": seconds}
+        _TALLY_CACHE[key] = state
+        return dict(state["counts"]), state["seconds"]
+
+
 def progress(name: str) -> dict[str, Any]:
     """Live counts, read from the same ledger the resume logic trusts."""
     out_dir = run_directory(name)
     ledger = out_dir / "ledger.jsonl"
     if not ledger.exists():
         return {"run": out_dir.name, "started": False}
-    counts: dict[str, int] = {}
-    seconds = 0.0
-    for row in sr.read_ledger(ledger):
-        status = str(row.get("status"))
-        counts[status] = counts.get(status, 0) + 1
-        seconds += float(row.get("seconds") or 0.0)
+    counts, seconds = _tally(ledger)
     done = counts.get("ok", 0) + counts.get("failed", 0)
     return {"run": out_dir.name, "started": True, "counts": counts,
             "completed": done, "cpu_seconds": round(seconds, 1)}

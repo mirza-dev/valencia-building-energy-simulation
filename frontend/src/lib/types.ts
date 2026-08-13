@@ -332,6 +332,8 @@ export interface ProductPreflight {
   excluded?: number
   exclusion_reasons?: Record<string, number>
   estimated_minutes?: number
+  estimated_seconds_per_building?: number
+  estimated_rate_basis?: string
   estimated_bytes?: number
   policy_fingerprint?: string | null
   stock_source_fingerprint?: string | null
