@@ -1041,3 +1041,82 @@ def test_the_prepared_file_itself_carries_the_ground_columns(tmp_path, monkeypat
     assert "ground_use" in written.columns
     assert "ground_use_source" in written.columns
     assert written.loc[0, "ground_use"] == "residential"      # B0 is a ground code
+
+
+def test_the_prepared_file_and_the_returned_frame_carry_the_same_names(tmp_path):
+    """One name for one quantity, whichever way a reader reaches the stock.
+
+    A live run passes the RETURNED FRAME to `aggregate()`; re-aggregating an
+    existing ledger reads the WRITTEN FILE.  While the cadastral-area rename
+    was applied only to the copy being written, those two paths disagreed:
+    the coverage-bias block, which asks for `tipo15_res_area_m2`, measured on
+    the re-aggregation and reported "no cadastral area column" on the live run
+    (Benicalap v9).  Checking the file alone could not see it - the file was
+    right - so this holds the two to each other.
+    """
+    import geopandas as gpd_mod
+    import pandas as pd
+    from shapely.geometry import box
+    import stock_input_policy as sip_mod
+
+    gis = tmp_path / "stock.gpkg"
+    gpd_mod.GeoDataFrame({
+        "refparcela": ["AAA"], "nombre": ["ONE"], "altura_max": [2],
+        "cluster": ["BlocPluriP04"], "Shape_Area": [100.0],
+    }, geometry=[box(0, 0, 10, 10)], crs="EPSG:25830").to_file(gis, driver="GPKG")
+    tipo15 = tmp_path / "tipo15.csv"
+    pd.DataFrame({"31_pc": ["AAA"], "442_sup_Residencial": [150.0],
+                  "252_planta": ["B0"]}).to_csv(
+        tipo15, sep=";", encoding="latin-1", index=False)
+
+    out, frame, _ = sr.prepare_stock_file(
+        gis, tipo15, sip_mod.StockInputPolicy(), tmp_path / "var")
+    written = gpd_mod.read_file(out)
+
+    assert "tipo15_res_area_m2" in written.columns
+    assert "tipo15_res_area_m2" in frame.columns
+    # The geometric name must not survive on either side: it means a different
+    # quantity downstream, and the whole point of the rename is that the two
+    # never share a column name.
+    assert "res_area_m2" not in written.columns
+    assert "res_area_m2" not in frame.columns
+    assert float(frame.loc[0, "tipo15_res_area_m2"]) == pytest.approx(
+        float(written.loc[0, "tipo15_res_area_m2"]))
+
+
+def test_the_returned_frame_lets_the_bias_be_measured(tmp_path):
+    """The frame a live run hands to `aggregate()` can answer the bias question.
+
+    The bound on whether the excluded buildings skew the published intensity is
+    produced from the stock the run holds in memory.  A full-city run that
+    silently could not produce it would leave the very question it was written
+    to answer (Javier's, 2026-08-12) unanswered.
+    """
+    import geopandas as gpd_mod
+    import pandas as pd
+    from shapely.geometry import box
+    import stock_input_policy as sip_mod
+    import coverage_bias as cb_mod
+
+    gis = tmp_path / "stock.gpkg"
+    gpd_mod.GeoDataFrame({
+        "refparcela": ["AAA", "BBB"], "nombre": ["ONE", "ONE"],
+        "altura_max": [2, 2], "cluster": ["BlocPluriP04", "BlocPluriP04"],
+        "Shape_Area": [100.0, 100.0],
+    }, geometry=[box(0, 0, 10, 10), box(20, 0, 30, 10)],
+        crs="EPSG:25830").to_file(gis, driver="GPKG")
+    tipo15 = tmp_path / "tipo15.csv"
+    pd.DataFrame({"31_pc": ["AAA", "BBB"],
+                  "442_sup_Residencial": [150.0, 150.0],
+                  "252_planta": ["B0", "B0"]}).to_csv(
+        tipo15, sep=";", encoding="latin-1", index=False)
+
+    _, frame, _ = sr.prepare_stock_file(
+        gis, tipo15, sip_mod.StockInputPolicy(), tmp_path / "var")
+
+    rows = [{"refparcela": "AAA", "status": "ok", "total_site_kwh_m2": 50.0,
+             "res_area_m2": 200.0},
+            {"refparcela": "BBB", "status": "excluded", "reason": "footprint"}]
+    ok = [r for r in rows if r["status"] == "ok"]
+    block = cb_mod.bias_block(rows, ok, frame)
+    assert block["measured"] is True, block.get("reason")

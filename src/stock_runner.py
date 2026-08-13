@@ -280,6 +280,25 @@ def prepare_stock_file(gis_path: Path, tipo15_path: Path,
     """
     stock, resolved, counters = sip.prepare_stock(
         Path(gis_path), Path(tipo15_path), policy, duplicate_parcel_apportioning=True)
+    # The policy's Tipo15 area travels under its own name, and it is renamed
+    # HERE, on the frame, before anything else sees it - not on the copy being
+    # written.  The engine derives its own `res_area_m2` from the geometry
+    # (footprint x residential storeys) and that is the basis every energy
+    # figure and the Rai comparison use - his own 954.80 m2 is 4 x 238.70, a
+    # geometric storey area, not a net cadastral one.  Two different quantities
+    # that differ by ~32 % city-wide must not share a column name.
+    #
+    # Renaming only the written copy left the returned frame carrying the
+    # cadastral area under the geometric name, so the file and the frame
+    # disagreed and a reader saw whichever the path handed it.  That is how the
+    # coverage-bias measurement came out `measured: false` on a live run while
+    # measuring fine when the same ledger was re-aggregated from the file
+    # (found on Benicalap v9): the bias block looks for `tipo15_res_area_m2`,
+    # the live run passes this frame, and the frame did not have it.  The bound
+    # written to answer whether the excluded buildings skew the result would
+    # simply not have been produced by the full-city run.
+    if "res_area_m2" in stock.columns:
+        stock = stock.rename(columns={"res_area_m2": "tipo15_res_area_m2"})
     fingerprint = sip.policy_fingerprint(resolved)
     source_fingerprint = stock_source_fingerprint(gis_path, tipo15_path, fingerprint)
     out = prepared_stock_path(source_fingerprint, var_dir)
@@ -290,23 +309,17 @@ def prepare_stock_file(gis_path: Path, tipo15_path: Path,
         # worker.  That is exactly how ground_use went missing on first wiring
         # (2026-08-03) - prepare_stock carried it, the file did not, and the
         # run silently fell back to terciario everywhere.  Caught by checking
-        # the written file, and pinned by a test on the FILE, not the frame.
+        # the written file, and pinned by a test on the FILE, not the frame -
+        # and by one that holds the FILE and the FRAME to the same names, which
+        # is the gap the rename above closes.
         columns = [c for c in ("refparcela", "altura_max", "cluster", "family",
                                "period", "nombre", "pob_total", "num_vivend",
                                "footprint_area_m2", "imputed_floors",
                                "res_area_proxy", "dup_refparcela",
                                "ground_use", "ground_use_source",
-                               "res_area_m2", "geometry")
+                               "tipo15_res_area_m2", "geometry")
                    if c in stock.columns]
         prepared = stock[columns].copy()
-        # The policy's Tipo15 area travels under its own name.  The engine
-        # derives its own `res_area_m2` from the geometry (footprint x
-        # residential storeys) and that is the basis every energy figure and the
-        # Rai comparison use - his own 954.80 m2 is 4 x 238.70, a geometric
-        # storey area, not a net cadastral one.  Two different quantities that
-        # differ by ~32 % city-wide must not share a column name.
-        if "res_area_m2" in prepared.columns:
-            prepared = prepared.rename(columns={"res_area_m2": "tipo15_res_area_m2"})
         prepared.to_file(out, driver="GPKG")
         log.info("[stock] prepared file written: %s (%s buildings)", out.name, len(stock))
     else:
@@ -1728,12 +1741,17 @@ def main(argv: list[str] | None = None) -> int:
         layer = _carry_forward_layer(
             rl.write_results_layer(rows, stock, args.aggregate.parent),
             args.aggregate.parent)
+        # Carried into the report itself, not only into the copy being written:
+        # the screen printed "elapsed None min" while the file on disk held the
+        # real 182.46, because the two were built from different dicts.  The
+        # same shape of split - write one thing, show another - is what hid the
+        # cadastral-area rename above.
+        report.update({"ledger": str(args.aggregate),
+                       **_carry_forward_elapsed(args.aggregate.parent),
+                       "provenance": provenance_block(rows, [args.aggregate]),
+                       "results_layer": layer})
         (args.aggregate.parent / "aggregate.json").write_text(
-            json.dumps({**report, "ledger": str(args.aggregate),
-                        **_carry_forward_elapsed(args.aggregate.parent),
-                        "provenance": provenance_block(rows, [args.aggregate]),
-                        "results_layer": layer},
-                       indent=2, ensure_ascii=False), encoding="utf-8")
+            json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
         _print_report(report)
         return 0
 
