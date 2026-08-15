@@ -238,6 +238,10 @@ export default function ModelViewer({ scene, compact = false, syncKey, onCapture
   const [storyVisibility, setStoryVisibility] = useState<Record<string, boolean>>({})
   const [cutHeight, setCutHeight] = useState<number | null>(null)
   const [renderReady, setRenderReady] = useState(false)
+  // Remounts `RenderReady` with each scene.  Its frame counter is a ref that
+  // only ever equals its threshold once, so without a fresh mount the overlay
+  // below would be reset on every scene change and never cleared again.
+  const [sceneEpoch, setSceneEpoch] = useState(0)
   const [resetSignal, setResetSignal] = useState(0)
   const [topSignal, setTopSignal] = useState(0)
   const [focusTarget, setFocusTarget] = useState<number[] | null>(null)
@@ -256,7 +260,7 @@ export default function ModelViewer({ scene, compact = false, syncKey, onCapture
   useEffect(() => {
     if (selectedItemId === undefined && selected) setSelected(all.find((item) => item.id === selected.id) ?? null)
   }, [all, selected, selectedItemId])
-  useEffect(() => setRenderReady(false), [scene])
+  useEffect(() => { setRenderReady(false); setSceneEpoch((epoch) => epoch + 1) }, [scene])
   const buildingPoints = useMemo(() => scene.surfaces.flatMap((item) => item.vertices), [scene])
   const sitePoints = useMemo(() => [
     ...buildingPoints,
@@ -325,7 +329,7 @@ export default function ModelViewer({ scene, compact = false, syncKey, onCapture
           ? <TranslationHandle item={activeSelected} center={dimensions.center} snap={translationSnap} onTranslate={onTranslate} /> : null}
         <SyncedControls syncKey={syncKey} onTargetChange={handleTargetChange}
           resetSignal={resetSignal} topSignal={topSignal} focusTarget={focusTarget} span={dimensions.span} focusSpan={dimensions.targetSpan} />
-        <RenderReady onReady={() => setRenderReady(true)} />
+        <RenderReady key={sceneEpoch} onReady={() => setRenderReady(true)} />
       </Canvas>
 
       {!renderReady ? <div className="viewer-render-loading"><span className="spinner" />{t('viewer.rendering')}</div> : null}
