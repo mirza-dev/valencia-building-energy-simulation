@@ -4,6 +4,7 @@ import { AlertTriangle, BarChart3, Building2, CheckCircle2, Download, ExternalLi
 import { api } from '../lib/api'
 import { formatProductBytes } from '../lib/productStock'
 import type { ProductLedgerRow } from '../lib/types'
+import { useFeedback } from './FeedbackProvider'
 
 const PAGE_SIZE = 100
 // Must stay a subset of `stock_runner.KEPT_ARTIFACTS`, which is what a stock run
@@ -95,6 +96,7 @@ function UncertaintySection() {
 }
 
 export default function OutputsPage() {
+  const { notify } = useFeedback()
   const [selected, setSelected] = useState('')
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
@@ -138,6 +140,9 @@ export default function OutputsPage() {
   const exportPlanMutation = useMutation({
     mutationFn: () => api.stockExportPlan(selected),
     onSuccess: (value) => { setExportPlan(value); setExportConfirmed(false) },
+    // Without this the spinner just reverts and the failure is invisible: this
+    // is the only mutation on the page, so nothing else would report it.
+    onError: (error) => notify(error instanceof Error ? error.message : 'Export plan failed.', 'error'),
   })
 
   return <div className="product-page outputs-page">
@@ -155,6 +160,15 @@ export default function OutputsPage() {
         <a className={`primary-button ${exportConfirmed ? '' : 'disabled-link'}`} aria-disabled={!exportConfirmed} href={exportConfirmed ? api.stockExportUrl(selected) : undefined}><Download size={14} /> Create & download</a>
       </section>}
       {summary ? <>
+        {/* A run that has not written its aggregate is totalled from the rows
+            it has finished so far.  Those totals carry the same field names as
+            a final run's, so without this banner the page headlines a fraction
+            of the stock under a label that claims all of it.  The figures stay
+            visible - what was missing is the label, not the data. */}
+        {detail.data?.summary_is_partial && <section className="export-plan-banner" role="note">
+          <AlertTriangle size={20} /><div><strong>This run has not finished — every figure below is a running total</strong>
+          <p>These numbers cover only the {summary.buildings_ok.toLocaleString()} buildings completed so far{detail.data?.scope?.total ? ` of ${detail.data.scope.total.toLocaleString()} in scope` : ''}, and will keep rising until the run ends. &ldquo;Modelled subset&rdquo; below refers to excluded buildings, not to run progress.</p></div>
+        </section>}
         {isEvent && <section className="export-plan-banner" role="note">
           <Image size={20} /><div><strong>Microclimate event run — these are not annual figures</strong>
           <p>Every energy figure on this page, in the building table and in the downloads covers {period?.unit ?? 'the event window'}{period?.event_window ? ` (${period.event_window})` : ''}. Fields named per-year in the exported files hold a figure for this window only.</p></div>

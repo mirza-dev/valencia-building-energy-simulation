@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Building2, CheckCircle2, Clock3, MapPinned, Play, RotateCcw, Square, TerminalSquare } from 'lucide-react'
 import { api } from '../lib/api'
-import { countDone, formatDuration, formatProductBytes, safeRunName } from '../lib/productStock'
+import { formatDuration, formatProductBytes, runProgress, safeRunName } from '../lib/productStock'
 import type { ProductPreflight } from '../lib/types'
 import { useFeedback } from './FeedbackProvider'
 
@@ -45,9 +45,13 @@ export default function RunPage() {
   const microclimateReady = Boolean(settings.data?.microclimate_dataset_id)
   // A district scope with no districts available cannot be preflighted; fall
   // back rather than leave the page in a state whose button does nothing.
+  // A correction here changes what would be submitted, so it discards the
+  // preflight exactly like every manual edit below does.  Without that, a
+  // "PREFLIGHT PASSED" panel measured for the old scope stays on screen and
+  // `canStart` keeps letting it start the new, never-preflighted one.
   useEffect(() => {
-    if (scope === 'district' && !hasDistricts) setScope('references')
-    if (!microclimateReady && runMode !== 'annual') setRunMode('annual')
+    if (scope === 'district' && !hasDistricts) { setScope('references'); setPreflight(null) }
+    if (!microclimateReady && runMode !== 'annual') { setRunMode('annual'); setPreflight(null) }
   }, [scope, hasDistricts, microclimateReady, runMode])
   useEffect(() => {
     if (!district && hasDistricts) setDistrict(districts.data!.districts[0])
@@ -92,9 +96,10 @@ export default function RunPage() {
   const canPreflight = inputsReady && (scope !== 'references' || references.length > 0) && (scope !== 'district' || Boolean(district))
   const canStart = Boolean(preflight?.ok && safeRunName(name)) && (scope !== 'all' || confirmedAll)
   const counts = detail.data?.progress.counts
-  const completed = countDone(counts)
-  const total = preflight?.buildings_in_scope ?? detail.data?.summary?.coverage.buildings_in_scope ?? completed
-  const pct = total ? Math.min(100, completed / total * 100) : 0
+  // The denominator comes from `runProgress`, never from `summary` while the
+  // run is live: `aggregate()` derives its scope count from the rows written
+  // so far, so that path reports 100% from the first row.
+  const { done: completed, total, pct } = runProgress(detail.data, preflight)
 
   return <div className="product-page run-page">
     <header className="product-page-header">
@@ -169,8 +174,10 @@ export default function RunPage() {
         <header><div><span>LIVE LEDGER</span><h2>{currentRun ?? 'No active run'}</h2></div>{detail.data?.running && <span className="live-chip"><i />RUNNING</span>}</header>
         {currentRun ? <>
           <div className="run-progress-card">
-            <div><strong>{pct.toFixed(1)}%</strong><span>{completed.toLocaleString()} / {total.toLocaleString()} terminal records</span></div>
-            <progress max={Math.max(1, total)} value={completed} />
+            {/* An unknown scope prints no percentage and no filled bar: a run
+                whose denominator was never recorded is not a finished run. */}
+            <div><strong>{pct == null ? '—' : `${pct.toFixed(1)}%`}</strong><span>{completed.toLocaleString()} / {total == null ? 'unknown scope' : `${total.toLocaleString()} in scope`} · terminal records</span></div>
+            {total == null ? <progress /> : <progress max={total} value={completed} />}
             <dl>
               <div><dt>OK</dt><dd>{counts?.ok ?? 0}</dd></div><div><dt>FAILED</dt><dd>{counts?.failed ?? 0}</dd></div><div><dt>EXCLUDED</dt><dd>{counts?.excluded ?? 0}</dd></div><div><dt>CPU</dt><dd>{formatDuration((detail.data?.progress.cpu_seconds ?? 0) / 60)}</dd></div>
             </dl>

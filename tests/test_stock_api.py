@@ -116,6 +116,66 @@ def test_run_detail_carries_the_engines_own_totals(client, has_finished_run):
     assert totals["cadastral_total_site_kwh_m2"] > totals["area_weighted_total_site_kwh_m2"]
 
 
+def test_finished_run_reports_its_totals_as_final(client, has_finished_run):
+    """A written aggregate is a final total, and says so."""
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    body = client.get(f"/api/stock/runs/{FINISHED_RUN}").json()
+    assert body["summary_is_partial"] is False
+    assert stock_adapter.summary_is_partial(FINISHED_RUN) is False
+
+
+def test_a_run_totalled_from_a_partial_ledger_is_flagged(tmp_path, monkeypatch,
+                                                         has_finished_run):
+    """The defect this guards: `summary()` recomputes from a partial ledger and
+    returns the same field names a finished run uses, so a caller that only
+    checks "is there a summary" prints a fraction of the stock under a headline
+    claiming all of it."""
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    source = stock_adapter.run_directory(FINISHED_RUN)
+    partial = tmp_path / "partial_run"
+    partial.mkdir()
+    rows = (source / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+    (partial / "ledger.jsonl").write_text("\n".join(rows[:20]) + "\n",
+                                          encoding="utf-8")
+    # no aggregate.json: exactly the mid-run state
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path)
+    assert stock_adapter.summary_is_partial("partial_run") is True
+    # and it still totals, so the flag is the only thing telling them apart
+    assert stock_adapter.summary("partial_run")["buildings_ok"] >= 0
+
+
+def test_scope_size_comes_from_the_runs_own_config(tmp_path, monkeypatch):
+    """The honest denominator while rows are still arriving."""
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path)
+    run = tmp_path / "scoped"
+    run.mkdir()
+    (run / "run_config.json").write_text(
+        json.dumps({"scope": "all", "runnable": 873, "excluded": 162}),
+        encoding="utf-8")
+    assert stock_adapter.scope_size("scoped") == {
+        "runnable": 873, "excluded": 162, "total": 1035}
+
+
+@pytest.mark.parametrize("payload", [
+    None,                                   # no run_config.json at all
+    "{ not json",                           # unreadable
+    json.dumps({"scope": "all"}),           # older run, fields absent
+    json.dumps({"runnable": -1, "excluded": 3}),
+])
+def test_scope_size_reports_unknown_rather_than_guessing(tmp_path, monkeypatch,
+                                                         payload):
+    """An unrecorded scope must read as unknown, never as a count: a guessed
+    denominator is what made the progress bar claim 100% from the first row."""
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path)
+    run = tmp_path / "unscoped"
+    run.mkdir()
+    if payload is not None:
+        (run / "run_config.json").write_text(payload, encoding="utf-8")
+    assert stock_adapter.scope_size("unscoped") is None
+
+
 def test_unknown_run_is_a_404_not_an_empty_page(client):
     assert client.get("/api/stock/runs/no_such_run").status_code == 404
 

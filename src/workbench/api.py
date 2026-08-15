@@ -1645,7 +1645,16 @@ def stock_run_detail(name: str):
     try:
         detail["summary"] = stock_adapter.summary(name)
     except (FileNotFoundError, KeyError):
-        detail["summary"] = None          # still running, nothing to total yet
+        detail["summary"] = None          # nothing on disk to total at all
+    # The line above used to carry the whole intent, and did not deliver it:
+    # `summary()` only raises when there is no ledger, so a run that has
+    # written rows but not its aggregate returns a *partial* total under the
+    # same field names as a final one.  The flag says which case this is, and
+    # the scope says what the denominator actually is - neither is derivable
+    # from `summary` itself.
+    detail["summary_is_partial"] = (detail["summary"] is not None
+                                    and stock_adapter.summary_is_partial(name))
+    detail["scope"] = stock_adapter.scope_size(name)
     return detail
 
 

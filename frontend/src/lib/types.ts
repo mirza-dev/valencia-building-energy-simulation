@@ -430,10 +430,21 @@ export interface ProductStockSummary {
   provenance?: Record<string, unknown>
 }
 
+export interface ProductScope {
+  runnable: number
+  excluded: number
+  total: number
+}
+
 export interface ProductRunDetail {
   progress: ProductProgress
   running: boolean
   summary: ProductStockSummary | null
+  // A running tally carries the same field names as a final one, so `summary`
+  // alone cannot say which it is.  Optional: a response cached before these
+  // fields existed must not break the page.
+  summary_is_partial?: boolean
+  scope?: ProductScope | null
 }
 
 export interface ProductLedgerRow extends Record<string, unknown> {

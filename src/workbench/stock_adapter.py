@@ -646,6 +646,47 @@ def summary(name: str) -> dict[str, Any]:
     return sr.aggregate(rows)
 
 
+def summary_is_partial(name: str) -> bool:
+    """Whether the totals above are a running tally rather than a final one.
+
+    `summary()` recomputes from the partial ledger when the run has not written
+    its aggregate yet.  That is useful - a person watching a live run wants to
+    see it - but the partial and the final total carry the *same field names*
+    and differ by the whole unfinished remainder, so a caller that cannot tell
+    them apart will print a fraction of the stock under a headline that claims
+    the whole of it.
+    """
+    return not (run_directory(name) / "aggregate.json").is_file()
+
+
+def scope_size(name: str) -> dict[str, int] | None:
+    """The scope the run was started with, from its own `run_config.json`.
+
+    The ledger cannot answer this while a run is live: `aggregate()` derives
+    `buildings_in_scope` from the rows written so far, which mid-run is the
+    same set as the rows completed - so a progress bar built on it reads 100%
+    from the first row.  The runner records the real figure once, at start,
+    and that is the only honest denominator until the run ends.
+
+    Returns `None` rather than raising, and rather than guessing a number: a
+    run directory written before this field existed has no scope on record,
+    and "unknown" must not be reported as a count.
+    """
+    config_path = run_directory(name) / "run_config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        runnable = int(config["runnable"])
+        excluded = int(config["excluded"])
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if runnable < 0 or excluded < 0:
+        return None
+    return {"runnable": runnable, "excluded": excluded,
+            "total": runnable + excluded}
+
+
 def results_layer(name: str) -> Path:
     """The run's GIS layer, or a refusal that says which case this is.
 

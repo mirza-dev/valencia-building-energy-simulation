@@ -31,3 +31,47 @@ export function countDone(counts?: Record<string, number>): number {
   if (!counts) return 0
   return (counts.ok ?? 0) + (counts.failed ?? 0) + (counts.excluded ?? 0)
 }
+
+export interface RunProgress {
+  done: number
+  total: number | null
+  pct: number | null
+}
+
+/**
+ * How far along a run is, or that we cannot say.
+ *
+ * The denominator is the whole point here.  `summary.coverage.buildings_in_scope`
+ * is derived by `aggregate()` from the rows written so far, which mid-run is the
+ * same set `countDone` counts - so using it reports 100% from the very first
+ * row, beside a live RUNNING chip.  The scope the runner recorded at start is
+ * the only figure that means "in scope" while rows are still arriving.
+ *
+ * The test on the summary is `summary_is_partial`, not `running`: a run that
+ * was stopped part-way is no longer running, yet its recomputed total covers
+ * only the rows it reached, so its coverage count is no more a scope than a
+ * live one's.  Only a written aggregate settles that question.
+ *
+ * When nothing on record can supply a denominator this returns `null` rather
+ * than a number: an unknown length is honest, a full bar is not.
+ */
+export function runProgress(
+  detail?: {
+    running?: boolean
+    scope?: { total: number } | null
+    summary?: { coverage: { buildings_in_scope: number } } | null
+    summary_is_partial?: boolean
+    progress?: { counts?: Record<string, number> }
+  } | null,
+  preflight?: { buildings_in_scope?: number } | null,
+): RunProgress {
+  const done = countDone(detail?.progress?.counts)
+  const settled = detail ? !detail.running && detail.summary_is_partial !== true : false
+  const total = detail?.scope?.total
+    ?? preflight?.buildings_in_scope
+    ?? (settled ? detail?.summary?.coverage.buildings_in_scope : undefined)
+  if (total == null || !Number.isFinite(total) || total <= 0) {
+    return { done, total: null, pct: null }
+  }
+  return { done, total, pct: Math.min(100, (done / total) * 100) }
+}
