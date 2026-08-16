@@ -3,7 +3,7 @@ import { Archive, Building2, Files, Play } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import { shortHash } from '../lib/productStock'
+import { inputReadiness, shortHash } from '../lib/productStock'
 import { readinessClass } from '../lib/storage'
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -14,7 +14,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     { to: '/run', label: 'Run', note: 'Execution', icon: Play },
     { to: '/outputs', label: 'Outputs', note: 'Evidence', icon: Archive },
   ]
-  const ready = profile.data?.missing_inputs.length === 0 && Object.values(profile.data?.entrypoints ?? {}).every(Boolean)
+  const readiness = inputReadiness(profile.data, profile.isError)
 
   return (
     <div className="app-shell">
@@ -27,7 +27,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="topbar-center">
           <span>VERIFIED MODEL PROFILE</span><span className="topbar-separator" />
           <code title={profile.data?.profile.fingerprint}>{shortHash(profile.data?.profile.fingerprint, 16)}</code>
-          <span className={`profile-ready-dot ${ready ? 'ready' : ''}`}>{ready ? 'READY' : 'CHECK INPUTS'}</span>
+          <span className={`profile-ready-dot ${readiness.state}`} title={readiness.reason || undefined}>
+            {readiness.state === 'ready' ? 'READY' : readiness.state === 'checking' ? 'CHECKING…' : 'CHECK INPUTS'}
+          </span>
         </div>
         <div className="topbar-actions">
           <div className={`health-chip ${health.isError ? 'is-bad' : readinessClass(health.data?.readiness)}`}>

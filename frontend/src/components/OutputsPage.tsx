@@ -137,6 +137,15 @@ export default function OutputsPage() {
   // nothing here to compare against".
   const hasReference = (summary?.by_cluster ?? []).some(
     (row) => row.rai_consume_kwh_m2 != null)
+  // The same reasoning one level up.  Both cadastral figures come from the
+  // Spanish Tipo15 record, so `aggregate()` omits them entirely for a stock
+  // without one - absent, not zero.  Rendering the card anyway printed a
+  // permanently empty accent-styled "CADASTRAL EUI" on every non-Valencia run,
+  // which reads as a missing measurement rather than as a basis that does not
+  // exist for this city.
+  const hasCadastral = totals?.cadastral_total_site_kwh_m2 != null
+  const hasClusterCadastral = (summary?.by_cluster ?? []).some(
+    (row) => row.cadastral_kwh_m2 != null)
   const exportPlanMutation = useMutation({
     mutationFn: () => api.stockExportPlan(selected),
     onSuccess: (value) => { setExportPlan(value); setExportConfirmed(false) },
@@ -180,7 +189,7 @@ export default function OutputsPage() {
         <section className="output-kpi-grid">
           <article><span>TOTAL SITE ENERGY</span><strong>{number(totals?.total_site_gwh)}</strong><small>GWh / {perPeriod} · modelled subset</small></article>
           <article title={totals?.area_basis_note}><span>RESIDENTIAL-AREA EUI</span><strong>{number(totals?.area_weighted_total_site_kwh_m2, 1)}</strong><small>kWh/m² · geometric residential storeys</small></article>
-          <article className="accent"><span>CADASTRAL EUI</span><strong>{number(totals?.cadastral_total_site_kwh_m2, 1)}</strong><small>kWh/m² · Tipo15 residential area</small></article>
+          {hasCadastral && <article className="accent"><span>CADASTRAL EUI</span><strong>{number(totals?.cadastral_total_site_kwh_m2, 1)}</strong><small>kWh/m² · Tipo15 residential area</small></article>}
           <article><span>CARBON</span><strong>{number(totals?.carbon_total_site_t_yr, 0)}</strong><small>tCO₂ / {perPeriod} · total site</small></article>
           <article><span>COVERAGE</span><strong>{number(summary.coverage.building_coverage_pct, 1)}%</strong><small>{summary.buildings_ok.toLocaleString()} OK · {summary.buildings_failed} failed · {summary.buildings_failed_qa} QA rejected · {summary.buildings_excluded} excluded</small></article>
           <article className={rejected || summary.qa_failed || summary.unexplained_severes ? 'danger' : 'pass'}><span>RESULT STATUS</span><strong>{rejected || summary.qa_failed || summary.unexplained_severes ? 'REVIEW' : 'PASS'}</strong><small>{summary.buildings_failed} runtime failed · {summary.buildings_failed_qa} QA rejected · accepted rows: {summary.unexplained_severes} unexplained severe</small></article>
@@ -194,9 +203,9 @@ export default function OutputsPage() {
         </section> : null}
 
         <section className="output-section">
-          <header><div><BarChart3 size={17} /><span><strong>Cluster totals</strong><small>{hasReference ? 'Both geometric and cadastral denominators remain visible.' : 'No published reference exists for this stock, so no comparison column is shown.'}</small></span></div></header>
-          <div className="product-table-scroll"><table className="product-table cluster-table"><thead><tr><th>Cluster</th><th>Buildings</th><th>Site energy</th><th>Geometric EUI</th><th>Cadastral EUI</th>{hasReference && <><th>Rai reference</th><th>Δ vs Rai</th></>}</tr></thead><tbody>
-            {summary.by_cluster.map((row) => <tr key={row.cluster}><td><code>{row.cluster}</code></td><td>{row.buildings.toLocaleString()}</td><td>{number(row.total_site_gwh)} GWh</td><td>{number(row.area_weighted_kwh_m2, 1)}</td><td>{number(row.cadastral_kwh_m2, 1)}</td>{hasReference && <><td>{number(row.rai_consume_kwh_m2, 1)}</td><td className={(row.vs_rai_pct ?? 0) > 50 ? 'warn-value' : ''}>{number(row.vs_rai_pct, 1)}%</td></>}</tr>)}
+          <header><div><BarChart3 size={17} /><span><strong>Cluster totals</strong><small>{hasClusterCadastral ? 'Both geometric and cadastral denominators remain visible.' : 'This stock carries no cadastral dwelling area, so every figure is on the geometric basis.'}{hasReference ? '' : ' No published reference exists for it either, so no comparison column is shown.'}</small></span></div></header>
+          <div className="product-table-scroll"><table className="product-table cluster-table"><thead><tr><th>Cluster</th><th>Buildings</th><th>Site energy</th><th>Geometric EUI</th>{hasClusterCadastral && <th>Cadastral EUI</th>}{hasReference && <><th>Rai reference</th><th>Δ vs Rai</th></>}</tr></thead><tbody>
+            {summary.by_cluster.map((row) => <tr key={row.cluster}><td><code>{row.cluster}</code></td><td>{row.buildings.toLocaleString()}</td><td>{number(row.total_site_gwh)} GWh</td><td>{number(row.area_weighted_kwh_m2, 1)}</td>{hasClusterCadastral && <td>{number(row.cadastral_kwh_m2, 1)}</td>}{hasReference && <><td>{number(row.rai_consume_kwh_m2, 1)}</td><td className={(row.vs_rai_pct ?? 0) > 50 ? 'warn-value' : ''}>{number(row.vs_rai_pct, 1)}%</td></>}</tr>)}
           </tbody></table></div>
         </section>
       </> : <section className="output-pending"><AlertTriangle size={24} /><strong>{detail.data?.running ? 'Aggregate pending while the run continues' : 'No aggregate is available for this run'}</strong><p>The building ledger remains inspectable below.</p></section>}

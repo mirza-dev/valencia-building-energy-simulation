@@ -5,7 +5,7 @@ import type { ComponentType, ReactNode, SVGProps } from 'react'
 import { api } from '../lib/api'
 import type { DatasetRecord, ProjectSettings } from '../lib/types'
 import { climatePairChanged, climatePairPatch, climatePairReady } from '../lib/climatePair'
-import { shortHash } from '../lib/productStock'
+import { inputReadiness, shortHash } from '../lib/productStock'
 import { useFeedback } from './FeedbackProvider'
 
 type SettingKey = keyof Pick<ProjectSettings,
@@ -14,6 +14,24 @@ type SettingKey = keyof Pick<ProjectSettings,
   'stock_dataset_id' | 'microclimate_dataset_id'>
 
 type IconType = ComponentType<SVGProps<SVGSVGElement> & { size?: number; strokeWidth?: number }>
+
+/**
+ * Run the activation half of a two-write flow and keep its failure its own.
+ *
+ * Registering a file and activating it are two server writes inside one
+ * mutation, so a single `onError` message described whichever one the caller
+ * named - always the first.  A rejected activation would then be reported as a
+ * failed upload or a failed extraction, sending the user to redo work that had
+ * already succeeded.  The file is on disk either way; what failed is stated.
+ */
+async function activationStep(name: string, write: () => Promise<unknown>): Promise<void> {
+  try {
+    await write()
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'the server rejected the change'
+    throw new Error(`${name} is registered but could not be activated: ${reason}`, { cause: error })
+  }
+}
 
 function EvidenceRows({ dataset }: { dataset: DatasetRecord | null | undefined }) {
   if (!dataset) return <p className="product-empty-note">No active file selected.</p>
@@ -178,7 +196,12 @@ export default function FilesPage() {
       const imported = await api.uploadDataset(kind, file.name, file)
       const patch: Partial<ProjectSettings> = { [setting]: imported.id }
       if (setting === 'building_dataset_id') patch.neighbor_dataset_id = imported.id
-      await api.updateProjectSettings(patch)
+      // Two writes, and only the second can fail after the file is already on
+      // disk.  `set_project_settings` re-validates the climate pair on every
+      // write, so a half-configured climate can reject an unrelated activation
+      // - and reporting that as "Upload failed" would send the user to re-upload
+      // a file that is registered and listed.
+      await activationStep(imported.name, () => api.updateProjectSettings(patch))
       return imported
     },
     onSuccess: async (imported) => { await refresh(); notify(`${imported.name} validated and activated.`, 'success') },
@@ -212,8 +235,11 @@ export default function FilesPage() {
   })
   const ingestMutation = useMutation({
     mutationFn: async ({ id, population, crs }: { id: string; population: number; crs: string }) => {
+      // The costlier half of the same shape: the extraction is minutes of work
+      // on a large database, so labelling a failed activation "Extraction
+      // failed" invites the user to run all of it again for nothing.
       const stock = await api.ingestDataset(id, { population, crs })
-      await api.updateProjectSettings({ stock_dataset_id: stock.id })
+      await activationStep(stock.name, () => api.updateProjectSettings({ stock_dataset_id: stock.id }))
       return stock
     },
     onSuccess: async (stock) => {
@@ -275,13 +301,18 @@ export default function FilesPage() {
     if (!result.ok) { notify(result.reason, 'error'); return }
     activateMutation.mutate(result.patch)
   }
-  const ready = profile.data?.missing_inputs.length === 0 && Object.values(profile.data?.entrypoints ?? {}).every(Boolean)
+  const readiness = inputReadiness(profile.data, profile.isError)
   return <div className="product-page files-page">
     <header className="product-page-header">
       <div><span>01 / INPUT CONTROL</span><h1>Files</h1><p>Validate, register and activate the inputs every stock run reads. The active set decides which city is being modelled.</p></div>
-      <div className={`product-readiness ${ready ? 'ready' : 'blocked'}`}>
+      <div className={`product-readiness ${readiness.state}`}>
         <span className="status-dot" />
-        <div><strong>{ready ? 'RUN READY' : 'INPUTS REQUIRED'}</strong><small>{profile.data?.missing_inputs.join(', ') || 'All engine entry points and inputs resolved'}</small></div>
+        <div>
+          <strong>{readiness.state === 'ready' ? 'RUN READY' : readiness.state === 'checking' ? 'CHECKING INPUTS' : 'INPUTS REQUIRED'}</strong>
+          <small title={readiness.reason || undefined}>{readiness.state === 'ready'
+            ? 'All engine entry points and inputs resolved'
+            : readiness.state === 'checking' ? 'Reading the active input set…' : readiness.reason}</small>
+        </div>
       </div>
     </header>
 

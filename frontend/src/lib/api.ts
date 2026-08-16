@@ -145,7 +145,13 @@ export const api = {
     body.set('name', name)
     body.set('file', file)
     const response = await fetch(`${API_BASE}/api/datasets`, { method: 'POST', body })
-    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail ?? response.statusText)
+    if (!response.ok) {
+      // `ApiError`, like every other upload here, so a caller can still read the
+      // status: a plain Error drops it, and a rejected upload is exactly where
+      // the difference between "refused" and "unreachable" matters.
+      const detail = await response.json().catch(() => ({ detail: response.statusText })) as { detail?: unknown }
+      throw new ApiError(typeof detail.detail === 'string' ? detail.detail : JSON.stringify(detail.detail), response.status)
+    }
     return response.json() as Promise<DatasetRecord>
   },
   fieldMapDataset: (datasetId: string, mapping: { reference_field: string; floors_field: string; cluster_field: string | null }) =>

@@ -186,7 +186,12 @@ export default function RunPage() {
             <button className="secondary-button" disabled={!detail.data?.running || stopMutation.isPending} onClick={() => stopMutation.mutate()}><Square size={14} /> Stop safely</button>
             <Clock3 size={14} /><span>Counts are read from the fsynced ledger, not process memory.</span>
           </div>
-          <div className="run-log"><header><TerminalSquare size={14} /><span>PROCESS LOG · LAST 160 KB</span></header><pre>{log.data || 'Waiting for process output…'}</pre></div>
+          <div className="run-log"><header><TerminalSquare size={14} /><span>PROCESS LOG · LAST 160 KB</span></header>{/* A failing log fetch and a process that has not printed yet are not the
+              same thing, and the reassuring line said both.  Over a run measured
+              in days, that is the difference between quiet and blind. */}
+          <pre className={log.isError ? 'run-log-error' : undefined}>{log.isError
+            ? `Could not read the process log: ${log.error instanceof Error ? log.error.message : 'the request failed'}.\nThe run itself is unaffected — the counts above come from the ledger on disk.`
+            : log.data || 'Waiting for process output…'}</pre></div>
         </> : <div className="run-monitor-empty"><Play size={28} /><strong>Nothing is running</strong><p>Complete preflight to start a new durable stock run.</p></div>}
       </section>
     </div>

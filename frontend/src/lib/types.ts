@@ -368,6 +368,14 @@ export interface ProductClusterSummary {
   vs_rai_pct?: number
 }
 
+export interface ProductDistrictSummary {
+  nombre: string
+  buildings: number
+  residential_area_m2: number
+  total_site_gwh: number
+  area_weighted_kwh_m2: number
+}
+
 export interface ProductStockSummary {
   buildings_ok: number
   buildings_failed: number
@@ -402,13 +410,21 @@ export interface ProductStockSummary {
     total_site_gwh: number
     residential_area_m2: number
     area_weighted_total_site_kwh_m2: number
-    cadastral_total_site_kwh_m2: number
     carbon_total_site_t_yr: number
-    tipo15_residential_area_m2: number
+    // Both cadastral figures come from the Spanish Tipo15 record, so
+    // `aggregate()` writes them only when the stock carries that column
+    // (stock_runner.py:948).  A city without a Spanish cadastre has no such
+    // area: the fields are ABSENT, not zero, and typing them as required made
+    // the interface promise a number it can only have for one country.
+    cadastral_total_site_kwh_m2?: number
+    tipo15_residential_area_m2?: number
     area_basis?: string
     area_basis_note?: string
   }
   by_cluster: ProductClusterSummary[]
+  // Administrative roll-up.  Always present in the response and empty for a
+  // stock that names no districts, which is every city but Valencia so far.
+  by_district?: ProductDistrictSummary[]
   // Absent from every run finished before the layer existed, which is why the
   // download is offered on `written` rather than on the run being complete.
   results_layer?: {

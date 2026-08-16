@@ -116,6 +116,50 @@ def test_run_detail_carries_the_engines_own_totals(client, has_finished_run):
     assert totals["cadastral_total_site_kwh_m2"] > totals["area_weighted_total_site_kwh_m2"]
 
 
+def _minimal_ok_row(reference: str, **extra) -> dict:
+    row = {"refparcela": reference, "status": "ok", "seconds": 1.5,
+           "res_area_m2": 1000.0, "space_heating_kwh_m2": 5.0,
+           "cooling_kwh_m2": 4.0, "dhw_kwh_m2": 10.0,
+           "total_site_kwh_m2": 50.0, "total_site_co2_kg_m2": 15.0}
+    row.update(extra)
+    return row
+
+
+def test_a_stock_without_a_cadastre_omits_the_cadastral_totals():
+    """Absent, not zero.
+
+    Both cadastral figures come off the Spanish Tipo15 record.  A city that has
+    no such record has no cadastral dwelling area at all, and writing 0.0 there
+    would read as "we measured it and it was nothing" - the same NULL-is-not-
+    zero rule the ledger and the coverage blocks already follow.  The interface
+    types these fields as optional on the strength of this contract, and gates a
+    KPI card on their presence, so a change that started emitting 0.0 would put
+    an empty Valencia-shaped card back on every other city.
+    """
+    import stock_runner as sr
+
+    spanish = sr.aggregate([_minimal_ok_row("A1", tipo15_res_area_m2=900.0),
+                            _minimal_ok_row("A2", tipo15_res_area_m2=800.0)])
+    assert spanish["totals"]["tipo15_residential_area_m2"] == 1700.0
+    assert spanish["totals"]["cadastral_total_site_kwh_m2"] > 0
+
+    foreign = sr.aggregate([_minimal_ok_row("B1"), _minimal_ok_row("B2")])
+    assert "cadastral_total_site_kwh_m2" not in foreign["totals"]
+    assert "tipo15_residential_area_m2" not in foreign["totals"]
+    # the geometric basis is unaffected: what is missing is a second denominator
+    assert foreign["totals"]["area_weighted_total_site_kwh_m2"] == 50.0
+
+
+def test_a_cadastral_column_that_is_entirely_blank_is_also_absent():
+    """A column of nulls is a column that measured nothing, not a zero area."""
+    import stock_runner as sr
+
+    blank = sr.aggregate([_minimal_ok_row("C1", tipo15_res_area_m2=None),
+                          _minimal_ok_row("C2", tipo15_res_area_m2=None)])
+    assert "cadastral_total_site_kwh_m2" not in blank["totals"]
+    assert "tipo15_residential_area_m2" not in blank["totals"]
+
+
 def test_finished_run_reports_its_totals_as_final(client, has_finished_run):
     """A written aggregate is a final total, and says so."""
     if not has_finished_run:
