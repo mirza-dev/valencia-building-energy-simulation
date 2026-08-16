@@ -40,13 +40,15 @@ export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   webServer: {
-    command: `env PYTHONPATH=../src WORKBENCH_ENV=test WORKBENCH_PORT=${e2ePort} WORKBENCH_TEST_ROOT=${shellQuote(e2eRoot)} WORKBENCH_TEST_RUN_ID=${shellQuote(e2eRunId)} WORKBENCH_TEST_REQUIRE_HEADER=1 WORKBENCH_VAR_DIR=${shellQuote(`${e2eRoot}/var`)} WORKBENCH_DB_PATH=${shellQuote(`${e2eRoot}/var/workbench.sqlite3`)} WORKBENCH_PREVIEW_ROOT=${shellQuote(`${e2eRoot}/previews`)} WORKBENCH_IMPORT_ROOT=${shellQuote(`${e2eRoot}/imports`)} WORKBENCH_RUN_ROOT=${shellQuote(`${e2eRoot}/runs`)} WORKBENCH_EXPORT_ROOT=${shellQuote(`${e2eRoot}/exports`)} MPLCONFIGDIR=${shellQuote(`${e2eRoot}/matplotlib`)} TMPDIR=${shellQuote(`${e2eRoot}/tmp`)} TMP=${shellQuote(`${e2eRoot}/tmp`)} TEMP=${shellQuote(`${e2eRoot}/tmp`)} ../.venv/bin/python -m workbench`,
+    command: `env PYTHONPATH=../src WORKBENCH_ENV=test WORKBENCH_PORT=${e2ePort} WORKBENCH_TEST_ROOT=${shellQuote(e2eRoot)} WORKBENCH_TEST_RUN_ID=${shellQuote(e2eRunId)} WORKBENCH_TEST_REQUIRE_HEADER=1 WORKBENCH_VAR_DIR=${shellQuote(`${e2eRoot}/var`)} WORKBENCH_DB_PATH=${shellQuote(`${e2eRoot}/var/workbench.sqlite3`)} WORKBENCH_PREVIEW_ROOT=${shellQuote(`${e2eRoot}/previews`)} WORKBENCH_IMPORT_ROOT=${shellQuote(`${e2eRoot}/imports`)} WORKBENCH_RUN_ROOT=${shellQuote(`${e2eRoot}/runs`)} WORKBENCH_EXPORT_ROOT=${shellQuote(`${e2eRoot}/exports`)} MPLCONFIGDIR=${shellQuote(`${e2eRoot}/matplotlib`)} TMPDIR=${shellQuote(`${e2eRoot}/tmp`)} TMP=${shellQuote(`${e2eRoot}/tmp`)} TEMP=${shellQuote(`${e2eRoot}/tmp`)} sh -c '../.venv/bin/python e2e/provision-city.py && exec ../.venv/bin/python -m workbench'`,
     url: `${e2eURL}/api/health`,
     reuseExistingServer: false,
     // Cold OpenStudio + Matplotlib initialization can exceed one minute on the
-    // external test volume.  This is startup admission only; individual UI
-    // assertions retain their tighter 30/90-second limits.
-    timeout: 120_000,
+    // external test volume, and the city is now provisioned ahead of the server
+    // in the same command, which reads the full cadastre once.  This is startup
+    // admission only; individual UI assertions retain their tighter 30/90-second
+    // limits.
+    timeout: 300_000,
     stdout: 'pipe',
     stderr: 'pipe',
   },
