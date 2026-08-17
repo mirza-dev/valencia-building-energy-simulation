@@ -1780,6 +1780,25 @@ def stock_export(name: str, references: list[str] | None = Query(default=None)):
     )
 
 
+# Declared before the artifact route on purpose: Starlette matches in
+# registration order, so below it `scene` would bind to `{filename}` and be
+# refused as a non-allowlisted artifact.  `test_building_scene_route_is_not_shadowed`
+# pins the order.
+@app.get("/api/stock/runs/{name}/buildings/{refparcela}/scene")
+def stock_building_scene(name: str, refparcela: str):
+    """Browser geometry for one preserved building, rebuilt from its own OSM."""
+    try:
+        return stock_adapter.building_scene(name, refparcela)
+    except stock_adapter.SceneUnavailable as exc:
+        # The building exists and the caller did nothing wrong; the evidence is
+        # unreadable.  Say which, rather than blaming the request with a 422.
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(f"{refparcela}/model_python.osm") from exc
+
+
 @app.get("/api/stock/runs/{name}/buildings/{refparcela}/{filename}")
 def stock_building_artifact(name: str, refparcela: str, filename: str):
     try:

@@ -62,6 +62,30 @@ test('stock product exposes Files → Run → Outputs with verified evidence', a
   // raised before EnergyPlus ran has none to report, which is a property of the
   // run rather than of this screen.
   await expect(page.locator('.building-evidence-drawer')).toContainText('— kWh/m²')
+  // A failed building has no preserved model, so it is not offered a geometry
+  // check: the button shares the gate that hides the preserved-files list.
+  await expect(page.getByRole('button', { name: /Geometry check/ })).toHaveCount(0)
+
+  // Geometry check rebuilds the scene from the building's own preserved OSM.
+  await page.getByLabel('Filter ledger by status').selectOption('ok')
+  await expect(page.locator('.ledger-table tbody tr').first().locator('.ledger-status')).toHaveText('ok')
+  await page.locator('.ledger-table tbody tr').first().click()
+  await page.getByRole('button', { name: /Geometry check/ }).click()
+  const viewer = page.locator('.geometry-check-drawer [data-render-ready]')
+  await expect(viewer).toHaveAttribute('data-render-ready', 'true', { timeout: 60_000 })
+
+  // Selecting another building swaps the scene inside the viewer that is
+  // already mounted (the query holds the previous one on screen meanwhile).
+  // That is the case the frame counter used to break: `onReady` fires on an
+  // exact frame count, so before the `sceneEpoch` remount the overlay stuck on
+  // for good after the first scene change and never reported ready again.
+  const second = await page.locator('.ledger-table tbody tr').nth(1)
+    .locator('td').nth(1).innerText()
+  await page.locator('.ledger-table tbody tr').nth(1).click()
+  await expect(page.locator('.geometry-check-drawer header strong')).toHaveText(second)
+  await expect(viewer).toHaveAttribute('data-render-ready', 'true', { timeout: 60_000 })
+  await page.getByRole('button', { name: 'Close geometry check' }).click()
+  await expect(page.locator('.geometry-check-drawer')).toHaveCount(0)
 
   const overflow = await page.evaluate(() => ({
     body: document.body.scrollWidth - document.body.clientWidth,

@@ -1762,6 +1762,45 @@ button:disabled { opacity: .5; }
 .building-package-link strong { font-size: 10px; }
 .building-package-link small { color: var(--muted); font-size: 8px; line-height: 1.35; }
 
+.geometry-check-button { min-height: 52px; margin: 0 12px 10px; padding: 9px 10px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line-strong); background: #f2f5f2; text-align: left; cursor: pointer; }
+.geometry-check-button:hover { background: #eaf2ef; }
+.geometry-check-button > span { display: grid; gap: 2px; }
+.geometry-check-button strong { font-size: 10px; }
+.geometry-check-button small { color: var(--muted); font-size: 8px; line-height: 1.35; }
+
+/* Positioned like the evidence drawer (absolute, below the page header) and
+   sized like `.code-drawer`, the app's existing wide-drawer width.
+
+   The ledger is squeezed rather than covered.  Measured with both drawers open
+   at 1280: an overlaying drawer left about 100 px of table, so the next
+   building could not be clicked at all - which is exactly the comparison this
+   view exists for.  Padding the scroll container reflows the table into what
+   is left, so every row stays whole and clickable. */
+.geometry-check-drawer { position: absolute; z-index: 16; top: 104px; right: 0; bottom: 0; width: min(620px, 100vw); display: flex; flex-direction: column; background: #f8f9f6; border-left: 1px solid var(--line-strong); box-shadow: -10px 0 30px rgba(27,37,32,.18); }
+.outputs-page.geometry-open .product-scroll { padding-right: min(632px, 100vw); }
+
+@media (min-width: 1600px) {
+  /* Only here is there room for all three: table, geometry and evidence.
+     Below this the geometry drawer takes the evidence drawer's place, whose
+     four figures the ledger row already carries anyway. */
+  .geometry-check-drawer { right: 360px; }
+  .outputs-page.geometry-open .product-scroll { padding-right: 992px; }
+}
+.geometry-check-drawer > header { min-height: 62px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.geometry-check-drawer > header > div { display: flex; align-items: center; gap: 8px; }
+.geometry-check-drawer > header span { display: grid; gap: 2px; }
+.geometry-check-drawer > header small { color: var(--faint); font: 8px var(--mono); }
+.geometry-check-drawer > header strong { font: 12px var(--mono); }
+.geometry-check-body { position: relative; flex: 1; min-height: 0; display: flex; }
+.geometry-check-body > * { flex: 1; min-width: 0; }
+/* `.model-viewer` is `position: absolute; inset: 0` by default, which would
+   pin it to the drawer and cover the header and the note.  Same override the
+   geometry editor already uses to place it inside a sized box. */
+.geometry-check-body .model-viewer { position: relative; height: 100%; }
+.geometry-check-error { flex-direction: column; gap: 8px; color: #8a3d2f; text-align: center; padding: 0 24px; }
+.geometry-check-note { margin: 0; padding: 9px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; line-height: 1.45; }
+.geometry-check-note code { font-size: 8px; }
+
 @media (max-width: 1320px) {
   /* Back to wrapping rows here: the auto-column flow above would keep adding
      implicit columns instead of honouring this three-wide template. */

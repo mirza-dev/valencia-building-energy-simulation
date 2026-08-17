@@ -13,6 +13,7 @@ import os
 import time
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -305,6 +306,82 @@ def test_only_allowlisted_artifacts_are_served(client, has_finished_run):
     response = client.get(
         f"/api/stock/runs/{FINISHED_RUN}/buildings/{reference}/eplusout.sql")
     assert response.status_code == 422
+
+
+def test_building_scene_carries_the_models_own_origin(client, has_finished_run):
+    """The scene must be the building's, not a stub that renders identically.
+
+    `extract_scene` only needs three keys, and it is cheap to hand it zeros;
+    doing so would draw the same shape while lying about where it stands.  So
+    this asserts the values come from the building's own `deep_layers.json`.
+    """
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    rows = stock_adapter.ledger_rows(FINISHED_RUN)
+    reference = next(r["refparcela"] for r in rows if r.get("status") == "ok")
+    layers = json.loads(stock_adapter.artifact_path(
+        FINISHED_RUN, reference, "deep_layers.json").read_text(encoding="utf-8"))
+
+    response = client.get(f"/api/stock/runs/{FINISHED_RUN}/buildings/{reference}/scene")
+    assert response.status_code == 200
+    scene = response.json()
+    assert scene["refparcela"] == str(reference)
+    assert scene["origin_epsg25830"] == [
+        layers["summary"]["origin_x"], layers["summary"]["origin_y"]]
+    assert scene["origin_epsg25830"] != [0.0, 0.0]
+    # The viewer indexes all four unconditionally, and collapses to NaN with no
+    # surfaces, so an empty geometry must never reach it as a 200.
+    for key in ("surfaces", "subsurfaces", "shading", "facade_qa"):
+        assert isinstance(scene[key], list)
+    assert scene["surfaces"]
+
+
+def test_building_scene_route_is_not_shadowed(client, has_finished_run):
+    """`scene` must not bind to the artifact route's `{filename}`.
+
+    Starlette matches in registration order.  Declared after the artifact
+    route, this path would be read as a request for a file called `scene`,
+    refused by the allowlist, and 422 - a failure that looks like a bad
+    request rather than a routing mistake.
+    """
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    rows = stock_adapter.ledger_rows(FINISHED_RUN)
+    reference = next(r["refparcela"] for r in rows if r.get("status") == "ok")
+    response = client.get(f"/api/stock/runs/{FINISHED_RUN}/buildings/{reference}/scene")
+    assert response.status_code != 422
+
+
+def test_building_scene_refuses_what_it_cannot_show(client, has_finished_run):
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    # No model on disk is a 404, not an empty scene: a building that failed or
+    # was excluded before EnergyPlus has no geometry to check.
+    assert client.get(
+        f"/api/stock/runs/{FINISHED_RUN}/buildings/no-such-building/scene",
+    ).status_code == 404
+    assert client.get(
+        "/api/stock/runs/no-such-run/buildings/whatever/scene").status_code == 404
+
+
+def test_building_scene_reports_unreadable_evidence_as_such(client, has_finished_run, tmp_path):
+    """A damaged model is a 500 with a reason, never a 422 and never a blank."""
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    rows = stock_adapter.ledger_rows(FINISHED_RUN)
+    reference = next(r["refparcela"] for r in rows if r.get("status") == "ok")
+    damaged = tmp_path / "model_python.osm"
+    damaged.write_text("not an OpenStudio model", encoding="utf-8")
+    real = stock_adapter.artifact_path
+
+    def fake(name, ref, filename):
+        return damaged if filename == "model_python.osm" else real(name, ref, filename)
+
+    with mock.patch.object(stock_adapter, "artifact_path", fake):
+        response = client.get(
+            f"/api/stock/runs/{FINISHED_RUN}/buildings/{reference}/scene")
+    assert response.status_code == 500
+    assert "could not be opened" in response.json()["detail"]
 
 
 def test_a_stopped_run_does_not_look_alive_and_block_its_own_resume():

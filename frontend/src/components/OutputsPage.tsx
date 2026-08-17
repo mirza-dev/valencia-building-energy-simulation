@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, BarChart3, Building2, CheckCircle2, Download, ExternalLink, FileSearch, Image, Map, PackageCheck, Search } from 'lucide-react'
+import { AlertTriangle, BarChart3, Box, Building2, CheckCircle2, Download, ExternalLink, FileSearch, Image, Map, PackageCheck, Search } from 'lucide-react'
 import { api } from '../lib/api'
 import { formatProductBytes } from '../lib/productStock'
 import type { ProductLedgerRow } from '../lib/types'
 import { useFeedback } from './FeedbackProvider'
+import GeometryCheckDrawer from './GeometryCheckDrawer'
 
 const PAGE_SIZE = 100
 // Must stay a subset of `stock_runner.KEPT_ARTIFACTS`, which is what a stock run
@@ -102,6 +103,7 @@ export default function OutputsPage() {
   const [status, setStatus] = useState('')
   const [offset, setOffset] = useState(0)
   const [building, setBuilding] = useState<ProductLedgerRow | null>(null)
+  const [geometry, setGeometry] = useState(false)
   const [exportPlan, setExportPlan] = useState<Awaited<ReturnType<typeof api.stockExportPlan>> | null>(null)
   const [exportConfirmed, setExportConfirmed] = useState(false)
 
@@ -154,10 +156,11 @@ export default function OutputsPage() {
     onError: (error) => notify(error instanceof Error ? error.message : 'Export plan failed.', 'error'),
   })
 
-  return <div className="product-page outputs-page">
+  const geometryOpen = geometry && building?.status === 'ok'
+  return <div className={`product-page outputs-page ${geometryOpen ? 'geometry-open' : ''}`}>
     <header className="product-page-header outputs-header">
       <div><span>03 / EVIDENCE</span><h1>Outputs</h1><p>Read aggregate results, audit every building and open the files preserved by the runner.</p></div>
-      <div className="output-run-picker"><label><span>RUN</span><select value={selected} onChange={(event) => { setSelected(event.target.value); setOffset(0); setBuilding(null); setExportPlan(null) }}>
+      <div className="output-run-picker"><label><span>RUN</span><select value={selected} onChange={(event) => { setSelected(event.target.value); setOffset(0); setBuilding(null); setGeometry(false); setExportPlan(null) }}>
         {(runs.data?.runs ?? []).map((run) => <option key={run.run} value={run.run}>{run.run}{run.running ? ' · RUNNING' : ''}</option>)}
       </select></label>{selected && <><a className="secondary-button" href={api.stockLedgerCsvUrl(selected)}><Download size={14} /> Building CSV</a>{summary?.results_layer?.written && <a className="secondary-button" href={api.stockResultsLayerUrl(selected)} title={`One feature per building in ${summary.results_layer.crs ?? 'the run projection'}, plus ${Object.keys(summary.results_layer.zone_layers ?? {}).join(' and ') || 'no'} roll-up layers, styled on opening — drag into QGIS`}><Map size={14} /> GIS layer (.gpkg)</a>}{summary?.results_layer?.heatmap?.written && <a className="secondary-button" href={api.stockHeatmapUrl(selected)} title={`${(summary.results_layer.heatmap.panels ?? []).length} panels; buildings with no result drawn grey — a picture for a report, no GIS needed`}><Image size={14} /> Heat map (.png)</a>}<button className="secondary-button" disabled={detail.data?.running || exportPlanMutation.isPending} onClick={() => exportPlanMutation.mutate()}><PackageCheck size={14} /> {exportPlanMutation.isPending ? 'Sizing…' : 'Full signed ZIP'}</button></>}</div>
     </header>
@@ -227,10 +230,14 @@ export default function OutputsPage() {
     </div>
 
     {building && <aside className="building-evidence-drawer" aria-label={`Evidence for ${building.refparcela}`}>
-      <header><div><Building2 size={17} /><span><small>BUILDING EVIDENCE</small><strong>{building.refparcela}</strong></span></div><button className="icon-button" onClick={() => setBuilding(null)} aria-label="Close evidence">×</button></header>
+      <header><div><Building2 size={17} /><span><small>BUILDING EVIDENCE</small><strong>{building.refparcela}</strong></span></div><button className="icon-button" onClick={() => { setBuilding(null); setGeometry(false) }} aria-label="Close evidence">×</button></header>
       <dl><div><dt>Status</dt><dd>{building.status}</dd></div><div><dt>Cluster</dt><dd>{String(building.cluster ?? '—')}</dd></div><div><dt>Total site EUI</dt><dd>{number(building.total_site_kwh_m2, 2)} kWh/m²</dd></div><div><dt>QA</dt><dd>{building.qa_all_passed === true ? 'PASS' : building.qa_all_passed === false ? 'FAIL' : '—'}</dd></div>{(building.error || building.message || building.reason) && <div><dt>Failure</dt><dd><strong>{building.reason ?? 'Error'}</strong>{building.message || building.error ? <span>{String(building.message ?? building.error)}</span> : null}</dd></div>}</dl>
+      {building.status === 'ok' && <button className="geometry-check-button" onClick={() => setGeometry(true)}><Box size={14} /><span><strong>Geometry check</strong><small>Open the model this building was simulated from</small></span></button>}
       {building.status === 'ok' && <nav><span>PRESERVED FILES</span>{ARTIFACTS.map(([file, label]) => <a key={file} href={api.stockArtifactUrl(selected, building.refparcela, file)} target="_blank" rel="noreferrer"><ExternalLink size={14} /><span><strong>{label}</strong><code>{file}</code></span></a>)}</nav>}
       <a className="building-package-link" href={api.stockExportUrl(selected, [building.refparcela])}><PackageCheck size={14} /><span><strong>Signed building package</strong><small>Model, preserved outputs, ledger evidence and Ed25519 manifest</small></span></a>
     </aside>}
+
+    {geometryOpen && building && <GeometryCheckDrawer
+      run={selected} reference={building.refparcela} onClose={() => setGeometry(false)} />}
   </div>
 }

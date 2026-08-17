@@ -42,6 +42,7 @@ import stock_input_policy as sip
 import stock_runner as sr
 import verified_model as vm
 from workbench import db, file_inputs, integrity
+from workbench.scene import extract_scene_from_path
 
 PROJECT = Path(__file__).resolve().parents[2]
 RUNNER_PATH = PROJECT / "src/stock_runner.py"
@@ -785,6 +786,54 @@ def artifact_path(name: str, refparcela: str, filename: str) -> Path:
     if out_dir not in candidate.parents:
         raise ValueError("resolved outside the run directory")
     return candidate
+
+
+class SceneUnavailable(RuntimeError):
+    """The preserved model is there but cannot be turned into browser geometry.
+
+    Deliberately not a `ValueError`: the caller asked for a building that
+    exists, so this is unreadable evidence rather than a bad request, and the
+    two must not arrive at the operator wearing the same status code.
+    """
+
+
+def building_scene(name: str, refparcela: str) -> dict[str, Any]:
+    """Rebuild the browser geometry of one preserved building model.
+
+    Derived, never preserved.  The scene is recomputed from `model_python.osm`
+    on every request and no file is written into the run directory: that tree
+    is signed evidence and `_package_sources` collects it wholesale, so a
+    cached `scene.json` dropped beside the model would silently change what a
+    signed package contains.  A warm extraction costs about 0.2 s, which is
+    cheap enough that the honest arrangement is also the affordable one.
+
+    The origin and reference come from the building's own `deep_layers.json`,
+    not from a stub.  A synthetic origin would render identically and be a
+    quiet lie about where the building stands.
+    """
+    osm = artifact_path(name, refparcela, "model_python.osm")
+    layers = artifact_path(name, refparcela, "deep_layers.json")
+    try:
+        summary = json.loads(layers.read_text(encoding="utf-8"))["summary"]
+        stats = {
+            "refparcela": str(summary["refparcela"]),
+            "origin_x": float(summary["origin_x"]),
+            "origin_y": float(summary["origin_y"]),
+        }
+    except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError) as exc:
+        raise SceneUnavailable(f"{layers.name} does not carry the model's origin") from exc
+
+    try:
+        scene = extract_scene_from_path(osm, stats)
+    except Exception as exc:  # OpenStudio raises broadly on a damaged model
+        raise SceneUnavailable(f"{osm.name} could not be opened") from exc
+
+    if not scene.get("surfaces"):
+        # Zero surfaces is "this model has no geometry", not "an empty model":
+        # the viewer's bounding box would collapse to NaN and draw a blank
+        # canvas that looks like a rendering bug rather than a missing one.
+        raise SceneUnavailable(f"{osm.name} contains no surfaces")
+    return scene
 
 
 # ---------------------------------------------------------------------------

@@ -202,6 +202,9 @@ export const api = {
   stockArtifactUrl: (name: string, reference: string, filename: string) => absoluteApiUrl(
     `/api/stock/runs/${encodeURIComponent(name)}/buildings/${encodeURIComponent(reference)}/${encodeURIComponent(filename)}`,
   ),
+  stockBuildingScene: (name: string, reference: string) => request<SceneModel>(
+    `/api/stock/runs/${encodeURIComponent(name)}/buildings/${encodeURIComponent(reference)}/scene`,
+  ),
   stockExportPlan: (name: string, references?: string[]) => {
     const params = new URLSearchParams()
     references?.forEach((reference) => params.append('references', reference))
