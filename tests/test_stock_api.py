@@ -384,6 +384,34 @@ def test_building_scene_reports_unreadable_evidence_as_such(client, has_finished
     assert "could not be opened" in response.json()["detail"]
 
 
+def test_a_missing_origin_record_is_not_reported_as_a_missing_model(
+        client, has_finished_run):
+    """Two files are resolved here, and the 404 must name the one that is gone.
+
+    The model is 1 MB of geometry sitting on disk; saying it is missing sends
+    someone to look for a file that is right there, while the record that
+    actually went absent goes unmentioned.
+    """
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    rows = stock_adapter.ledger_rows(FINISHED_RUN)
+    reference = next(r["refparcela"] for r in rows if r.get("status") == "ok")
+    real = stock_adapter.artifact_path
+
+    def fake(name, ref, filename):
+        if filename == "deep_layers.json":
+            raise FileNotFoundError(f"deep_layers.json not found for {ref}")
+        return real(name, ref, filename)
+
+    with mock.patch.object(stock_adapter, "artifact_path", fake):
+        response = client.get(
+            f"/api/stock/runs/{FINISHED_RUN}/buildings/{reference}/scene")
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert "deep_layers.json" in detail
+    assert "model_python.osm" not in detail
+
+
 def test_a_stopped_run_does_not_look_alive_and_block_its_own_resume():
     """A stopped run leaves a zombie, and `os.kill(pid, 0)` succeeds for those.
 
@@ -565,3 +593,254 @@ def test_the_rate_is_the_mean_because_the_workers_share_one_queue(tmp_path, monk
     rate, _ = stock_adapter._seconds_per_building()
     predicted = 968 * rate / 3 / 60
     assert predicted == pytest.approx(323.47, rel=0.01)
+
+
+def test_an_event_run_is_not_a_basis_for_an_annual_estimate(tmp_path, monkeypatch):
+    """The real pair, on the day the full city was about to be launched.
+
+    `LECCO_1` was the newest finished run and simulated an 8-day window at
+    9.6 s per building; `benicalap_v9` was annual at 56.3 s.  Taking the newest
+    by date alone quoted 11 hours for Valencia's 25,094 buildings where the
+    annual basis says 65 - the difference between waiting through an afternoon
+    and leaving a machine running for three days.
+    """
+    stock_root = tmp_path / "stock"
+    event, annual = stock_root / "LECCO_1", stock_root / "benicalap_v9"
+    for path, mean, period in (
+            (annual, 56.3, {"period": "annual", "unit": "kWh/m²·yr"}),
+            (event, 9.6, {"period": "microclimate_event", "event_days": 8})):
+        path.mkdir(parents=True)
+        (path / "aggregate.json").write_text(json.dumps({
+            "seconds_per_building": {"median": 40.3, "mean": mean},
+            "energy_period": period,
+        }), encoding="utf-8")
+    # The event run really is the newer one; skipping it is a judgement about
+    # comparability, not a date comparison that happens to work out.
+    os.utime(annual / "aggregate.json", (1_000_000, 1_000_000))
+    os.utime(event / "aggregate.json", (2_000_000, 2_000_000))
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    rate, basis = stock_adapter._seconds_per_building()
+    assert rate == 56.3
+    assert "benicalap_v9" in basis
+    assert 25_094 * rate / 6 / 3600 == pytest.approx(65.4, rel=0.02)
+
+
+def test_a_run_from_before_energy_period_still_counts_as_annual(tmp_path, monkeypatch):
+    """Absent is not unknown here: every run predating the block was annual.
+
+    Dropping them would push a fresh installation back onto the hard-coded
+    default, which is the figure measuring was introduced to replace.
+    """
+    stock_root = tmp_path / "stock"
+    (stock_root / "v7").mkdir(parents=True)
+    (stock_root / "v7" / "aggregate.json").write_text(
+        json.dumps({"seconds_per_building": {"median": 56.6, "mean": 93.2}}),
+        encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    rate, basis = stock_adapter._seconds_per_building()
+    assert rate == 93.2
+    assert "v7" in basis
+
+
+# ---------------------------------------------------------------------------
+# Building report
+# ---------------------------------------------------------------------------
+def test_building_report_renders_the_runs_own_numbers(client, has_finished_run):
+    """The report must repeat the preserved record, not recompute it.
+
+    Every figure on the page is supposed to be lifted from `deep_layers.json`,
+    so the test picks values out of that file and demands they appear.  A
+    report that recalculated anything would drift from the evidence it claims
+    to be showing.
+    """
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    rows = stock_adapter.ledger_rows(FINISHED_RUN)
+    reference = next(r["refparcela"] for r in rows if r.get("status") == "ok")
+    layers = json.loads(stock_adapter.artifact_path(
+        FINISHED_RUN, reference, "deep_layers.json").read_text(encoding="utf-8"))
+
+    response = client.get(f"/api/stock/runs/{FINISHED_RUN}/buildings/{reference}/report")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "sandbox" in response.headers["content-security-policy"]
+
+    page = response.text
+    assert str(reference) in page
+    # provenance, geometry, energy and QA all present and all the run's own
+    assert layers["summary"]["verified_profile"]["profile_id"] in page
+    assert f"{layers['results']['total_site_kwh_m2']:,.2f}" in page
+    assert f"{layers['summary']['footprint_m2']:,.1f}" in page
+    for check in layers["qa"]:
+        assert check["check"] in page
+    # the stage records are explained, not dumped
+    assert "Partial top storey" in page or "Mixed use" in page
+    assert "Thermal zoning" in page
+
+
+def test_building_report_route_is_not_shadowed(client, has_finished_run):
+    """`report` must not bind to the artifact route's `{filename}`.
+
+    Starlette matches in registration order.  Declared after the artifact
+    route, `report` is read as a filename and refused by the allowlist with a
+    422 - the same trap `scene` documents.  This pins the order.
+    """
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    rows = stock_adapter.ledger_rows(FINISHED_RUN)
+    reference = next(r["refparcela"] for r in rows if r.get("status") == "ok")
+    response = client.get(f"/api/stock/runs/{FINISHED_RUN}/buildings/{reference}/report")
+    assert response.status_code != 422, "the artifact route swallowed 'report'"
+    assert response.status_code == 200
+
+
+def test_building_report_refuses_a_building_with_no_evidence(client, has_finished_run):
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    assert client.get(
+        f"/api/stock/runs/{FINISHED_RUN}/buildings/NO_SUCH_BUILDING/report"
+    ).status_code == 404
+    assert client.get(
+        f"/api/stock/runs/{FINISHED_RUN}/buildings/..%2F..%2Fetc/report"
+    ).status_code in (404, 422)
+
+
+def test_building_report_says_unreadable_rather_than_bad_request(tmp_path, monkeypatch):
+    """A corrupt layer record is broken evidence, not a bad request.
+
+    422 would blame the caller for asking about a building that exists.  The
+    distinction is the same one `SceneUnavailable` draws.
+    """
+    stock_root = tmp_path / "stock"
+    building = stock_root / "run1" / "runs" / "REF_deep"
+    building.mkdir(parents=True)
+    (building / "deep_layers.json").write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    with pytest.raises(stock_adapter.ReportUnavailable):
+        stock_adapter.building_report("run1", "REF")
+    assert not issubclass(stock_adapter.ReportUnavailable, ValueError)
+
+
+def test_building_report_renders_without_a_ledger_row(tmp_path, monkeypatch):
+    """Preserved evidence outlives its row; the page must not need one."""
+    stock_root = tmp_path / "stock"
+    building = stock_root / "run1" / "runs" / "REF_deep"
+    building.mkdir(parents=True)
+    (building / "deep_layers.json").write_text(json.dumps({
+        "summary": {"refparcela": "REF", "footprint_m2": 100.0},
+        "results": {"total_site_kwh_m2": 42.0},
+        "carbon": {}, "qa": [], "layers": {},
+    }), encoding="utf-8")
+    (stock_root / "run1" / "ledger.jsonl").write_text("", encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    page = stock_adapter.building_report("run1", "REF")
+    assert "REF" in page and "42.00" in page
+
+
+# ---------------------------------------------------------------------------
+# Unfinished buildings
+# ---------------------------------------------------------------------------
+def test_unfinished_splits_failures_from_exclusions(client, has_finished_run):
+    """The two need different actions, so they must not arrive as one list."""
+    if not has_finished_run:
+        pytest.skip(f"{FINISHED_RUN} not on disk")
+    body = client.get(f"/api/stock/runs/{FINISHED_RUN}/unfinished").json()
+    rows = stock_adapter.ledger_rows(FINISHED_RUN)
+    assert body["failed"] == sorted(
+        r["refparcela"] for r in rows if r.get("status") in ("failed", "failed_qa"))
+    assert body["excluded"] == sorted(
+        r["refparcela"] for r in rows if r.get("status") == "excluded")
+    assert set(body["failed"]).isdisjoint(body["excluded"])
+    assert sum(body["exclusion_reasons"].values()) == len(body["excluded"])
+
+
+def test_unfinished_counts_a_retried_building_once(tmp_path, monkeypatch):
+    """A failure that later succeeded is done, not outstanding.
+
+    `--retry-failed` appends, so the same reference can hold a `failed` row and
+    an `ok` one.  Reading raw rows would keep offering to retry a building that
+    already has a result.
+    """
+    stock_root = tmp_path / "stock"
+    (stock_root / "run1").mkdir(parents=True)
+    (stock_root / "run1" / "ledger.jsonl").write_text("\n".join(json.dumps(row) for row in [
+        {"refparcela": "A", "status": "failed", "error": "boom"},
+        {"refparcela": "A", "status": "ok", "total_site_kwh_m2": 40.0},
+        {"refparcela": "B", "status": "failed", "error": "boom"},
+        {"refparcela": "C", "status": "excluded", "reason": "footprint_outside_range"},
+    ]) + "\n", encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    left = stock_adapter.unfinished_references("run1")
+    assert left["failed"] == ["B"]
+    assert left["excluded"] == ["C"]
+    assert left["exclusion_reasons"] == {"footprint_outside_range": 1}
+
+
+def test_retry_failed_is_passed_to_the_runner_as_its_own_flag(tmp_path, monkeypatch):
+    """`--retry-failed` is not a flavour of `--resume`.
+
+    `--resume` skips every terminal row, including failures; this one exists to
+    pick exactly those back up.  Folding them together would make the retry
+    button a no-op.
+    """
+    captured: dict = {}
+
+    class _FakePopen:
+        pid = 4321
+
+        def __init__(self, argv, **kwargs):
+            captured["argv"] = argv
+
+    monkeypatch.setattr(stock_adapter.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+
+    stock_adapter.start_run("run1", "references", references=["A"],
+                            retry_failed=True, log_dir=tmp_path / "logs")
+    assert "--retry-failed" in captured["argv"]
+    assert "--resume" not in captured["argv"]
+
+
+def test_scope_size_prefers_the_whole_scope_over_a_resumes_remainder(tmp_path, monkeypatch):
+    """A resume rewrites `run_config.json` with only the work it has left.
+
+    Measured on ALL-VALENC-A: `runnable 6251 + excluded 1351` against 26 558
+    cumulative ledger rows, which is a 268 % progress bar.  The clamp hid it as
+    a permanent 100 %, which is worse than showing nothing.
+    """
+    stock_root = tmp_path / "stock"
+    (stock_root / "run1").mkdir(parents=True)
+    (stock_root / "run1" / "run_config.json").write_text(json.dumps({
+        "runnable": 6251, "excluded": 1351, "scope_total": 26445,
+    }), encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    assert stock_adapter.scope_size("run1")["total"] == 26445
+
+
+def test_scope_size_still_reads_a_run_written_before_scope_total(tmp_path, monkeypatch):
+    """Absent is not zero: the old pair is the best record those runs have."""
+    stock_root = tmp_path / "stock"
+    (stock_root / "run1").mkdir(parents=True)
+    (stock_root / "run1" / "run_config.json").write_text(
+        json.dumps({"runnable": 900, "excluded": 100}), encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    assert stock_adapter.scope_size("run1")["total"] == 1000
+
+
+def test_scope_size_never_reports_a_scope_smaller_than_its_own_parts(tmp_path, monkeypatch):
+    """A corrupt or stale `scope_total` must not shrink the denominator."""
+    stock_root = tmp_path / "stock"
+    (stock_root / "run1").mkdir(parents=True)
+    (stock_root / "run1" / "run_config.json").write_text(json.dumps({
+        "runnable": 900, "excluded": 100, "scope_total": 5,
+    }), encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    assert stock_adapter.scope_size("run1")["total"] == 1000

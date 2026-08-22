@@ -89,3 +89,65 @@ def test_export_is_signed_and_never_contains_private_key(tmp_path, monkeypatch):
         manifest = json.loads(archive.read("export_manifest.json"))
         signature = json.loads(archive.read("export_manifest.sig.json"))
     assert integrity.verify_signed_manifest(manifest, signature) is True
+
+
+def test_a_single_file_that_only_changed_name_is_still_intact(tmp_path):
+    """A permanent false alarm, measured on the live installation 2026-08-22.
+
+    Uploads were registered while still under their `tmpXXXXXX` name and then
+    stored under the operator's name, so the identity hash - which covers
+    component names - could never be reproduced.  Health reported "Registered
+    input snapshot no longer matches source files" on the template and the EPW,
+    both byte-identical to what was registered.  An alarm that is always on is
+    an alarm nobody reads.
+    """
+    upload = tmp_path / "tmpABC123.epw"
+    upload.write_bytes(b"weather data")
+    registered = integrity.ensure_snapshot(upload, kind="weather")
+
+    stored = tmp_path / "Valencia.epw"
+    stored.write_bytes(b"weather data")
+    result = integrity.verify_snapshot_source(
+        stored, registered["snapshot_hash"], kind="weather")
+
+    assert result["ok"] is True
+    assert result["renamed"] is True
+    assert result["actual"] != registered["snapshot_hash"]
+
+
+def test_a_changed_byte_is_still_a_mismatch(tmp_path):
+    """The relaxation is about names only. Content is the whole point."""
+    upload = tmp_path / "tmpABC123.epw"
+    upload.write_bytes(b"weather data")
+    registered = integrity.ensure_snapshot(upload, kind="weather")
+
+    tampered = tmp_path / "Valencia.epw"
+    tampered.write_bytes(b"weather dat!")
+    result = integrity.verify_snapshot_source(
+        tampered, registered["snapshot_hash"], kind="weather")
+
+    assert result["ok"] is False
+    assert result["renamed"] is False
+
+
+def test_a_multi_component_dataset_is_not_given_the_benefit_of_the_doubt(tmp_path):
+    """Renaming sidecars past each other changes meaning without changing bytes.
+
+    A shapefile is only a dataset because of which file is called what, so the
+    single-file reasoning must not be extended to it.
+    """
+    source = tmp_path / "src"
+    source.mkdir()
+    for suffix, content in ((".shp", b"shape"), (".dbf", b"attrs"), (".shx", b"index")):
+        (source / f"layer{suffix}").write_bytes(content)
+    registered = integrity.ensure_snapshot(source / "layer.shp", kind="gis")
+
+    moved = tmp_path / "dst"
+    moved.mkdir()
+    for suffix, content in ((".shp", b"attrs"), (".dbf", b"shape"), (".shx", b"index")):
+        (moved / f"layer{suffix}").write_bytes(content)   # .shp and .dbf swapped
+    result = integrity.verify_snapshot_source(
+        moved / "layer.shp", registered["snapshot_hash"], kind="gis")
+
+    assert result["ok"] is False
+    assert result["renamed"] is False

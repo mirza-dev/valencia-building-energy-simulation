@@ -919,25 +919,43 @@ def system_health() -> dict[str, Any]:
         "buildings": "building_dataset_id", "neighbors": "neighbor_dataset_id",
         "template": "template_dataset_id", "weather": "weather_dataset_id",
     }
-    descriptor_cache: dict[tuple[str, str], dict[str, Any]] = {}
+    # The verdict comes from `integrity.verify_snapshot_source`, which owns it,
+    # rather than being restated here.  Restating it is how this check came to
+    # report a content mismatch on files whose bytes had never changed: the
+    # identity hash covers component names, uploads are registered under their
+    # temporary name, and only the one function that knows that could tell a
+    # rename apart from a tamper.
+    verdict_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
     for key, path in files.items():
         item: dict[str, Any] = {"ok": path.exists(), "path": str(path)}
         if path.exists():
             try:
-                cache_key = (str(path.resolve()), kinds[key])
-                actual = descriptor_cache.get(cache_key)
-                if actual is None:
-                    actual = integrity.snapshot_descriptor(path, kind=kinds[key])
-                    descriptor_cache[cache_key] = actual
                 dataset_id = settings.get(dataset_fields[key])
                 dataset = db.get_dataset(dataset_id) if dataset_id else None
                 expected = dataset.get("snapshot_hash") if dataset else None
+                if not expected:
+                    item.update(ok=False, expected_snapshot_hash=None,
+                                error="No registered snapshot for this input")
+                    file_checks[key] = item
+                    continue
+                cache_key = (str(path.resolve()), kinds[key], expected)
+                verdict = verdict_cache.get(cache_key)
+                if verdict is None:
+                    verdict = integrity.verify_snapshot_source(
+                        path, expected, kind=kinds[key])
+                    verdict_cache[cache_key] = verdict
                 item.update(
-                    ok=bool(expected) and actual["snapshot_hash"] == expected,
-                    snapshot_hash=actual["snapshot_hash"], expected_snapshot_hash=expected,
-                    components=len(actual["components"]),
+                    ok=bool(verdict["ok"]),
+                    snapshot_hash=verdict["actual"], expected_snapshot_hash=expected,
+                    components=len(verdict["components"]),
                 )
-                if expected and actual["snapshot_hash"] != expected:
+                if verdict.get("renamed"):
+                    # Intact, and said out loud rather than passed silently: the
+                    # recorded name is stale and the file should be re-registered
+                    # when convenient.
+                    item["note"] = ("Registered under the upload's temporary name; "
+                                    "contents verified unchanged")
+                elif not verdict["ok"]:
                     item["error"] = "Registered input snapshot no longer matches source files"
             except Exception as exc:
                 item.update(ok=False, error=str(exc))
@@ -1646,6 +1664,17 @@ def import_dataset(kind: str, name: str, source: Path, *, original_name: str | N
         preserved_name = snapshot_source.name
 
     validation = _inspect_uploaded_dataset(kind, snapshot_source)
+    # Identity is computed under the name the file will actually keep.  The
+    # upload arrives as `tmpXXXXXX`, and registering it under that name gave
+    # every single-file dataset a snapshot hash it could never reproduce once
+    # stored - health then reported a content mismatch on bytes that had never
+    # changed (measured 2026-08-22: the live template and EPW, both intact).
+    rename_dir: Path | None = None
+    if snapshot_source.name != preserved_name:
+        rename_dir = IMPORT_ROOT / f".naming-{uuid.uuid4().hex}"
+        rename_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(snapshot_source, rename_dir / preserved_name)
+        snapshot_source = rename_dir / preserved_name
     snapshot = integrity.ensure_snapshot(snapshot_source, kind=kind)
     digest = snapshot["snapshot_hash"]
     dataset_id = f"managed-{digest[:20]}"
@@ -1665,6 +1694,8 @@ def import_dataset(kind: str, name: str, source: Path, *, original_name: str | N
         component_target.chmod(0o444)
     if staged_dir is not None:
         shutil.rmtree(staged_dir)
+    if rename_dir is not None:
+        shutil.rmtree(rename_dir, ignore_errors=True)
     metadata: dict[str, Any] = {
         "managed": True, "original_name": preserved_name,
         "snapshot_components": snapshot["components"],

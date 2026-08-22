@@ -1723,6 +1723,15 @@ button:disabled { opacity: .5; }
 .lhs-downloads { display: flex; flex-wrap: wrap; gap: 6px; }
 .lhs-figures { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 10px 12px; }
 .lhs-figures img { flex: 1 1 320px; min-width: 0; max-width: 100%; height: auto; border: 1px solid var(--line); background: #fff; }
+/* The two actions a run's leftovers allow.  Side by side on a wide screen and
+   stacked below ~760px, each with the sentence that says what it actually does
+   - the two cases behave differently and one unexplained button would imply
+   they do not. */
+.unfinished-actions { padding: 11px 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.unfinished-actions > div { display: grid; align-content: start; gap: 7px; }
+.unfinished-actions > div > button { justify-self: start; }
+.unfinished-actions p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.unfinished-actions code { padding: 1px 3px; background: #f2f3ef; font-size: 9px; }
 .output-section > header + .output-interpretation-note { margin: 0; border: 0; border-bottom: 1px solid var(--line); }
 .product-table-scroll { overflow: auto; }
 .product-table { width: 100%; border-collapse: collapse; font-size: 10px; }
@@ -1762,6 +1771,13 @@ button:disabled { opacity: .5; }
 .building-package-link strong { font-size: 10px; }
 .building-package-link small { color: var(--muted); font-size: 8px; line-height: 1.35; }
 
+/* Reuses the geometry-check button's shape: both are "open this building's
+   evidence in a form you can actually read", and they sit next to each other. */
+.building-report-link { min-height: 52px; margin: 0 12px 10px; padding: 9px 10px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line-strong); background: #f2f5f2; text-decoration: none; color: inherit; }
+.building-report-link:hover { background: #eaf2ef; }
+.building-report-link > span { display: grid; gap: 2px; }
+.building-report-link strong { font-size: 10px; }
+.building-report-link small { color: var(--muted); font-size: 8px; line-height: 1.35; }
 .geometry-check-button { min-height: 52px; margin: 0 12px 10px; padding: 9px 10px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line-strong); background: #f2f5f2; text-align: left; cursor: pointer; }
 .geometry-check-button:hover { background: #eaf2ef; }
 .geometry-check-button > span { display: grid; gap: 2px; }

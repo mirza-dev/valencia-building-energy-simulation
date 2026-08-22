@@ -30,21 +30,35 @@ test('stock product exposes Files → Run → Outputs with verified evidence', a
   await expect(page.getByText('TOTAL SITE ENERGY')).toBeVisible()
   await expect(page.getByText('RESIDENTIAL-AREA EUI', { exact: true })).toBeVisible()
   await expect(page.getByText('conditioned geometry', { exact: true })).toHaveCount(0)
-  // The newest run on disk is a city with no Spanish cadastre.  `aggregate()`
-  // omits both cadastral figures entirely rather than writing zero, so neither
-  // the KPI card nor the cluster column may be rendered: an empty accent card
-  // reads as a measurement that failed, not as a basis this city does not have.
+
+  // Runs are chosen BY NAME, never by position.  This spec used to lean on
+  // "the newest run on disk is a city with no Spanish cadastre", which stopped
+  // being true the moment a Valencia full-city run finished and sorted first -
+  // the second time an ordering assumption here broke on a run nobody added
+  // for the test's benefit.
+  await page.locator('.output-run-picker select').selectOption('LECCO_1')
+  // A city with no Spanish cadastre: `aggregate()` omits both cadastral
+  // figures entirely rather than writing zero, so neither the KPI card nor the
+  // cluster column may be rendered - an empty accent card reads as a
+  // measurement that failed, not as a basis this city does not have.
   await expect(page.getByText('CADASTRAL EUI', { exact: true })).toHaveCount(0)
   await expect(page.locator('.cluster-table thead')).not.toContainText('Cadastral EUI')
   await expect(page.getByText('no cadastral dwelling area')).toBeVisible()
+  // The sampling study samples a Valencia pilot building, so it describes
+  // nothing on this page.  Rendered unscoped, its band appeared under Lecco's
+  // heading beside a different climate, stock and pinned envelope.
+  await expect(page.getByText('Uncertainty study (Latin hypercube)')).toHaveCount(0)
 
-  // The same page keeps both when the run does carry one.  This half is what
-  // makes the half above a condition rather than a deletion, so the two belong
-  // in one test.
+  // The same page keeps all of it when the run does carry one.  This half is
+  // what makes the half above a condition rather than a deletion, so the two
+  // belong in one test.
   await page.locator('.output-run-picker select').selectOption('benicalap_v9')
   await expect(page.getByText('CADASTRAL EUI', { exact: true })).toBeVisible()
   await expect(page.locator('.cluster-table thead')).toContainText('Cadastral EUI')
-  await page.locator('.output-run-picker select').selectOption({ index: 0 })
+  await expect(page.getByText('Uncertainty study (Latin hypercube)')).toBeVisible()
+  await expect(page.locator('.output-section').filter({ hasText: 'Uncertainty study' }))
+    .toContainText('4252702YJ2745A')
+  await page.locator('.output-run-picker select').selectOption('LECCO_1')
 
   await expect(page.getByText('RESULT STATUS', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Full signed ZIP' })).toBeVisible()
@@ -70,6 +84,23 @@ test('stock product exposes Files → Run → Outputs with verified evidence', a
   await page.getByLabel('Filter ledger by status').selectOption('ok')
   await expect(page.locator('.ledger-table tbody tr').first().locator('.ledger-status')).toHaveText('ok')
   await page.locator('.ledger-table tbody tr').first().click()
+
+  // The preserved record is offered as a page, not only as raw JSON: of the
+  // five preserved files only `eplustbl.htm` ever rendered, so in practice the
+  // richest one - `deep_layers.json` - went unread.
+  const report = page.getByRole('link', { name: /Building report/ })
+  await expect(report).toBeVisible()
+  const reportHref = await report.getAttribute('href')
+  expect(reportHref).toContain('/report')
+  const reportResponse = await page.request.get(reportHref!)
+  expect(reportResponse.status()).toBe(200)
+  expect(reportResponse.headers()['content-type']).toContain('text/html')
+  expect(await reportResponse.text()).toContain('Quality checks')
+
+  // Both leftovers are named, and separately: a failure can be retried into
+  // this ledger, an exclusion cannot.
+  await expect(page.getByText('Unfinished buildings')).toBeVisible()
+  await expect(page.locator('.unfinished-actions')).toContainText('Retry')
   await page.getByRole('button', { name: /Geometry check/ }).click()
   const viewer = page.locator('.geometry-check-drawer [data-render-ready]')
   await expect(viewer).toHaveAttribute('data-render-ready', 'true', { timeout: 60_000 })

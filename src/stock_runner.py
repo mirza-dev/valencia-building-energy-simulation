@@ -1400,6 +1400,13 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
     if previous:
         assert_ledger_matches_inputs(previous, fingerprints)
     done = completed_references(previous)
+    # Captured before the resume filter runs, because that filter is about to
+    # remove everything already finished.  `runnable`/`excluded` below then
+    # describe the REMAINING work, which is the right thing to log and the
+    # wrong thing to use as a progress denominator: the numerator is the
+    # ledger's cumulative row count, so a resumed run reported 268 % (measured,
+    # ALL-VALENC-A) and was only saved from showing it by a clamp.
+    scope_total = len(runnable) + len(excluded)
     if retry_failed:
         failed_before = {r["refparcela"] for r in previous if r.get("status") == "failed"}
         runnable = [r for r in runnable if r in failed_before or r not in done]
@@ -1460,7 +1467,9 @@ def run_stock(*, scope: str, out_dir: Path, workers: int,
                     "climate": climate.record() if climate else None,
                     "template": template.record() if template else None,
                     "policy": dataclasses.asdict(policy),
-                    "runnable": len(runnable), "excluded": len(excluded)},
+                    "runnable": len(runnable), "excluded": len(excluded),
+                    # The whole scope, not this invocation's share of it.
+                    "scope_total": scope_total},
                    indent=2, ensure_ascii=False, default=str), encoding="utf-8")
 
     models_root = out_dir / "models"

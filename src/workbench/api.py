@@ -1626,6 +1626,7 @@ def stock_start(payload: dict):
             workers=int(payload.get("workers") or 6),
             keep=str(payload.get("keep") or "full"),
             resume=bool(payload.get("resume")),
+            retry_failed=bool(payload.get("retry_failed")),
             run_mode=run_mode)
     except ValueError as exc:
         raise _stock_bad_request(str(exc)) from exc
@@ -1666,6 +1667,17 @@ def stock_stop(name: str):
     stopped = stock_adapter.stop_run(int(record["pid"]))
     # Worth saying plainly: nothing is lost, and the same name resumes.
     return {"stopped": stopped, "resumable": True, "run": name}
+
+
+@app.get("/api/stock/runs/{name}/unfinished")
+def stock_unfinished(name: str):
+    """What this run has left: failures to retry, exclusions that need a new run."""
+    try:
+        return stock_adapter.unfinished_references(name)
+    except FileNotFoundError as exc:
+        raise not_found(name) from exc
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
 
 
 @app.get("/api/stock/runs/{name}/ledger.csv")
@@ -1784,6 +1796,29 @@ def stock_export(name: str, references: list[str] | None = Query(default=None)):
 # registration order, so below it `scene` would bind to `{filename}` and be
 # refused as a non-allowlisted artifact.  `test_building_scene_route_is_not_shadowed`
 # pins the order.
+@app.get("/api/stock/runs/{name}/buildings/{refparcela}/report")
+def stock_building_report(name: str, refparcela: str):
+    """The preserved evidence for one building, as a page rather than JSON."""
+    try:
+        page = stock_adapter.building_report(name, refparcela)
+    except stock_adapter.ReportUnavailable as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(str(exc)) from exc
+    return Response(
+        page, media_type="text/html; charset=utf-8",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            # Our own HTML, but served under the same sandbox as the EnergyPlus
+            # tables next to it: the page is static and needs nothing more.
+            "Content-Security-Policy": (
+                "sandbox allow-popups; default-src 'none'; style-src 'unsafe-inline'; "
+                "img-src data:; base-uri 'none'; form-action 'none'"),
+        })
+
+
 @app.get("/api/stock/runs/{name}/buildings/{refparcela}/scene")
 def stock_building_scene(name: str, refparcela: str):
     """Browser geometry for one preserved building, rebuilt from its own OSM."""
@@ -1796,7 +1831,11 @@ def stock_building_scene(name: str, refparcela: str):
     except ValueError as exc:
         raise _stock_bad_request(str(exc)) from exc
     except FileNotFoundError as exc:
-        raise not_found(f"{refparcela}/model_python.osm") from exc
+        # Two files are resolved here, and `artifact_path` already names the one
+        # that is missing.  Naming the model unconditionally would send someone
+        # looking for a model that is sitting on disk when the origin record is
+        # what went absent.
+        raise not_found(str(exc)) from exc
 
 
 @app.get("/api/stock/runs/{name}/buildings/{refparcela}/{filename}")

@@ -52,6 +52,7 @@ import type {
   ProductRunListItem,
   ProductRunDetail,
   ProductLedgerPage,
+  ProductUnfinished,
 } from './types'
 import type { FeatureCollection } from 'geojson'
 
@@ -184,12 +185,16 @@ export const api = {
   startStockRun: (payload: {
     name: string; scope: 'all' | 'district' | 'references'; district?: string;
     references?: string[]; keep?: 'full' | 'summary'; workers?: number; resume?: boolean
+    retry_failed?: boolean
     run_mode?: 'annual' | 'microclimate_event'
   }) => request<{ started: { run: string; pid: number; started_at: number }; estimate: ProductPreflight }>('/api/stock/runs', {
     method: 'POST', body: JSON.stringify(payload),
   }),
   stopStockRun: (name: string) => request<{ stopped: boolean; resumable: boolean; run: string }>(
     `/api/stock/runs/${encodeURIComponent(name)}/stop`, { method: 'POST' },
+  ),
+  stockUnfinished: (name: string) => request<ProductUnfinished>(
+    `/api/stock/runs/${encodeURIComponent(name)}/unfinished`,
   ),
   stockLedger: (name: string, query = '', status = '', offset = 0, limit = 100) => {
     const params = new URLSearchParams({ q: query, status, offset: String(offset), limit: String(limit) })
@@ -199,11 +204,18 @@ export const api = {
   stockLedgerCsvUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/ledger.csv`),
   stockResultsLayerUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/results.gpkg`),
   stockHeatmapUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/results.png`),
+  stockBuildingReportUrl: (name: string, reference: string) => absoluteApiUrl(
+    `/api/stock/runs/${encodeURIComponent(name)}/buildings/${encodeURIComponent(reference)}/report`,
+  ),
   stockArtifactUrl: (name: string, reference: string, filename: string) => absoluteApiUrl(
     `/api/stock/runs/${encodeURIComponent(name)}/buildings/${encodeURIComponent(reference)}/${encodeURIComponent(filename)}`,
   ),
-  stockBuildingScene: (name: string, reference: string) => request<SceneModel>(
+  // Takes a signal so a superseded extraction cannot resolve after the one the
+  // operator is actually waiting for and repaint the viewer with the previous
+  // building's geometry under the current building's name.
+  stockBuildingScene: (name: string, reference: string, signal?: AbortSignal) => request<SceneModel>(
     `/api/stock/runs/${encodeURIComponent(name)}/buildings/${encodeURIComponent(reference)}/scene`,
+    { signal },
   ),
   stockExportPlan: (name: string, references?: string[]) => {
     const params = new URLSearchParams()

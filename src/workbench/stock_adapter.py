@@ -41,6 +41,7 @@ import results_layer as rl
 import stock_input_policy as sip
 import stock_runner as sr
 import verified_model as vm
+from workbench import building_report as building_report_view
 from workbench import db, file_inputs, integrity
 from workbench.scene import extract_scene_from_path
 
@@ -259,6 +260,16 @@ def _seconds_per_building() -> tuple[float, str]:
     engine has since capped storey counts and scaled the top storey, and every
     such change moves the time per building.  The newest finished run wins, and
     the basis is returned so the screen can say where the number came from.
+
+    Newest *comparable* run, though.  A microclimate event run simulates eight
+    days per building where an annual run simulates a year, so its rate is not
+    a slower or faster version of the same work - it is a different unit of it,
+    and the run that carried it (`LECCO_1`, 9.6 s) would have told an operator
+    that the full city needs 11 hours when the annual basis says 65.  That is
+    the difference between checking back after lunch and leaving a machine
+    running for three days.  `energy_period` exists precisely to make this
+    distinction legible; an absent block means a run from before it was
+    introduced, and those were all annual.
     """
     newest: tuple[float, float, str] | None = None
     if STOCK_ROOT.exists():
@@ -267,12 +278,15 @@ def _seconds_per_building() -> tuple[float, str]:
             if not summary.is_file():
                 continue
             try:
-                mean = json.loads(summary.read_text(encoding="utf-8")) \
-                    .get("seconds_per_building", {}).get("mean")
+                report = json.loads(summary.read_text(encoding="utf-8"))
+                mean = (report.get("seconds_per_building") or {}).get("mean")
+                period = (report.get("energy_period") or {}).get("period", "annual")
                 stamp = summary.stat().st_mtime
             except (OSError, json.JSONDecodeError, AttributeError):
                 continue
             if not isinstance(mean, (int, float)) or mean <= 0:
+                continue
+            if period != "annual":
                 continue
             if newest is None or stamp > newest[0]:
                 newest = (stamp, float(mean), path.name)
@@ -362,6 +376,7 @@ def start_run(name: str, scope: str, *, district: str | None = None,
               inputs: InputSet | None = None,
               workers: int = 6, keep: str = "full",
               resume: bool = False,
+              retry_failed: bool = False,
               run_mode: str = "annual",
               log_dir: Path | None = None) -> dict[str, Any]:
     """Launch the runner as a subprocess and return what is needed to follow it."""
@@ -409,6 +424,12 @@ def start_run(name: str, scope: str, *, district: str | None = None,
         argv += ["--references", *references]
     if resume:
         argv.append("--resume")
+    if retry_failed:
+        # Not a variant of resume: `--resume` skips every terminal row, while
+        # this one deliberately picks the failures back up.  The runner treats
+        # it as its own continuation mode (`stock_runner.py:1403`), so it is
+        # passed as its own flag rather than folded into `--resume`.
+        argv.append("--retry-failed")
 
     handle = log_path.open("ab")
     # Own process group so a stop signal reaches the worker pool too, not just
@@ -492,6 +513,51 @@ def ledger_page(name: str, *, query: str = "", status: str = "",
         "offset": offset,
         "limit": limit,
         "items": filtered[offset:offset + limit],
+    }
+
+
+def unfinished_references(name: str) -> dict[str, Any]:
+    """The references in a run that produced no result, split by why.
+
+    Two lists, not one, because the two cases need different actions and a
+    single "retry" button over both would quietly do nothing for half of them:
+
+    * ``failed`` reached the engine and raised.  `--retry-failed` picks exactly
+      these back up into the same ledger (`stock_runner.completed_references`
+      counts only `ok` and `excluded`, so a failure is never treated as done).
+    * ``excluded`` never reached the engine.  A screening gate refused the
+      geometry, and that gate is deterministic under one profile - re-running
+      them unchanged returns the same answer.  They move only when the build
+      config changes, and that changes `profile_fingerprint`, which is one of
+      `IDENTITY_FIELDS`, so the same ledger can no longer be resumed at all
+      (`stock_runner.assert_ledger_matches_inputs`).  A fresh run directory is
+      then the only correct home for them.
+
+    Counted from `latest_per_reference`, so a reference that failed on one
+    attempt and succeeded on a retry is reported once, as done.
+    """
+    failed: list[str] = []
+    excluded: list[dict[str, Any]] = []
+    for row in ledger_rows(name):
+        reference = str(row.get("refparcela") or "")
+        if not reference:
+            continue
+        status = str(row.get("status") or "")
+        if status in ("failed", "failed_qa"):
+            failed.append(reference)
+        elif status == "excluded":
+            excluded.append({"refparcela": reference,
+                             "reason": row.get("reason")})
+    reasons: dict[str, int] = {}
+    for item in excluded:
+        key = str(item["reason"] or "unrecorded")
+        reasons[key] = reasons.get(key, 0) + 1
+    return {
+        "run": name,
+        "failed": sorted(failed),
+        "excluded": sorted(item["refparcela"] for item in excluded),
+        "exclusion_reasons": dict(sorted(reasons.items(),
+                                         key=lambda pair: -pair[1])),
     }
 
 
@@ -672,6 +738,14 @@ def scope_size(name: str) -> dict[str, int] | None:
     Returns `None` rather than raising, and rather than guessing a number: a
     run directory written before this field existed has no scope on record,
     and "unknown" must not be reported as a count.
+
+    `scope_total` is preferred over `runnable + excluded` because a resume
+    rewrites this file with only the work it has left.  On ALL-VALENC-A that
+    left 6 251 + 1 351 against 26 558 cumulative ledger rows - a 268 % bar,
+    visible only as a permanent 100 % because the frontend clamps it.  Runs
+    written before the field existed fall back to the old pair, which is
+    correct for them: they were never resumed into a narrowed scope, or the
+    number they carry is the best record that exists.
     """
     config_path = run_directory(name) / "run_config.json"
     if not config_path.is_file():
@@ -680,12 +754,13 @@ def scope_size(name: str) -> dict[str, int] | None:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         runnable = int(config["runnable"])
         excluded = int(config["excluded"])
+        total = int(config.get("scope_total", runnable + excluded))
     except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
         return None
-    if runnable < 0 or excluded < 0:
+    if runnable < 0 or excluded < 0 or total < 0:
         return None
     return {"runnable": runnable, "excluded": excluded,
-            "total": runnable + excluded}
+            "total": max(total, runnable + excluded)}
 
 
 def results_layer(name: str) -> Path:
@@ -786,6 +861,42 @@ def artifact_path(name: str, refparcela: str, filename: str) -> Path:
     if out_dir not in candidate.parents:
         raise ValueError("resolved outside the run directory")
     return candidate
+
+
+def building_report(name: str, refparcela: str) -> str:
+    """The preserved evidence for one building, rendered as a readable page.
+
+    Derived like `building_scene`: composed from `deep_layers.json` on every
+    request and never written into the run directory, which is signed evidence
+    that `_package_sources` collects wholesale with `rglob`.
+
+    The ledger row is looked up but not required.  It only supplies the run's
+    own status wording, and a missing row must not withhold a report whose
+    evidence is sitting on disk.
+    """
+    layers_path = artifact_path(name, refparcela, "deep_layers.json")
+    try:
+        layers = json.loads(layers_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ReportUnavailable(
+            f"{layers_path.name} for {refparcela} could not be read: {exc}") from exc
+    if not isinstance(layers, dict):
+        raise ReportUnavailable(
+            f"{layers_path.name} for {refparcela} is not a layer record")
+    reference = str(Path(str(refparcela)).name)
+    row = next((item for item in ledger_rows(name)
+                if str(item.get("refparcela")) == reference), None)
+    return building_report_view.render(
+        layers, run=run_directory(name).name, reference=reference, ledger_row=row)
+
+
+class ReportUnavailable(RuntimeError):
+    """The evidence is there but cannot be turned into a page.
+
+    Like `SceneUnavailable`, deliberately not a `ValueError`: the caller asked
+    for a building that exists, so this is unreadable evidence rather than a
+    bad request, and the two must not reach the operator wearing the same code.
+    """
 
 
 class SceneUnavailable(RuntimeError):

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countDone, formatDuration, formatProductBytes, inputReadiness, runProgress, safeRunName, shortHash } from './productStock'
+import { countDone, formatDuration, formatProductBytes, inputReadiness, lhsBelongsToRun, runProgress, safeRunName, shortHash } from './productStock'
 
 describe('product stock presentation helpers', () => {
   it('formats evidence without changing values', () => {
@@ -107,5 +107,63 @@ describe('run progress denominator', () => {
   it('never exceeds 100% when more rows land than the scope predicted', () => {
     const overrun = runProgress({ ...live, scope: { total: 100 } })
     expect(overrun.pct).toBe(100)
+  })
+})
+
+describe('lhsBelongsToRun', () => {
+  const pilot = '4252702YJ2745A'
+
+  it('accepts a study whose building the run actually simulated', () => {
+    expect(lhsBelongsToRun([{ refparcela: pilot }], pilot)).toBe(true)
+  })
+
+  it('rejects a study from another city', () => {
+    // The real case: the only two LHS runs in the system are on a Valencia
+    // pilot, and they were rendering under Lecco's heading.
+    expect(lhsBelongsToRun([{ refparcela: '1274367890' }], pilot)).toBe(false)
+  })
+
+  it('is not fooled by the ledger search being a substring match', () => {
+    // `q=<ref>` matches refparcela, cluster and error text, so a non-empty
+    // page is not evidence.  Only an exact reference counts.
+    expect(lhsBelongsToRun([{ refparcela: `${pilot}B` }], pilot)).toBe(false)
+    expect(lhsBelongsToRun([{ refparcela: 'X' }], pilot)).toBe(false)
+  })
+
+  it('treats an unknown building or an unloaded page as not belonging', () => {
+    expect(lhsBelongsToRun(undefined, pilot)).toBe(false)
+    expect(lhsBelongsToRun([], pilot)).toBe(false)
+    expect(lhsBelongsToRun([{ refparcela: pilot }], undefined)).toBe(false)
+    expect(lhsBelongsToRun([{ refparcela: pilot }], '')).toBe(false)
+  })
+})
+
+describe('runProgress on a resumed run', () => {
+  // The real ALL-VALENC-A shape: a resume rewrote run_config.json with the
+  // work it had left, so the recorded scope is smaller than the ledger.
+  const resumed = {
+    running: false,
+    summary_is_partial: false,
+    scope: { total: 7602 },
+    summary: { coverage: { buildings_in_scope: 26445 } },
+    progress: { counts: { ok: 24983, failed: 111, excluded: 1351 } },
+  }
+
+  it('uses the finished aggregate rather than the narrowed scope', () => {
+    const progress = runProgress(resumed)
+    expect(progress.done).toBe(26445)
+    expect(progress.total).toBe(26445)
+    expect(progress.pct).toBe(100)
+  })
+
+  it('would otherwise have reported a clamped 268%', () => {
+    // What the old ordering produced: honest arithmetic on a dishonest
+    // denominator, hidden by the clamp as a permanent full bar.
+    expect((26445 / 7602) * 100).toBeGreaterThan(268)
+  })
+
+  it('still prefers the recorded scope while the run is live', () => {
+    const live = { ...resumed, running: true, summary_is_partial: true }
+    expect(runProgress(live).total).toBe(7602)
   })
 })

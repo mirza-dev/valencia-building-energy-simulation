@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertTriangle, BarChart3, Box, Building2, CheckCircle2, Download, ExternalLink, FileSearch, Image, Map, PackageCheck, Search } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertTriangle, BarChart3, Box, Building2, CheckCircle2, Download, ExternalLink, FileSearch, FileText, Image, Map, PackageCheck, Play, RotateCcw, Search } from 'lucide-react'
 import { api } from '../lib/api'
-import { formatProductBytes } from '../lib/productStock'
+import { formatProductBytes, lhsBelongsToRun, safeRunName } from '../lib/productStock'
 import type { ProductLedgerRow } from '../lib/types'
 import { useFeedback } from './FeedbackProvider'
 import GeometryCheckDrawer from './GeometryCheckDrawer'
@@ -33,22 +33,40 @@ const LHS_OUTPUTS = [
 /**
  * Uncertainty evidence, kept deliberately apart from the stock totals above.
  *
- * Two things this must never do. It must not imply that the interval belongs
+ * Three things this must never do. It must not imply that the interval belongs
  * to the district total: the study samples one pilot building on the demand
  * chain, while the totals on this page come from the whole-stock chain, where
  * roughly nine tenths of the energy is a per-area norm the study does not vary.
- * And it must not print statistics from a run whose engine sources have since
+ * It must not print statistics from a run whose engine sources have since
  * changed - a stale band beside current numbers is exactly the failure this
  * page keeps having to retract, so an outdated run shows its provenance and
  * withholds its numbers rather than dressing them as today's.
+ *
+ * And - measured 2026-08-22 - it must not show a study about a building this
+ * run never simulated. There are two LHS runs in the system and both sample a
+ * Valencia pilot; queried without a run scope, that band rendered under
+ * Lecco's heading too, beside a different city, weather file and pinned
+ * envelope. The study was fine; the page it was on was not.
  */
-function UncertaintySection() {
+function UncertaintySection({ run: stockRun }: { run: string }) {
   const runs = useQuery({ queryKey: ['lhs-runs'], queryFn: api.lhsRuns })
   const newest = (runs.data ?? [])[0]
   const detail = useQuery({
     queryKey: ['lhs-run', newest?.id], queryFn: () => api.lhsRun(newest!.id), enabled: Boolean(newest?.id),
   })
+  // Ask this run's own ledger whether it holds the study's building. The
+  // search is a substring match over several columns, so the page is scanned
+  // for an exact reference rather than trusted for being non-empty.
+  const inRun = useQuery({
+    queryKey: ['stock-ledger-holds', stockRun, newest?.refparcela],
+    queryFn: () => api.stockLedger(stockRun, newest!.refparcela, '', 0, 25),
+    enabled: Boolean(stockRun && newest?.refparcela),
+    staleTime: Infinity,
+  })
   if (runs.isLoading || !newest) return null
+  // Hidden while the lookup is in flight: appearing late is recoverable,
+  // showing another city's band even briefly is not.
+  if (!lhsBelongsToRun(inRun.data?.items, newest.refparcela)) return null
 
   const run = detail.data ?? newest
   const verified = run.verification?.ok !== false && run.verification_status === 'VERIFIED'
@@ -60,7 +78,7 @@ function UncertaintySection() {
 
   return <section className="output-section">
     <header><div><BarChart3 size={17} /><span><strong>Uncertainty study (Latin hypercube)</strong>
-      <small>{settings ? `${settings.n} samples · seed ${settings.seed} · ${run.refparcela || 'pilot building'}` : 'Sampling study'} — a band on the pilot building&apos;s demand, not on the totals above.</small>
+      <small>{settings ? `${settings.n} samples · seed ${settings.seed}` : 'Sampling study'} on <code>{run.refparcela}</code>, one building in this run — a band on that building&apos;s demand, not on the totals above.</small>
     </span></div>
       {usable && <nav className="lhs-downloads">
         <a className="secondary-button" href={api.lhsArtifactUrl(run.id, 'runs.csv')}><Download size={14} /> Sample ledger (.csv)</a>
@@ -98,6 +116,7 @@ function UncertaintySection() {
 
 export default function OutputsPage() {
   const { notify } = useFeedback()
+  const queryClient = useQueryClient()
   const [selected, setSelected] = useState('')
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('')
@@ -156,6 +175,48 @@ export default function OutputsPage() {
     onError: (error) => notify(error instanceof Error ? error.message : 'Export plan failed.', 'error'),
   })
 
+  // What this run has left over.  Read once per run and not polled: a finished
+  // run's leftovers do not change on their own, and a live one is not offered
+  // the actions at all.
+  const unfinished = useQuery({
+    queryKey: ['stock-unfinished', selected], queryFn: () => api.stockUnfinished(selected),
+    enabled: Boolean(selected) && detail.data?.running === false,
+    staleTime: Infinity,
+  })
+  const nFailed = unfinished.data?.failed.length ?? 0
+  const nExcluded = unfinished.data?.excluded.length ?? 0
+
+  const rerunMutation = useMutation({
+    mutationFn: (mode: 'retry-failed' | 'new-run') => {
+      const left = unfinished.data
+      if (!left) throw new Error('This run has not reported what it has left.')
+      return mode === 'retry-failed'
+        // Back into the same ledger: `--retry-failed` is the runner's own
+        // continuation mode for exactly these rows, and `latest_per_reference`
+        // means a later success replaces the failure rather than double-counting.
+        ? api.startStockRun({ name: selected, scope: 'references', references: left.failed, retry_failed: true })
+        // A separate directory, because an exclusion can only change when the
+        // build config does, and that changes the profile fingerprint - which
+        // the resume guard refuses to append across.
+        : api.startStockRun({ name: safeRunName(`${selected}_unfinished`), scope: 'references', references: [...left.failed, ...left.excluded] })
+    },
+    onSuccess: async (value) => {
+      await queryClient.invalidateQueries({ queryKey: ['stock-runs'] })
+      notify(`Run ${value.started.run} started. Follow it on the Run tab.`, 'success')
+    },
+    onError: (error) => notify(error instanceof Error ? error.message : 'Could not start the re-run.', 'error'),
+  })
+
+  // Stepping onto a building with no preserved model closes the drawer for
+  // good, rather than leaving `geometry` armed to spring back on the next `ok`
+  // row.  Left armed, the ledger's own width toggles on every ok/failed step
+  // and the table reflows under the cursor mid-click - the interaction cost
+  // that the squeeze-don't-cover layout exists to avoid in the first place.
+  const selectRow = (row: ProductLedgerRow) => {
+    setBuilding(row)
+    if (row.status !== 'ok') setGeometry(false)
+  }
+
   const geometryOpen = geometry && building?.status === 'ok'
   return <div className={`product-page outputs-page ${geometryOpen ? 'geometry-open' : ''}`}>
     <header className="product-page-header outputs-header">
@@ -213,15 +274,36 @@ export default function OutputsPage() {
         </section>
       </> : <section className="output-pending"><AlertTriangle size={24} /><strong>{detail.data?.running ? 'Aggregate pending while the run continues' : 'No aggregate is available for this run'}</strong><p>The building ledger remains inspectable below.</p></section>}
 
-      <UncertaintySection />
+      <UncertaintySection run={selected} />
 
+
+      {(nFailed > 0 || nExcluded > 0) && <section className="output-section unfinished-section">
+        <header><div><RotateCcw size={17} /><span><strong>Unfinished buildings</strong>
+          <small>{nFailed.toLocaleString()} failed · {nExcluded.toLocaleString()} excluded — {(nFailed + nExcluded).toLocaleString()} of this run&apos;s scope produced no result.</small>
+        </span></div></header>
+        <div className="unfinished-actions">
+          <div>
+            <button className="secondary-button" disabled={nFailed === 0 || rerunMutation.isPending}
+              onClick={() => rerunMutation.mutate('retry-failed')}><RotateCcw size={14} /> Retry {nFailed.toLocaleString()} failed</button>
+            <p>Runs them again into <strong>this</strong> run&apos;s ledger. A failure is never treated as done, so nothing else is repeated and the totals absorb whatever succeeds.</p>
+          </div>
+          <div>
+            <button className="secondary-button" disabled={rerunMutation.isPending}
+              onClick={() => rerunMutation.mutate('new-run')}><Play size={14} /> New run from all {(nFailed + nExcluded).toLocaleString()}</button>
+            <p>Excluded buildings never reached the engine — a screening gate refused the geometry, and that gate gives the same answer until the build configuration changes. Because changing it changes the verified profile, they cannot be appended to this ledger; they go to <code>{safeRunName(`${selected}_unfinished`)}</code>.</p>
+          </div>
+        </div>
+        {Object.keys(unfinished.data?.exclusion_reasons ?? {}).length > 0 && <div className="exclusion-list">
+          {Object.entries(unfinished.data!.exclusion_reasons).map(([reason, count]) => <span key={reason}><code>{count}</code>{reason}</span>)}
+        </div>}
+      </section>}
 
       {selected && <section className="output-section ledger-section">
         <header><div><FileSearch size={17} /><span><strong>Building ledger</strong><small>{ledger.data?.total.toLocaleString() ?? '—'} matching terminal records</small></span></div>
           <div className="ledger-tools"><label className="ledger-search"><Search size={14} /><input value={query} onChange={(event) => { setQuery(event.target.value); setOffset(0) }} placeholder="Reference, cluster, error…" /></label><select value={status} onChange={(event) => { setStatus(event.target.value); setOffset(0) }} aria-label="Filter ledger by status"><option value="">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="excluded">Excluded</option></select></div>
         </header>
         <div className="product-table-scroll"><table className="product-table ledger-table"><thead><tr><th>Status</th><th>refparcela</th><th>Cluster</th><th>Site EUI</th><th>Energy</th><th>CO₂</th><th>Occupancy</th><th>QA</th></tr></thead><tbody>
-          {(ledger.data?.items ?? []).map((row) => <tr key={`${row.refparcela}-${row.status}`} tabIndex={0} onClick={() => setBuilding(row)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setBuilding(row) }} className={building?.refparcela === row.refparcela ? 'selected' : ''}>
+          {(ledger.data?.items ?? []).map((row) => <tr key={`${row.refparcela}-${row.status}`} tabIndex={0} onClick={() => selectRow(row)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') selectRow(row) }} className={building?.refparcela === row.refparcela ? 'selected' : ''}>
             <td><span className={`ledger-status ${row.status}`}>{row.status === 'ok' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}{row.status}</span></td><td><code>{row.refparcela}</code></td><td>{String(row.cluster ?? '—')}</td><td>{number(row.total_site_kwh_m2 as number, 1)}</td><td>{number((row.total_site_kwh as number) / 1000, 1)} MWh</td><td>{number(row.total_site_co2_t_yr as number, 1)} t</td><td>{String(row.occupancy_plausibility ?? '—')}</td><td>{row.qa_all_passed === true ? 'PASS' : row.qa_all_passed === false ? 'FAIL' : '—'}</td>
           </tr>)}
         </tbody></table></div>
@@ -233,7 +315,8 @@ export default function OutputsPage() {
       <header><div><Building2 size={17} /><span><small>BUILDING EVIDENCE</small><strong>{building.refparcela}</strong></span></div><button className="icon-button" onClick={() => { setBuilding(null); setGeometry(false) }} aria-label="Close evidence">×</button></header>
       <dl><div><dt>Status</dt><dd>{building.status}</dd></div><div><dt>Cluster</dt><dd>{String(building.cluster ?? '—')}</dd></div><div><dt>Total site EUI</dt><dd>{number(building.total_site_kwh_m2, 2)} kWh/m²</dd></div><div><dt>QA</dt><dd>{building.qa_all_passed === true ? 'PASS' : building.qa_all_passed === false ? 'FAIL' : '—'}</dd></div>{(building.error || building.message || building.reason) && <div><dt>Failure</dt><dd><strong>{building.reason ?? 'Error'}</strong>{building.message || building.error ? <span>{String(building.message ?? building.error)}</span> : null}</dd></div>}</dl>
       {building.status === 'ok' && <button className="geometry-check-button" onClick={() => setGeometry(true)}><Box size={14} /><span><strong>Geometry check</strong><small>Open the model this building was simulated from</small></span></button>}
-      {building.status === 'ok' && <nav><span>PRESERVED FILES</span>{ARTIFACTS.map(([file, label]) => <a key={file} href={api.stockArtifactUrl(selected, building.refparcela, file)} target="_blank" rel="noreferrer"><ExternalLink size={14} /><span><strong>{label}</strong><code>{file}</code></span></a>)}</nav>}
+      {building.status === 'ok' && <a className="building-report-link" href={api.stockBuildingReportUrl(selected, building.refparcela)} target="_blank" rel="noreferrer"><FileText size={14} /><span><strong>Building report</strong><small>Everything the run preserved about this building, on one page</small></span></a>}
+      {building.status === 'ok' && <nav><span>PRESERVED FILES (RAW)</span>{ARTIFACTS.map(([file, label]) => <a key={file} href={api.stockArtifactUrl(selected, building.refparcela, file)} target="_blank" rel="noreferrer"><ExternalLink size={14} /><span><strong>{label}</strong><code>{file}</code></span></a>)}</nav>}
       <a className="building-package-link" href={api.stockExportUrl(selected, [building.refparcela])}><PackageCheck size={14} /><span><strong>Signed building package</strong><small>Model, preserved outputs, ledger evidence and Ed25519 manifest</small></span></a>
     </aside>}
 

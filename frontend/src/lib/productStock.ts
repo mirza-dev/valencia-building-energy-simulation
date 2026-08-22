@@ -93,6 +93,14 @@ export interface RunProgress {
  * only the rows it reached, so its coverage count is no more a scope than a
  * live one's.  Only a written aggregate settles that question.
  *
+ * Once it has settled the order reverses, and it has to.  A resume rewrites
+ * `run_config.json` with the work it has LEFT, so the recorded scope of a
+ * resumed run understates it - ALL-VALENC-A finished with 7 602 on record
+ * against 26 445 rows.  A finished run's own aggregate covers every row it
+ * wrote, so at that point it is the complete figure and the recorded scope is
+ * the partial one.  Newer runs also carry `scope_total`, which does not
+ * narrow; this ordering is what makes the runs already on disk read correctly.
+ *
  * When nothing on record can supply a denominator this returns `null` rather
  * than a number: an unknown length is honest, a full bar is not.
  */
@@ -108,11 +116,33 @@ export function runProgress(
 ): RunProgress {
   const done = countDone(detail?.progress?.counts)
   const settled = detail ? !detail.running && detail.summary_is_partial !== true : false
-  const total = detail?.scope?.total
+  const finalCoverage = settled ? detail?.summary?.coverage.buildings_in_scope : undefined
+  const total = finalCoverage
+    ?? detail?.scope?.total
     ?? preflight?.buildings_in_scope
-    ?? (settled ? detail?.summary?.coverage.buildings_in_scope : undefined)
   if (total == null || !Number.isFinite(total) || total <= 0) {
     return { done, total: null, pct: null }
   }
   return { done, total, pct: Math.min(100, (done / total) * 100) }
+}
+
+/**
+ * Does a sampling study describe a building this run actually simulated?
+ *
+ * The uncertainty section used to render the newest LHS run in the system on
+ * every run's Outputs page, so a Valencia pilot building's band appeared under
+ * a Lecco heading - different city, different weather file, different pinned
+ * envelope.  The band was correct; what it was sitting next to was not.
+ *
+ * The ledger search is a substring match over several columns, so a non-empty
+ * result is not proof: `q=4252702YJ2745A` would also match a longer reference
+ * that contains it, and a cluster or error text could match too.  Only an
+ * exact `refparcela` counts.
+ */
+export function lhsBelongsToRun(
+  items: { refparcela?: string }[] | undefined,
+  refparcela?: string | null,
+): boolean {
+  if (!refparcela) return false
+  return (items ?? []).some((item) => item.refparcela === refparcela)
 }

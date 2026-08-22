@@ -16,11 +16,21 @@ export default function GeometryCheckDrawer({ run, reference, onClose }: {
   onClose: () => void
 }) {
   // The drawer follows the ledger selection rather than closing, because
-  // comparing two buildings is the actual check.  Debounced so arrow-keying
-  // down the table does not queue one OpenStudio load per row.
+  // comparing two buildings is the actual check.  Only *changes* are delayed -
+  // `settled` starts on the opening reference, so the first extraction is
+  // immediate.
+  //
+  // 350 ms, not the 150 ms this first shipped with: ledger rows respond to
+  // clicks and to Enter/Space, not to arrow keys, so the cadence being batched
+  // is a person clicking down the table at roughly 300-500 ms, and 150 ms
+  // batched none of it.  The delay is the only thing here that limits server
+  // work: `AbortSignal` below stops a superseded scene from being *rendered*,
+  // but a sync FastAPI route already inside OpenStudio cannot be interrupted,
+  // so every request issued is a load that runs to completion - which during a
+  // multi-day city run is competing with six EnergyPlus workers.
   const [settled, setSettled] = useState(reference)
   useEffect(() => {
-    const timer = setTimeout(() => setSettled(reference), 150)
+    const timer = setTimeout(() => setSettled(reference), 350)
     return () => clearTimeout(timer)
   }, [reference])
 
@@ -30,9 +40,12 @@ export default function GeometryCheckDrawer({ run, reference, onClose }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const scene = useQuery({
+  // Annotated because destructuring `signal` out of the query context defeats
+  // inference here, and the fallback type it lands on silently makes
+  // `placeholderData` look like the query's data.
+  const scene = useQuery<SceneModel>({
     queryKey: ['stock-building-scene', run, settled],
-    queryFn: () => api.stockBuildingScene(run, settled),
+    queryFn: ({ signal }) => api.stockBuildingScene(run, settled, signal),
     // The geometry of a finished building cannot change, so a revisit during
     // the session is free and there is nothing to poll for.
     staleTime: Infinity,

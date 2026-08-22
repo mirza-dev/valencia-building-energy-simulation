@@ -463,6 +463,22 @@ export interface ProductRunDetail {
   scope?: ProductScope | null
 }
 
+/**
+ * What a finished run has left over, split by what can actually be done about it.
+ *
+ * `failed` reached the engine and raised, so `--retry-failed` picks exactly
+ * these back up into the same ledger.  `excluded` never reached the engine: a
+ * screening gate refused the geometry, and that gate only changes when the
+ * build config does, which changes the profile fingerprint and makes the
+ * ledger unresumable.  They need a new run, not a retry.
+ */
+export interface ProductUnfinished {
+  run: string
+  failed: string[]
+  excluded: string[]
+  exclusion_reasons: Record<string, number>
+}
+
 export interface ProductLedgerRow extends Record<string, unknown> {
   refparcela: string
   status: string

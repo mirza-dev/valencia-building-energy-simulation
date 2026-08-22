@@ -145,9 +145,43 @@ def load_snapshot(snapshot_hash: str) -> dict[str, Any]:
 
 
 def verify_snapshot_source(path: Path, snapshot_hash: str, *, kind: str) -> dict[str, Any]:
+    """Do the files on disk still hold the bytes this snapshot registered?
+
+    The identity hash covers the component *names* as well as their contents,
+    which is right for a multi-part dataset - renaming two shapefile sidecars
+    past each other changes what the dataset means without changing a byte.
+
+    It is wrong for a single file, and it produced a permanent false alarm:
+    uploads were registered while still under their `tmpXXXXXX` upload name and
+    then stored under the name the operator gave them, so the recomputed hash
+    could never match and health reported "Registered input snapshot no longer
+    matches source files" for inputs whose bytes had never changed.  Measured
+    2026-08-22 on the live installation: the template and the EPW both
+    mismatched, both with byte-identical content.
+
+    So a single-component dataset whose one file still has the registered
+    SHA-256 is reported as intact, with `renamed` saying why the hash moved.
+    Anything with more than one component, or any content difference at all,
+    stays a mismatch: the point of this check is content, and nothing here
+    relaxes that.
+    """
     actual = snapshot_descriptor(path, kind=kind)
+    ok = actual["snapshot_hash"] == snapshot_hash
+    renamed = False
+    if not ok:
+        try:
+            registered = load_snapshot(snapshot_hash)["components"]
+        except (FileNotFoundError, KeyError, ValueError):
+            registered = []
+        current = actual["components"]
+        if len(registered) == 1 and len(current) == 1:
+            renamed = (registered[0]["sha256"] == current[0]["sha256"]
+                       and registered[0]["size_bytes"] == current[0]["size_bytes"]
+                       and registered[0]["name"] != current[0]["name"])
+            ok = renamed
     return {
-        "ok": actual["snapshot_hash"] == snapshot_hash,
+        "ok": ok,
+        "renamed": renamed,
         "expected": snapshot_hash,
         "actual": actual["snapshot_hash"],
         "components": actual["components"],
