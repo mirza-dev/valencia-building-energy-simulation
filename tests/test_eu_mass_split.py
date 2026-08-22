@@ -108,15 +108,22 @@ def test_a_mass_without_height_inherits_the_parcel_and_says_so():
 # The engine's own gate decides what is buildable
 # ---------------------------------------------------------------------------
 def test_masses_below_the_engine_floor_are_refused_with_a_reason():
+    # The undersized mass is sized FROM the builder's floor rather than written
+    # as a literal.  A hardcoded 25 m2 stopped exercising anything the moment
+    # the floor moved 50 -> 20 on 2026-08-22: the shed became buildable and the
+    # test failed loudly, which was lucky - the quieter version of that mistake
+    # is a fixture that still passes while testing nothing.
+    floor = mb.DEFAULT_BUILD_CONFIG.geometry.footprint_min_m2
+    side = (floor * 0.5) ** 0.5                 # half the floor area, comfortably under
     eu = gpd.GeoDataFrame(
         {"taxonomy": [_taxonomy(hei=6), _taxonomy(hei=2)]},
-        geometry=[box(0, 0, 30, 30), box(50, 0, 55, 5)],   # 900 m2 and 25 m2
+        geometry=[box(0, 0, 30, 30), box(50, 0, 50 + side, side)],
         crs="EPSG:25830")
     kept, refused = ems.buildable_masses(box(0, 0, 100, 100), eu, 5)
     assert len(kept) == 1 and len(refused) == 1
     assert "outside the expected range" in refused[0]["reason"]
     # the floor is the builder's, not a copy of it
-    assert mb.DEFAULT_BUILD_CONFIG.geometry.footprint_min_m2 > 25
+    assert side * side < floor
 
 
 def test_a_parcel_left_with_one_buildable_mass_is_not_split(tmp_path):

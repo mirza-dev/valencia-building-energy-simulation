@@ -328,8 +328,8 @@ SHARED_LAYERS = (
 LOCKED_SOURCE_HASHES: dict[str, str] = {
     "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
     "run_simulation.py": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
-    "model_config.py": "ab388f646b89d74834ff53af07454f559012082f48f50197bb4ddec30ddc91da",
-    "deep_building.py": "4d328c6b03d0508ac6cd4e10ccd341138a55e2fe4e2c42d5402a4dff2053550b",
+    "model_config.py": "f02e9ee4e976c4635f936b13d4b72dceef8fd49804d184fa9e6bf86efd0633c2",
+    "deep_building.py": "4240369d194fa5b0ba515767c6b491bfe562fcdfbf60173c5f63b69f0a6593ad",
 }
 
 

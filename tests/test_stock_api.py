@@ -59,9 +59,16 @@ def test_preflight_reports_what_would_run_and_what_would_not(client):
     body = client.post("/api/stock/preflight",
                        json={"scope": "district", "district": BENICALAP}).json()
     assert body["ok"] is True
-    # the engine's own screen: this is what benicalap_v6 actually ran
-    assert body["runnable"] == 968
-    assert body["excluded"] == 44
+    # The engine's own screen.  968 / 44 was what benicalap_v6 actually ran; the
+    # 2026-08-22 gate widening moved it to 1008 / 4 in this one district, which
+    # is the same effect the full city sees.  The 40 recovered buildings were
+    # being turned away by `simplify_tolerance_m` and `footprint_min_m2`, not by
+    # anything about the buildings themselves.
+    assert body["runnable"] == 1008
+    assert body["excluded"] == 4
+    # what matters more than either number: the screen still accounts for
+    # everyone it was handed, so nobody can be dropped silently
+    assert body["runnable"] + body["excluded"] == 1012
     assert sum(body["exclusion_reasons"].values()) == body["excluded"]
     assert body["estimated_minutes"] > 0
     assert body["estimated_bytes"] > 0

@@ -362,13 +362,18 @@ def test_uncapped_dense_record_is_still_flagged_plainly():
 # ceiling from 5 000 to 20 000 m2 on 2026-08-03 admitted 119 Valencia buildings
 # carrying 11.00 % of the city's floor area - the right call, since dropping
 # them was the larger error, but the weaker assumption they run under has to be
-# recorded rather than blended into a total.
+# recorded rather than blended into a total.  On 2026-08-22 the ceiling was
+# lifted again, to 1 000 000 m2, so it now excludes nothing at all; the flag
+# below is the ONLY thing carrying that caveat, which makes it more load-bearing
+# than before, not less.
 # ---------------------------------------------------------------------------
 def test_single_zone_threshold_is_the_ceiling_that_used_to_exclude():
     """The threshold is deliberately the OLD ceiling, not a fresh guess."""
     assert db.LARGE_FOOTPRINT_SINGLE_ZONE_M2 == 5000.0
-    # and it is a flag, not a gate: the config still admits far beyond it
-    assert mb.DEFAULT_BUILD_CONFIG.geometry.footprint_max_m2 == 20000.0
+    # and it is a flag, not a gate: the config now admits three orders of
+    # magnitude beyond it, so nothing is dropped for being large - it is only
+    # ever marked.
+    assert mb.DEFAULT_BUILD_CONFIG.geometry.footprint_max_m2 == 1000000.0
     assert db.LARGE_FOOTPRINT_SINGLE_ZONE_M2 < \
         mb.DEFAULT_BUILD_CONFIG.geometry.footprint_max_m2
 

@@ -36,9 +36,21 @@ class GeometryConfig(StrictModel):
     floor_height_m: float = Field(3.0, ge=1.5, le=10.0)
     ground_unconditioned: bool = True
     neighbor_assume_ground: bool = True
-    simplify_tolerance_m: float = Field(0.3, ge=0.0, le=5.0)
+    # 0.3 m was refusing 853 Valencia buildings outright: simplifying that
+    # coarsely moved their area by more than `max_area_delta_fraction`, and the
+    # gate - correctly - would not model a footprint it had just distorted.
+    # Measured 2026-08-22 over all 26 452 footprints: at 0.1 m the refusals
+    # drop 853 -> 23 while the vertex count rises only x1.07 on the mean and
+    # not at all on the median.  The shading context is simplified separately
+    # at its own fixed 0.3 (`model_builder._add_context_shading`), so this does
+    # not inflate the neighbour mesh that drives EnergyPlus's shadow cost.
+    simplify_tolerance_m: float = Field(0.1, ge=0.0, le=5.0)
     max_area_delta_fraction: float = Field(0.01, ge=0.0, le=0.25)
-    footprint_min_m2: float = Field(50.0, gt=0.0)
+    # 50 m2 excluded 538 buildings that are real dwellings: every one of them
+    # carries a cadastral Tipo15 record (median 82 m2 of dwelling area over a
+    # ~40 m2 footprint, i.e. small multi-storey terraces) and 253 have
+    # registered residents.  29 buildings remain below 20 m2 and stay out.
+    footprint_min_m2: float = Field(20.0, gt=0.0)
     # Not an engine limit - a modelling-validity guard.  The chain gives each
     # storey one well-mixed thermal zone, which stops being defensible on a very
     # deep plan where the core is driven by internal gains rather than by the
@@ -48,7 +60,14 @@ class GeometryConfig(StrictModel):
     # recovers 11.00 of those 11.55 points and leaves 4 outliers (the largest is
     # 32 172 m2 over 2 storeys, which is not a dwelling at all).  Buildings above
     # LARGE_FOOTPRINT_SINGLE_ZONE_M2 are flagged, never silently blended in.
-    footprint_max_m2: float = Field(20000.0, gt=0.0)
+    #
+    # Raised again 2026-08-22 so the ceiling excludes nothing at all: measured
+    # over the whole stock it was costing 4 buildings and 0.885 % of the city's
+    # footprint area, the largest of them 32 172 m2.  Worth having, but it was
+    # never the constraint people assumed - `simplify_tolerance_m` above was
+    # refusing 200x as many.  The single-zone flag is what carries the honesty
+    # here, and it is unchanged.
+    footprint_max_m2: float = Field(1000000.0, gt=0.0)
     party_wall_tolerance_m: float = Field(0.3, ge=0.0, le=5.0)
     min_shared_edge_m: float = Field(1.0, ge=0.0)
     party_overlap_ratio: float = Field(0.5, ge=0.0, le=1.0)

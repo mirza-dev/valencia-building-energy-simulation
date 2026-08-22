@@ -142,9 +142,17 @@ def test_simplification_casualties_are_excluded_not_failed():
     where it would be indistinguishable from a real defect.
     """
     import math
-    # a near-circle: 0.3 m simplification eats well over 1 % of its area
-    circle = Polygon([(600 + 6 * math.cos(t * math.pi / 30),
-                       6 * math.sin(t * math.pi / 30)) for t in range(60)])
+    # A near-circle: at the tolerance in force it loses 2.47 % of its area,
+    # measured, so it is well past the 1 % limit.  The radius was 6 m while the
+    # tolerance was 0.3 m; at 0.1 m a 6 m circle survives, so the fixture would
+    # have quietly stopped exercising this path.  4 m still fails the area check
+    # AND clears the size floor (50.2 m2 against a 20 m2 minimum), which matters:
+    # a smaller circle would be excluded for being too small and the test would
+    # have passed for the wrong reason.
+    circle = Polygon([(600 + 4 * math.cos(t * math.pi / 30),
+                       4 * math.sin(t * math.pi / 30)) for t in range(60)])
+    low, _ = sr.footprint_limits()
+    assert circle.area > low, "the fixture must fail on simplification, not on size"
     stock = _stock([{"refparcela": "ROUND", "geometry": circle},
                     {"refparcela": "OK", "geometry": _square(0, 20)}])
     runnable, excluded = sr.screen_geometry(stock)
@@ -929,11 +937,21 @@ def test_footprint_range_constant_cannot_go_stale():
 
 
 def test_footprint_ceiling_admits_large_blocks():
-    """A 17 272 m2 Benicalap block is inside the gate; a 32 172 m2 hall is not."""
+    """The size gate no longer turns anyone away for being large or small.
+
+    Measured 2026-08-22 over the whole stock: the 20 000 m2 ceiling was costing
+    4 buildings and 0.885 % of the city's footprint area, and the 50 m2 floor was
+    costing 538 buildings that every one of them carries a cadastral dwelling
+    record for.  Both were widened.  Being large is now recorded by the
+    single-zone flag rather than punished by exclusion - which is why that flag
+    is pinned in test_deep_building.py and must not be widened with the gate.
+    """
     low, high = sr.footprint_limits()
-    assert low == 50.0 and high == 20000.0
+    assert low == 20.0 and high == 1000000.0
     assert low < 17272.0 < high            # 3748901YJ2734H, 15 storeys
-    assert 32172.0 > high                  # 2405201YJ2820E, 2 storeys - not a dwelling
+    assert low < 32172.0 < high            # 2405201YJ2820E - was excluded, now runs
+    # the honesty now rests entirely on the flag, not on the gate
+    assert db.LARGE_FOOTPRINT_SINGLE_ZONE_M2 < high
 
 
 def test_zoning_block_reports_the_share_resting_on_one_zone():

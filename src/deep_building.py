@@ -709,12 +709,31 @@ def glaze_ground_floor(osm, config=None) -> dict:
     if not ground_spaces:
         raise RuntimeError("no ground space found to glaze")
 
+    # A building with no exterior wall anywhere has no facade to glaze, so it
+    # also has no window whose construction could be copied.  Measured on the
+    # full-city run 2026-08-22: 110 buildings failed here, and their median
+    # share of perimeter that is NOT a party wall is 0.000 - 39 of 40 sampled
+    # are at least 98 % enclosed, 108 of them single-storey `VivUniP04` terraces
+    # boxed in on every side.  Refusing to invent a construction was right;
+    # refusing to finish the building was not, because there is nothing to
+    # glaze in the first place.  Any OTHER reason for having no glazing still
+    # raises, so this stays fail-closed where it matters.
+    exterior_ground_walls = sum(
+        1 for space in ground_spaces for srf in space.surfaces()
+        if srf.surfaceType() == "Wall" and srf.outsideBoundaryCondition() == "Outdoors")
     window_construction = None
     for sub in osm.getSubSurfaces():
         if sub.subSurfaceType() in GLAZED_SUBSURFACE_TYPES and sub.construction().is_initialized():
             window_construction = sub.construction().get().to_Construction().get()
             break
     if window_construction is None:
+        if exterior_ground_walls == 0:
+            return {
+                "ground_windows": 0,
+                "ground_glass_area_m2": 0.0,
+                "ground_facades_glazed": 0,
+                "skipped": "no exterior wall on the ground storey",
+            }
         raise RuntimeError("no existing window construction to reuse for the ground floor")
 
     # shopfront glazing, not dwelling balconies

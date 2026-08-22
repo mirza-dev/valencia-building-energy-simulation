@@ -44,10 +44,13 @@ test('stock product exposes Files → Run → Outputs with verified evidence', a
   await expect(page.getByText('CADASTRAL EUI', { exact: true })).toHaveCount(0)
   await expect(page.locator('.cluster-table thead')).not.toContainText('Cadastral EUI')
   await expect(page.getByText('no cadastral dwelling area')).toBeVisible()
-  // The sampling study samples a Valencia pilot building, so it describes
-  // nothing on this page.  Rendered unscoped, its band appeared under Lecco's
-  // heading beside a different climate, stock and pinned envelope.
-  await expect(page.getByText('Uncertainty study (Latin hypercube)')).toHaveCount(0)
+  // The uncertainty section is deliberately NOT asserted here.  This suite runs
+  // against its own provisioned database, which holds no LHS runs at all, so
+  // "absent" would be true no matter what the scoping code did - a vacuous
+  // assertion is worse than none.  Its behaviour is covered where it can
+  // actually be observed: `lhsBelongsToRun` in productStock.test.ts, and the
+  // live check that the section appears on a run containing the study's
+  // building and not on one that does not.
 
   // The same page keeps all of it when the run does carry one.  This half is
   // what makes the half above a condition rather than a deletion, so the two
@@ -55,9 +58,6 @@ test('stock product exposes Files → Run → Outputs with verified evidence', a
   await page.locator('.output-run-picker select').selectOption('benicalap_v9')
   await expect(page.getByText('CADASTRAL EUI', { exact: true })).toBeVisible()
   await expect(page.locator('.cluster-table thead')).toContainText('Cadastral EUI')
-  await expect(page.getByText('Uncertainty study (Latin hypercube)')).toBeVisible()
-  await expect(page.locator('.output-section').filter({ hasText: 'Uncertainty study' }))
-    .toContainText('4252702YJ2745A')
   await page.locator('.output-run-picker select').selectOption('LECCO_1')
 
   await expect(page.getByText('RESULT STATUS', { exact: true })).toBeVisible()
