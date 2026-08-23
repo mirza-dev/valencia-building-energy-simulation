@@ -134,32 +134,142 @@ def test_screen_geometry_reasons():
     assert reasons["POINT"].startswith("unsupported_geometry")
 
 
-def test_simplification_casualties_are_excluded_not_failed():
-    """3 % of the stock loses too much area to simplification (measured).
+def test_simplification_never_excludes_a_building():
+    """The gate that refused 853 buildings at 0.3 m now refuses none.
 
-    That is a geometry-quality decision the builder makes, so it belongs in the
-    ledger as an exclusion with a reason - not as a stack trace in `failed`,
-    where it would be indistinguishable from a real defect.
+    This test used to assert the opposite - that a shape simplification would
+    distort is dropped from the city with a reason string.  That was the wrong
+    thing to promise.  Simplification exists to bound the vertex count, so the
+    only thing it may decide is how many vertices the model carries, never
+    whether the building is in the city at all.  When the configured tolerance
+    cannot hold the shape, a finer one is used; at worst the polygon is modelled
+    as drawn.
     """
     import math
-    # A near-circle: at the tolerance in force it loses 2.47 % of its area,
-    # measured, so it is well past the 1 % limit.  The radius was 6 m while the
-    # tolerance was 0.3 m; at 0.1 m a 6 m circle survives, so the fixture would
-    # have quietly stopped exercising this path.  4 m still fails the area check
-    # AND clears the size floor (50.2 m2 against a 20 m2 minimum), which matters:
-    # a smaller circle would be excluded for being too small and the test would
-    # have passed for the wrong reason.
+    # A near-circle, 4 m radius: at the configured tolerance it moves well past
+    # the fidelity bound, and it clears the size floor (50.2 m2 against 20 m2)
+    # so it exercises simplification rather than the size gate - a smaller one
+    # would be excluded for being small and the test would pass for the wrong
+    # reason.
     circle = Polygon([(600 + 4 * math.cos(t * math.pi / 30),
                        4 * math.sin(t * math.pi / 30)) for t in range(60)])
     low, _ = sr.footprint_limits()
-    assert circle.area > low, "the fixture must fail on simplification, not on size"
+    assert circle.area > low, "the fixture must exercise simplification, not size"
+    g = mb.DEFAULT_BUILD_CONFIG.geometry
+    at_configured = circle.simplify(g.simplify_tolerance_m, preserve_topology=True)
+    assert mb.footprint_fidelity(circle, at_configured) > g.max_area_delta_fraction, \
+        "the fixture must be past the bound at the configured tolerance"
+
     stock = _stock([{"refparcela": "ROUND", "geometry": circle},
                     {"refparcela": "OK", "geometry": _square(0, 20)}])
     runnable, excluded = sr.screen_geometry(stock)
-    assert runnable == ["OK"]
-    assert excluded[0]["refparcela"] == "ROUND"
-    assert excluded[0]["reason"] == "simplification_area_change_over_limit"
-    assert "simplification changed area" in excluded[0]["detail"]
+    assert sorted(runnable) == ["OK", "ROUND"]
+    assert excluded == []
+
+    detail = mb.prepare_footprint_detail(circle)
+    assert detail["footprint_fidelity"] <= g.max_area_delta_fraction
+    assert detail["simplify_tolerance_used_m"] < g.simplify_tolerance_m
+
+
+# ---------------------------------------------------------------------------
+# The footprint gate: a fidelity guarantee, not a fixed tolerance
+# ---------------------------------------------------------------------------
+def test_fidelity_sees_the_distortion_that_area_cancels():
+    """Why the metric changed: area is signed and its errors cancel."""
+    raw = Polygon([(0, 0), (10, 0), (10, 10), (0, 10)])
+    shifted = Polygon([(1, 0), (11, 0), (11, 10), (1, 10)])
+    # the same building by area, a different building by geometry
+    assert shifted.area == raw.area
+    assert abs(shifted.area - raw.area) / raw.area == 0.0      # the old check
+    assert mb.footprint_fidelity(raw, shifted) == pytest.approx(0.2)
+
+
+def test_a_coarser_simplification_is_taken_only_when_it_costs_nothing():
+    """`1349405YJ3514G`, translated to the origin and otherwise untouched.
+
+    Shapely's topology-preserving simplifier is not strictly hierarchical, so a
+    finer tolerance can leave a worse shape: this footprint scores 0.85 % at
+    0.1 m and 0.69 % at 0.3 m, on four vertices either way.  35 Valencia
+    buildings sat like that.  The coarser candidate is taken because it is
+    better on fidelity AND no more expensive - never as a trade-off.
+    """
+    footprint = Polygon([
+        (22.26, 4.21), (22.26, 4.13), (22.51, 4.13), (22.449, 0.13),
+        (22.449, 0.0), (9.97, 0.92), (0.0, 1.64), (0.25, 5.581), (3.92, 5.35)])
+    g = mb.DEFAULT_BUILD_CONFIG.geometry
+    fine = footprint.simplify(g.simplify_tolerance_m, preserve_topology=True)
+    coarse = footprint.simplify(g.simplify_tolerance_m * 3.0, preserve_topology=True)
+    assert mb.footprint_fidelity(footprint, coarse) < mb.footprint_fidelity(footprint, fine)
+    assert len(coarse.exterior.coords) <= len(fine.exterior.coords)
+
+    detail = mb.prepare_footprint_detail(footprint)
+    assert detail["simplify_tolerance_used_m"] == pytest.approx(g.simplify_tolerance_m * 3.0)
+    assert detail["footprint_fidelity"] == pytest.approx(
+        mb.footprint_fidelity(footprint, coarse))
+
+
+def test_an_unreachable_fidelity_bound_models_the_polygon_as_drawn():
+    """The fallback is the raw polygon, never a refusal."""
+    import math
+    fine = Polygon([(3 * math.cos(2 * math.pi * k / 2000),
+                     3 * math.sin(2 * math.pi * k / 2000)) for k in range(2000)])
+    geometry = mb.DEFAULT_BUILD_CONFIG.geometry.model_copy(
+        update={"max_area_delta_fraction": 1e-12})
+    config = mb.DEFAULT_BUILD_CONFIG.model_copy(update={"geometry": geometry})
+    detail = mb.prepare_footprint_detail(fine, config=config)   # must not raise
+    assert detail["simplify_tolerance_used_m"] == 0.0
+    assert len(detail["coords"]) == len(fine.exterior.coords) - 1
+    assert detail["footprint_fidelity"] == 0.0
+
+
+def test_prepare_footprint_keeps_its_two_value_contract():
+    """Six call sites still unpack two values; the detail form is additive."""
+    square = _square(0, 20)
+    coords, area = mb.prepare_footprint(square)
+    detail = mb.prepare_footprint_detail(square)
+    assert coords == detail["coords"]
+    assert area == detail["area_m2"]
+
+
+def test_geometry_quality_reports_absence_as_absence():
+    """A ledger written before these fields must not report zeroes.
+
+    `0 % over the bound` and `nobody measured` are different statements, and
+    printing the first when the second is true is how this project has twice
+    published a default as if it were a measurement.
+    """
+    old = pd.DataFrame([{"res_area_m2": 100.0, "total_site_kwh_m2": 50.0}])
+    block = sr.geometry_quality_block(old)
+    assert block["measured"] is False
+    assert "buildings_measured" not in block
+    assert "fidelity_median" not in block
+    assert "predates" in block["note"]
+    assert sr.geometry_quality_block(pd.DataFrame())["measured"] is False
+
+
+def test_geometry_quality_categories_partition_the_buildings():
+    """The four tolerance outcomes must add back to the building count."""
+    frame = pd.DataFrame([
+        {"footprint_fidelity": 0.0004, "simplify_tolerance_used_m": 0.1,
+         "storey_rule_margin": 0.30, "storey_rule_snapped": False, "res_area_m2": 500.0},
+        {"footprint_fidelity": 0.0090, "simplify_tolerance_used_m": 0.05,
+         "storey_rule_margin": 0.0089, "storey_rule_snapped": True, "res_area_m2": 437.0},
+        {"footprint_fidelity": 0.0069, "simplify_tolerance_used_m": 0.3,
+         "storey_rule_margin": None, "storey_rule_snapped": False, "res_area_m2": 200.0},
+        {"footprint_fidelity": 0.0, "simplify_tolerance_used_m": 0.0,
+         "storey_rule_margin": 0.015, "storey_rule_snapped": False, "res_area_m2": 300.0},
+    ])
+    block = sr.geometry_quality_block(frame)
+    assert block["measured"] is True
+    assert block["buildings_measured"] == 4
+    assert (block["at_configured_tolerance"] + block["refined_finer"]
+            + block["taken_coarser"] + block["modelled_as_drawn"]) == 4
+    assert block["over_bound"] == 0
+    assert block["storey_snapped"] == 1
+    # the margin is absent for one building, and absence is not counted as
+    # sitting outside the band
+    assert block["storey_margin_measured"] == 3
+    assert block["within_band"] == 1
 
 
 def test_duplicate_reference_is_excluded_once_not_run(tmp_path):

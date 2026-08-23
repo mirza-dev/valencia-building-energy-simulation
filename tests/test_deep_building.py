@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 import deep_building as db
@@ -521,6 +523,77 @@ def test_cadastral_storeys_keep_at_least_one_dwelling_storey():
     assert db.residential_storeys_from_cadastre(10.0, 562.0, 5) == 1
 
 
+def test_storey_rule_is_stable_across_the_integer_boundary():
+    """`2255712YJ2725C`: 441.0 m2 of dwellings on a 145.7 m2 plate.
+
+    A 1 % move in the footprint used to move the answer by a whole storey,
+    because `ceil` is discontinuous exactly where the two measurements stop
+    being able to tell the difference.  Both sides of the boundary must now
+    give the same answer - that is the property, not either number on its own.
+    """
+    assert db.residential_storeys_from_cadastre(441.0, 145.7, 10) == 3   # ratio 3.0268
+    assert db.residential_storeys_from_cadastre(441.0, 147.2, 10) == 3   # ratio 2.9959
+
+
+def test_a_genuine_partial_storey_is_still_rounded_up():
+    # the snap is not a change of rule: outside the measurement band `ceil`
+    # still applies, so a half-full top storey is still built and then loaded
+    # for the part the record accounts for
+    assert db.residential_storeys_from_cadastre(525.0, 150.0, 10) == 4    # ratio 3.5
+    assert db.residential_storeys_from_cadastre(457.5, 150.0, 10) == 4    # ratio 3.05
+
+
+def test_the_storey_band_scales_with_the_storey_count():
+    # the error in a ratio is relative, so a 10-storey building legitimately
+    # gets five times the absolute slack of a 2-storey one
+    # values are chosen clearly inside and clearly outside the band: asserting
+    # exactly on it tests floating-point representation, not the rule (2.02 - 2
+    # is 0.020000000000000018, which is not <= 0.02)
+    assert db.residential_storeys_from_cadastre(201.5, 100.0, 20) == 2    # 2.015, in
+    assert db.residential_storeys_from_cadastre(203.0, 100.0, 20) == 3    # 2.03, out
+    assert db.residential_storeys_from_cadastre(1009.0, 100.0, 20) == 10  # 10.09, in
+    assert db.residential_storeys_from_cadastre(1012.0, 100.0, 20) == 11  # 10.12, out
+
+
+def test_the_snap_can_only_remove_a_storey_never_add_one():
+    # a rule that could add a storey would be inventing dwelling area; sweep the
+    # whole ratio range rather than trusting the two worked examples above
+    for hundredths in range(1, 2000):
+        ratio = hundredths / 100.0
+        answer = db.residential_storeys_from_cadastre(ratio * 200.0, 200.0, 100)
+        assert answer <= math.ceil(ratio)
+        assert answer >= math.ceil(ratio) - 1
+
+
+def test_the_snap_flag_measures_the_outcome_not_the_branch():
+    """2,077 Valencia buildings sit inside the band; 473 change because of it.
+
+    A building already limited by what was built cannot lose a storey it never
+    had, and a ratio just below a whole storey lands on the same answer either
+    way.  Reporting either as a snap would overstate the effect more than
+    fourfold.
+    """
+    # inside the band AND above the integer, with room to move: a real snap
+    assert db.storey_rule_snapped(441.0, 145.7, 10) is True
+    # the same ratio, but only three storeys were ever built: the cap already
+    # gave the answer, so the band changed nothing
+    assert db.storey_rule_snapped(441.0, 145.7, 3) is False
+    # inside the band but BELOW the integer: `ceil` and the band agree
+    assert db.storey_rule_snapped(441.0, 147.2, 10) is False
+    # outside the band entirely
+    assert db.storey_rule_snapped(525.0, 150.0, 10) is False
+    # no cadastral evidence at all
+    assert db.storey_rule_snapped(None, 150.0, 10) is False
+
+
+def test_storey_rule_margin_reports_absence_as_absence():
+    # a building whose Tipo15 join failed has no margin, not a margin of nought
+    assert db.storey_rule_margin(None, 100.0) is None
+    assert db.storey_rule_margin(0, 100.0) is None
+    assert db.storey_rule_margin("abc", 100.0) is None
+    assert db.storey_rule_margin(441.0, 145.7) == pytest.approx(0.00892, abs=1e-5)
+
+
 def test_the_block_parcel_that_forced_the_geometric_cap():
     # 3748901YJ2734H: 17,272 m2 of footprint at altura_max 15, against 38,158 m2
     # of dwellings across 342 flats.  Extruded whole it conditions 259,000 m2 -
@@ -902,3 +975,76 @@ def test_the_new_fields_survive_into_the_ledger(partial_pilot):
     for field in ("top_storey_fraction", "dwelling_area_m2"):
         assert field in stats, f"the model never wrote {field}"
         assert field in sr.LEDGER_METRICS, f"the ledger would drop {field}"
+
+
+# ---------------------------------------------------------------------------
+# The frame guard must tell "nothing to frame" apart from "framing broke"
+# ---------------------------------------------------------------------------
+class _StubFrame:
+    def nameString(self): return db.WINDOW_FRAME_NAME
+    def frameWidth(self): return db.WINDOW_FRAME_WIDTH_M
+
+
+class _StubVertex:
+    def __init__(self, x, y): self.x, self.y = x, y
+    def __sub__(self, other): return _StubVertex(self.x - other.x, self.y - other.y)
+    def length(self): return (self.x ** 2 + self.y ** 2) ** 0.5
+
+
+class _StubSubSurface:
+    def __init__(self, kind, accepts=True):
+        self._kind, self._accepts = kind, accepts
+    def subSurfaceType(self): return self._kind
+    def setWindowPropertyFrameAndDivider(self, frame): return self._accepts
+    def grossArea(self): return 1.44
+    def vertices(self):
+        return [_StubVertex(0, 0), _StubVertex(1.2, 0),
+                _StubVertex(1.2, 1.2), _StubVertex(0, 1.2)]
+
+
+class _StubModel:
+    def __init__(self, subs): self._subs = subs
+    def getWindowPropertyFrameAndDividers(self): return [_StubFrame()]
+    def getSubSurfaces(self): return self._subs
+
+
+def test_a_building_with_nothing_to_glaze_is_finished_not_rejected():
+    """The inner-block case: four party walls, so no window ever gets drawn.
+
+    Measured on the live stock: 70 of the 71 buildings that reach this step
+    with no glazing have an exterior-wall share of exactly 0.000.  Refusing to
+    invent a window for them is right; refusing to finish them is not.
+    """
+    # walls only - not one glazed opening in the model
+    frames = db.apply_window_frames(_StubModel([_StubSubSurface("Door")]))
+
+    assert frames["glazed_subsurfaces"] == 0
+    assert frames["windows_with_frame"] == 0
+    # the absence is stated, not left to be inferred from a zero area
+    assert frames["glass_area_m2"] == 0.0
+    assert frames["opening_area_m2"] == 0.0
+
+
+def test_the_guard_still_fires_when_framing_actually_breaks():
+    """Glazing exists and none of it took the frame - the case it guards."""
+    subs = [_StubSubSurface("FixedWindow", accepts=False),
+            _StubSubSurface("GlassDoor", accepts=False)]
+    with pytest.raises(RuntimeError, match="none accepted the frame"):
+        db.apply_window_frames(_StubModel(subs))
+
+
+def test_a_glazed_building_takes_exactly_the_path_it_took_before():
+    """The relaxation must be unreachable for any building that already works.
+
+    A model with glazing has candidates >= 1, so the guard's new `candidates
+    and` clause can never change its outcome - proved here rather than argued.
+    """
+    subs = [_StubSubSurface("FixedWindow"), _StubSubSurface("GlassDoor"),
+            _StubSubSurface("Door")]
+    frames = db.apply_window_frames(_StubModel(subs))
+
+    assert frames["glazed_subsurfaces"] == 2       # the plain door is not glazing
+    assert frames["windows_with_frame"] == 2
+    assert frames["glass_area_m2"] == pytest.approx(2 * 1.44, abs=0.05)
+    # the frame grows outwards, so EnergyPlus reports a larger opening
+    assert frames["opening_area_m2"] > frames["glass_area_m2"]

@@ -326,10 +326,10 @@ SHARED_LAYERS = (
 # ``model_builder``/``run_simulation``/``model_config`` are the frozen domain
 # scripts; ``deep_building`` is the layer chain the profile drives.
 LOCKED_SOURCE_HASHES: dict[str, str] = {
-    "model_builder.py": "729fc23aaa3558712ee7462cf5d7044a36fb23c27ac847a48da5780036abf100",
+    "model_builder.py": "16e007fd21d4aade3dce482d25ed8e2c62f619436a504d9bfbe14d2e30b45379",
     "run_simulation.py": "0eec20827eeba66c78cac56c94780eee73f4393035d6d19527b0f6f38f779566",
     "model_config.py": "f02e9ee4e976c4635f936b13d4b72dceef8fd49804d184fa9e6bf86efd0633c2",
-    "deep_building.py": "4240369d194fa5b0ba515767c6b491bfe562fcdfbf60173c5f63b69f0a6593ad",
+    "deep_building.py": "30cc377488fbc9584f5aa7b5622f587383c02d9b49c640d47624c5404abb27e3",
 }
 
 

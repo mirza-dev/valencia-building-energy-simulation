@@ -124,6 +124,8 @@ LEDGER_METRICS = (
     "terciario_share_pct", "conditioned_to_cadastral_ratio",
     "res_area_m2", "tipo15_res_area_m2", "res_area_source",
     "total_conditioned_area_m2", "footprint_m2", "large_footprint_single_zone",
+    "footprint_fidelity", "simplify_tolerance_used_m",
+    "storey_rule_margin", "storey_rule_snapped",
     "n_floors_total", "n_floors_residential", "mixed_use_storeys_converted",
     "mixed_use_basis", "residential_storeys_effective",
     "top_storey_fraction", "dwelling_area_m2",
@@ -799,6 +801,70 @@ def zoning_block(frame: pd.DataFrame) -> dict:
     return block
 
 
+def geometry_quality_block(frame: pd.DataFrame) -> dict:
+    """How much of this city rests on geometry decisions rather than evidence.
+
+    Two questions a stock total should be able to answer about itself and could
+    not before 2026-08-22:
+
+      * how faithfully the footprints were kept, now that the tolerance adapts
+        per building rather than being one number for a 20 m2 shed and a
+        30 000 m2 block;
+      * how many buildings had their storey count settled by the measurement
+        band rather than by `ceil` - which is to say, how many sat close enough
+        to a whole storey that the inputs could not tell.
+
+    Absence is reported as absence.  A ledger written before these fields
+    existed says `measured: false` rather than showing zeroes, because a
+    default is not a measurement.
+    """
+    block = {"fidelity_metric": "symmetric_difference_over_raw_area",
+             "fidelity_bound": mb.DEFAULT_BUILD_CONFIG.geometry.max_area_delta_fraction,
+             "storey_band": mb.DEFAULT_BUILD_CONFIG.geometry.max_area_delta_fraction,
+             "measured": False}
+    if frame.empty or "footprint_fidelity" not in frame:
+        block["note"] = ("this ledger predates per-building geometry provenance; "
+                         "the figures were not recorded, which is not the same "
+                         "as their being zero")
+        return block
+
+    fidelity = pd.to_numeric(frame["footprint_fidelity"], errors="coerce").dropna()
+    block["measured"] = True
+    block["buildings_measured"] = int(len(fidelity))
+    if len(fidelity):
+        block["fidelity_median"] = round(float(fidelity.median()), 6)
+        block["fidelity_p95"] = round(float(fidelity.quantile(0.95)), 6)
+        block["fidelity_max"] = round(float(fidelity.max()), 6)
+        block["over_bound"] = int((fidelity > block["fidelity_bound"]).sum())
+
+    if "simplify_tolerance_used_m" in frame:
+        used = pd.to_numeric(frame["simplify_tolerance_used_m"], errors="coerce").dropna()
+        configured = mb.DEFAULT_BUILD_CONFIG.geometry.simplify_tolerance_m
+        # the four categories partition the buildings: a footprint modelled as
+        # drawn is not also "refined finer", or the block would over-count
+        # itself in exactly the way this whole change is about avoiding
+        block["at_configured_tolerance"] = int((used == configured).sum())
+        block["refined_finer"] = int(((used < configured) & (used > 0.0)).sum())
+        block["taken_coarser"] = int((used > configured).sum())
+        block["modelled_as_drawn"] = int((used == 0.0).sum())
+
+    if "storey_rule_snapped" in frame:
+        snapped = frame["storey_rule_snapped"].fillna(False).astype(bool)
+        block["storey_snapped"] = int(snapped.sum())
+        if "res_area_m2" in frame:
+            area = pd.to_numeric(frame["res_area_m2"], errors="coerce").fillna(0.0)
+            total = float(area.sum())
+            block["storey_snapped_area_pct"] = (
+                round(100.0 * float(area[snapped].sum()) / total, 2) if total else 0.0)
+    if "storey_rule_margin" in frame:
+        margin = pd.to_numeric(frame["storey_rule_margin"], errors="coerce").dropna()
+        band = block["storey_band"]
+        block["storey_margin_measured"] = int(len(margin))
+        block["within_band"] = int((margin <= band).sum())
+        block["within_twice_the_band"] = int((margin <= 2 * band).sum())
+    return block
+
+
 def provenance_block(rows: list[dict], ledger_paths: list[Path]) -> dict:
     """What produced these numbers, carried INSIDE the published result.
 
@@ -853,6 +919,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
                 "coverage": coverage_block(rows, ok, stock),
                 "energy_period": rl.energy_period(raw_rows),
                 "zoning": zoning_block(pd.DataFrame(ok)),
+                "geometry_quality": geometry_quality_block(pd.DataFrame(ok)),
                 "fragmentation": euf.fragmentation_block(pd.DataFrame(ok)),
                 "floor_area_allocation": faa.allocation_block(ok, stock),
                 "qa_failed": 0,
@@ -1014,6 +1081,7 @@ def aggregate(rows: list[dict], stock: gpd.GeoDataFrame | None = None) -> dict:
         # `total_site_gwh` has to be able to see what period it covers.
         "energy_period": rl.energy_period(raw_rows),
         "zoning": zoning_block(frame),
+        "geometry_quality": geometry_quality_block(frame),
         "fragmentation": euf.fragmentation_block(frame),
         "floor_area_allocation": faa.allocation_block(ok, stock),
         "qa_failed": int((~frame["qa_all_passed"].astype(bool)).sum())

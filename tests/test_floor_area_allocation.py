@@ -38,8 +38,30 @@ def _ledger(tmp_path, rows) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# The decomposition is exhaustive and each term means what it says
+# The measurement follows the rule; it does not restate it
 # ---------------------------------------------------------------------------
+def test_the_applied_rule_is_read_from_the_engine_not_restated(tmp_path):
+    """A knife-edge building: `ceil` says 4 storeys, the engine says 3.
+
+    441.0 m2 over a 145.7 m2 plate is a ratio of 3.0268 - inside the
+    measurement band, so the engine snaps it.  If this module kept its own
+    `ceil` it would report an excess the run never built, which is a
+    decomposition of a different city.
+    """
+    import deep_building as db
+    row = _row("KNIFE", footprint=145.7, cadastral=441.0, built=10,
+               storeys_effective=3)
+    report = faa.measure(_ledger(tmp_path, [row]))
+    alternatives = report["alternative_rules"]
+    assert db.residential_storeys_from_cadastre(441.0, 145.7, 10) == 3
+    assert math.ceil(441.0 / 145.7) == 4
+    # the engine builds three storeys, so that is what the measurement charges
+    assert alternatives["applied"]["modelled_m2"] == pytest.approx(145.7 * 3, abs=0.1)
+    assert alternatives["ceil"]["modelled_m2"] == pytest.approx(145.7 * 4, abs=0.1)
+    assert alternatives["applied"]["modelled_m2"] < alternatives["ceil"]["modelled_m2"]
+
+
+
 def test_the_three_terms_add_back_to_the_gap(tmp_path):
     rows = [_row("A", 100.0, 250.0, built=5, storeys_effective=3),   # rule bound
             _row("B", 100.0, 480.0, built=5, storeys_effective=5),   # geometry over

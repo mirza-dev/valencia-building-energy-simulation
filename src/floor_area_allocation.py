@@ -11,9 +11,13 @@ decides whether it is an artefact or a fact about the stock.
 Two mechanisms produce it and they are not the same thing:
 
   * `residential_storeys_from_cadastre` rounds UP.  Where the rule decides the
-    height - `ceil(c/f) < built storeys` - the model builds `f*ceil(c/f)` and
-    the remainder `f*(ceil(c/f) - c/f)` is floor area no record asks for.  It
-    is one-sided by construction and bounded by one footprint per building.
+    height - fewer storeys than were built - the model builds `f * storeys` and
+    the remainder `f * storeys - c` is floor area no record asks for.  It is
+    one-sided by construction and bounded by one footprint per building.  Since
+    2026-08-22 the rule snaps to a whole storey where `c/f` sits within the
+    measurement band, so the excess is read from the rule rather than restated
+    as `ceil` here: a measurement that rewrites the thing it measures stops
+    measuring it.
   * Everywhere else the geometry decides the height, and modelled minus
     cadastral is the two sources disagreeing.  That term has no preferred sign.
 
@@ -110,7 +114,14 @@ def _annotate(row: dict) -> dict:
     # 0.1 m2 rounding and stop reproducing the headline.
     area = float(row["res_area_m2"])
     exact = c / f
-    rule_bound = math.ceil(exact) < built
+    # What the run actually did, read from its own row - not the rule
+    # recomputed here.  Restating `ceil` made this module describe a rule
+    # instead of a run, and re-deriving it from today's engine would be worse
+    # still: it would describe a historical ledger with a rule that ledger
+    # never used.  `residential_storeys_effective` is a REQUIRED_FIELD, so it
+    # is always there, and it stays right across every future profile change.
+    applied = int(row["residential_storeys_effective"])
+    rule_bound = applied < built
     # `measure` validates REQUIRED_FIELDS first, so it always has an intensity.
     # `allocation_block` may not: a ledger can carry geometry without the
     # per-end-use columns, and sizing its area gap is still worth doing.
@@ -120,10 +131,15 @@ def _annotate(row: dict) -> dict:
         "_f": f, "_c": c, "_exact_storeys": exact,
         "_area": area,
         "_energy": float(intensity) * area if intensity is not None else None,
-        "_built_storeys": built, "_rule_bound": rule_bound,
-        # Where the rule bound, the excess is pure rounding and cannot reach a
-        # full storey.  Where it did not, the excess is the sources disagreeing.
-        "_excess": f * (math.ceil(exact) - exact) if rule_bound else area - c,
+        "_built_storeys": built, "_applied_storeys": applied,
+        "_rule_bound": rule_bound,
+        # Where the rule bound, the excess is rounding and - measured over the
+        # 449 bound rows of Benicalap v8 - does not reach a full storey (max
+        # 0.9937 of one, min 0.0006, none negative).  `ceil` guaranteed that by
+        # construction; reading the recorded area does not, so it is stated as a
+        # measurement.  Where the rule did not bind, the excess is the two
+        # sources disagreeing.
+        "_excess": area - c,
     }
 
 
@@ -219,7 +235,9 @@ def measure(ledger_path: Path, prepared_stock: Path | None = None) -> dict:
                 "median_fraction_of_a_storey":
                     round(st.median([r["_excess"] / r["_f"] for r in bound]), 3)
                     if bound else None,
-                "mechanism": "f * (ceil(c/f) - c/f); one-sided, under one footprint",
+                "mechanism": "modelled area - cadastral, with the storey count "
+                             "as the run recorded it; one-sided, under one "
+                             "footprint",
             },
             "geometry_above_cadastre": group(over),
             "cadastre_above_geometry": {
@@ -290,6 +308,16 @@ def _alternative_rules(ok: list[dict], cadastral: float) -> dict:
              "round": lambda v: max(1, round(v)),
              "floor": lambda v: max(1, math.floor(v))}
     out = {}
+    # What the run actually modelled, so the hypotheticals below can be read
+    # against it.  This is NOT `ceil` recomputed: on Benicalap v8 the recorded
+    # storey count already differs from a fresh `ceil` for 134 of 967 buildings,
+    # a divergence that predates the measurement band entirely.
+    applied_total = sum(r["_area"] for r in ok)
+    out["applied"] = {"modelled_m2": round(applied_total, 1),
+                      "vs_cadastral_pct": round(
+                          100.0 * (applied_total - cadastral) / cadastral, 2),
+                      "note": "what the run modelled, read from its own rows; "
+                              "the rows below are hypotheticals recomputed here"}
     for label, fn in rules.items():
         total = sum(r["_f"] * max(1, min(r["_built_storeys"], int(fn(r["_exact_storeys"]))))
                     for r in ok)
@@ -316,7 +344,10 @@ def allocation_block(rows: list[dict], stock=None) -> dict:
     zero that reads as "measured, and it was none".
     """
     block: dict = {"measured": False,
-                   "rule": "residential_storeys_from_cadastre: ceil(cadastral/footprint)"}
+                   "rule": "residential_storeys_effective, as recorded by the "
+                           "run that wrote this ledger - not a rule recomputed "
+                           "here, which would describe an old run with a rule it "
+                           "never used"}
     if not rows:
         block["reason"] = "no_rows"
         return block
@@ -380,7 +411,11 @@ def allocation_block(rows: list[dict], stock=None) -> dict:
             "median_fraction_of_a_storey":
                 round(st.median([r["_excess"] / r["_f"] for r in bound]), 3)
                 if bound else None,
-            "mechanism": "f * (ceil(c/f) - c/f); one-sided, under one footprint",
+            # Same wording as `measure()`'s own mechanism string above: the two
+            # report this quantity side by side and must not describe it
+            # differently, any more than they may disagree in the decimal.
+            "mechanism": "modelled area - cadastral, with the storey count as "
+                         "the run recorded it; one-sided, under one footprint",
         },
         "alternative_rules": _alternative_rules(ok, cadastral),
         "affects": list(AFFECTED_FIELDS),

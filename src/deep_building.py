@@ -375,8 +375,31 @@ def apply_residential_ground(osm) -> dict:
     }
 
 
+def storey_rule_margin(cadastral_area_m2, footprint_m2):
+    """How far the storey ratio sits from a whole storey, relatively.
+
+    Reported per building so a new city can be asked how much of its storey
+    count rests on a coin toss, without anyone having to re-derive it.  `None`
+    where there is no cadastral evidence to measure against: absence is not
+    zero, and a building whose Tipo15 join failed has no margin, not a margin
+    of nought.
+    """
+    try:
+        cadastral = float(cadastral_area_m2)
+        footprint = float(footprint_m2)
+    except (TypeError, ValueError):
+        return None
+    if not (cadastral > 0 and footprint > 0):
+        return None
+    ratio = cadastral / footprint
+    nearest = round(ratio)
+    if nearest < 1:
+        return None
+    return abs(ratio - nearest) / nearest
+
+
 def residential_storeys_from_cadastre(cadastral_area_m2, footprint_m2,
-                                      built_storeys: int) -> int:
+                                      built_storeys: int, config=None) -> int:
     """How many storeys the recorded dwelling area can actually fill.
 
     `altura_max` is the highest planta that HOLDS a dwelling, not a statement
@@ -406,6 +429,29 @@ def residential_storeys_from_cadastre(cadastral_area_m2, footprint_m2,
     452 for `suelo`.  The rounding is a rounding, not a gross-to-net
     allowance, and the honest place to absorb it is the partial storey below.
 
+    That argument holds in the INTERIOR of an integer interval and says nothing
+    about a building sitting on its edge, where the tolerance is not 25 % but
+    zero.  `2255712YJ2725C` records 441.0 m2 of dwellings over a 145.7 m2 plate
+    - a ratio of 3.0272, which `ceil` turns into a fourth storey that is 2.7 %
+    full: a whole storey of envelope, a roof 3 m higher and an area basis 33 %
+    wider, all to account for a 3.9 m2 residual.  Measured across the city,
+    2,077 buildings (8.31 %) sit within 1 % of an integer, so their storey count
+    was being settled by noise rather than by evidence.
+
+    So the ratio is not resolved finer than the inputs allow.  The band is
+    `max_area_delta_fraction` - the same figure the geometry pipeline already
+    admits as footprint error, read from the config rather than invented here -
+    and it is relative to the storey count because the error in a ratio is
+    relative, which is why a 10-storey building legitimately gets more absolute
+    slack than a 2-storey one.  Inside that band the residual is measurement
+    noise and not recorded area, so `ceil` loses nothing it was protecting:
+    below the resolution of our own inputs, "more" and "equal" are the same
+    statement.  The snap can only ever remove a storey that was near-empty,
+    never add one, and a genuine partial storey is untouched - a ratio of 3.5
+    still gives 4, and so does 3.05.  Measured effect: 473 buildings lose
+    exactly one storey each, modelled floor area falls 0.59 %, and the excess
+    over the cadastral record goes 6.21 % -> 5.58 %.
+
     Without cadastral evidence the built storey count is returned unchanged, so
     a building whose Tipo15 join failed is never silently shrunk.
     """
@@ -416,8 +462,41 @@ def residential_storeys_from_cadastre(cadastral_area_m2, footprint_m2,
         return int(built_storeys)
     if not (cadastral > 0 and footprint > 0):
         return int(built_storeys)
-    needed = math.ceil(cadastral / footprint)
+    ratio = cadastral / footprint
+    margin = storey_rule_margin(cadastral, footprint)
+    tolerance = (config or mb.DEFAULT_BUILD_CONFIG).geometry.max_area_delta_fraction
+    # the band is defined once, in `storey_rule_margin`, so the rule and the
+    # figure reported next to it cannot drift apart
+    if margin is not None and margin <= tolerance:
+        needed = int(round(ratio))
+    else:
+        needed = math.ceil(ratio)
     return max(1, min(int(built_storeys), needed))
+
+
+def storey_rule_snapped(cadastral_area_m2, footprint_m2, built_storeys,
+                        config=None) -> bool:
+    """True where the band changed THIS BUILDING'S storey count.
+
+    Not where the band merely applied.  Two cases look like a snap and are not:
+    a ratio just below a whole storey lands on the same number either way, and a
+    building already limited by what was built cannot lose a storey it never
+    had.  Measured over Valencia, the band applies to 2,077 buildings but
+    changes the answer for 473 - so reporting the first as if it were the second
+    would overstate the effect more than fourfold.  The test is therefore the
+    outcome, not the branch: run both rules through the same clamps and
+    compare.
+    """
+    applied = residential_storeys_from_cadastre(
+        cadastral_area_m2, footprint_m2, built_storeys, config=config)
+    try:
+        ratio = float(cadastral_area_m2) / float(footprint_m2)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return False
+    if not (ratio > 0):
+        return False
+    unsnapped = max(1, min(int(built_storeys), math.ceil(ratio)))
+    return applied != unsnapped
 
 
 def apply_mixed_use_storeys(osm, keep_residential: int) -> dict:
@@ -896,6 +975,16 @@ def apply_window_frames(osm, frame_name: str = WINDOW_FRAME_NAME) -> dict:
     91.96 m2 of opening is only 73.80 m2 of glass.  Without frames our whole
     opening is glass, which is why our window heat gain and loss both run about
     18 % above his.  The template already ships six carpentry types.
+
+    A building with no exterior wall has nothing to glaze and so nothing to
+    frame.  Of the 71 Valencia plots measured that reach this step with no
+    glazing, 70 have an exterior-wall share of exactly 0.000 of their perimeter
+    - inner-block parcels walled in on all four sides.  Refusing to fabricate a
+    window for them is right; refusing to finish them is not.  The guard
+    therefore fires only when glazed sub-surfaces exist and none took the
+    frame, which is the template-changed case it was written for, and
+    `glazed_subsurfaces` reports the count either way so "no windows" is stated
+    rather than inferred from a zero.
     """
     frame = _require(osm.getWindowPropertyFrameAndDividers(), frame_name, "Frame and divider")
     if abs(frame.frameWidth() - WINDOW_FRAME_WIDTH_M) > 1e-6:
@@ -903,12 +992,14 @@ def apply_window_frames(osm, frame_name: str = WINDOW_FRAME_NAME) -> dict:
             f"'{frame_name}' is {frame.frameWidth():.3f} m wide but the WWR "
             f"rescaling assumes {WINDOW_FRAME_WIDTH_M:.3f} m - the template changed")
     width = frame.frameWidth()
+    candidates = 0
     applied = 0
     glass_area = 0.0
     opening_area = 0.0
     for sub in osm.getSubSurfaces():
         if sub.subSurfaceType() not in GLAZED_SUBSURFACE_TYPES:
             continue
+        candidates += 1
         if not sub.setWindowPropertyFrameAndDivider(frame):
             continue
         applied += 1
@@ -920,10 +1011,13 @@ def apply_window_frames(osm, frame_name: str = WINDOW_FRAME_NAME) -> dict:
         perimeter = sum(
             (vertices[i] - vertices[i - 1]).length() for i in range(len(vertices)))
         opening_area += area + width * perimeter + 4.0 * width ** 2
-    if applied == 0:
-        raise RuntimeError("no glazed sub-surface accepted the frame and divider")
+    if candidates and applied == 0:
+        raise RuntimeError(
+            f"{candidates} glazed sub-surface(s) present but none accepted the "
+            f"frame and divider - the template or the OpenStudio API changed")
     return {
         "window_frame": frame_name,
+        "glazed_subsurfaces": candidates,
         "frame_width_m": round(width, 3),
         "windows_with_frame": applied,
         "glass_area_m2": round(glass_area, 1),
@@ -1607,8 +1701,9 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
     # among.  Without a Tipo15 area nothing is cut - the single-building CLI
     # path reads the raw GIS row and stays byte for byte as it was.
     built_storeys_raw = int(row["altura_max"]) + (1 if ground_is_residential else 0)
-    footprint_pre_m2 = mb.prepare_footprint(
-        mb.clean_polygon(row.geometry), config=build_config)[1]
+    footprint_detail = mb.prepare_footprint_detail(
+        mb.clean_polygon(row.geometry), config=build_config)
+    footprint_pre_m2 = footprint_detail["area_m2"]
     capped_storeys = residential_storeys_from_cadastre(
         row.get("tipo15_res_area_m2"), footprint_pre_m2, built_storeys_raw)
     # The builder counts residential storeys ABOVE the bajo; with a residential
@@ -1629,6 +1724,18 @@ def build_deep_model(row, party_geom, occupants: float, *, config=None,
     # directly: residential storeys above the bajo, before the cap.
     stats["built_storeys"] = built_storeys_raw - (1 if ground_is_residential else 0)
     stats["storey_cap_applied"] = storey_cap_applied
+    # Geometry provenance rather than a result: how faithfully the footprint was
+    # kept, and how close the storey count sat to a coin toss.  Both are carried
+    # per building so a new city can be asked either question without anyone
+    # re-deriving it, and both are ABSENT rather than zero where there is no
+    # cadastral record to measure against.
+    stats["footprint_fidelity"] = round(footprint_detail["footprint_fidelity"], 6)
+    stats["simplify_tolerance_used_m"] = footprint_detail["simplify_tolerance_used_m"]
+    _margin = storey_rule_margin(row.get("tipo15_res_area_m2"), footprint_pre_m2)
+    stats["storey_rule_margin"] = None if _margin is None else round(_margin, 6)
+    stats["storey_rule_snapped"] = storey_rule_snapped(
+        row.get("tipo15_res_area_m2"), footprint_pre_m2, built_storeys_raw,
+        config=build_config)
 
     res_area_m2 = float(stats["res_area_m2"])
     footprint_m2 = float(stats["footprint_m2"])

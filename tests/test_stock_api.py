@@ -60,13 +60,26 @@ def test_preflight_reports_what_would_run_and_what_would_not(client):
                        json={"scope": "district", "district": BENICALAP}).json()
     assert body["ok"] is True
     # The engine's own screen.  968 / 44 was what benicalap_v6 actually ran; the
-    # 2026-08-22 gate widening moved it to 1008 / 4 in this one district, which
-    # is the same effect the full city sees.  The 40 recovered buildings were
-    # being turned away by `simplify_tolerance_m` and `footprint_min_m2`, not by
-    # anything about the buildings themselves.
-    assert body["runnable"] == 1008
-    assert body["excluded"] == 4
-    # what matters more than either number: the screen still accounts for
+    # 2026-08-22 gate widening moved it to 1008 / 4; and stating the shape
+    # fidelity the simplification must achieve - instead of fixing its tolerance
+    # and accepting whatever signed area change came out - moved it to 1010 / 2.
+    # None of the recovered buildings was ever unmodellable.  They were turned
+    # away by `simplify_tolerance_m`, by `footprint_min_m2`, and by an area test
+    # that cancels: a finer tolerance could fail it while being geometrically
+    # closer to the cadastral polygon.
+    assert body["runnable"] == 1010
+    assert body["excluded"] == 2
+    # The two survivors are genuine and deliberately out of scope: one cadastral
+    # reference drawn as two rows, and one polygon with interior rings.
+    assert set(body["exclusion_reasons"]) == {"duplicate_refparcela_2_rows",
+                                              "interior_rings_2"}
+    # Deliberately redundant against the line above, because it is the claim that
+    # GENERALISES and must not be lost if that set is ever edited for this one
+    # district: simplification can no longer reject a building in any city.  The
+    # ladder refines to 1 cm and falls back to the raw polygon, so this reason is
+    # unreachable now rather than merely rare.
+    assert "simplification_area_change_over_limit" not in body["exclusion_reasons"]
+    # what matters more than any count above: the screen still accounts for
     # everyone it was handed, so nobody can be dropped silently
     assert body["runnable"] + body["excluded"] == 1012
     assert sum(body["exclusion_reasons"].values()) == body["excluded"]
@@ -443,6 +456,89 @@ def test_a_live_process_is_still_reported_as_running():
 def test_a_run_name_cannot_escape_the_stock_root():
     with pytest.raises(ValueError):
         stock_adapter.run_directory("../../etc")
+
+
+def test_delete_run_removes_only_the_inactive_run_and_exact_exports(monkeypatch, tmp_path):
+    stock_root = tmp_path / "stock"
+    run = stock_root / "sample"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    exports = tmp_path / "exports"
+    exports.mkdir()
+    exact = exports / "stock_sample_full.zip"
+    selected = exports / "stock_sample_selected-0123456789ab.zip"
+    sibling = exports / "stock_sample_more_full.zip"
+    for path in (exact, selected, sibling):
+        path.write_bytes(b"zip")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+    monkeypatch.setenv("WORKBENCH_EXPORT_ROOT", str(exports))
+
+    result = stock_adapter.delete_run("sample")
+
+    assert result == {"deleted": True, "run": "sample", "removed_exports": 2}
+    assert not run.exists()
+    assert not exact.exists()
+    assert not selected.exists()
+    assert sibling.exists()
+
+
+def test_delete_run_refuses_a_live_process(monkeypatch, tmp_path):
+    run = tmp_path / "stock" / "live"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+    monkeypatch.setattr(stock_adapter, "active_process", lambda _name: {"pid": 123})
+
+    with pytest.raises(stock_adapter.RunActiveError):
+        stock_adapter.delete_run("live")
+    assert run.exists()
+
+
+def test_delete_run_refuses_a_symlink_outside_the_stock_root(monkeypatch, tmp_path):
+    stock_root = tmp_path / "stock"
+    outside = tmp_path / "outside"
+    stock_root.mkdir()
+    outside.mkdir()
+    (outside / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    (stock_root / "linked").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    with pytest.raises(ValueError):
+        stock_adapter.delete_run("linked")
+    assert outside.exists()
+
+
+def test_delete_run_route_reports_conflict_without_removing_live_run(monkeypatch, tmp_path):
+    run = tmp_path / "stock" / "live"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+    monkeypatch.setattr(stock_adapter, "active_process", lambda _name: {"pid": 123})
+
+    with TestClient(app) as local_client:
+        response = local_client.delete("/api/stock/runs/live")
+
+    assert response.status_code == 409
+    assert "still running" in response.json()["detail"]
+    assert run.exists()
+
+
+def test_delete_run_route_removes_an_inactive_run(monkeypatch, tmp_path):
+    run = tmp_path / "stock" / "old"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+    monkeypatch.setattr(stock_adapter, "active_process", lambda _name: None)
+    monkeypatch.setenv("WORKBENCH_EXPORT_ROOT", str(tmp_path / "exports"))
+
+    with TestClient(app) as local_client:
+        response = local_client.delete("/api/stock/runs/old")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "deleted": True, "run": "old", "removed_exports": 0,
+    }
+    assert not run.exists()
 
 
 def test_an_artifact_path_cannot_escape_the_run(has_finished_run):
