@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "files-prepared-stock",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.315,
+      "y": 0.586,
+      "label": "Select Prepared stock only when the dataset already meets the Workbench stock contract."
+    },
+    {
+      "number": 2,
+      "x": 0.38,
+      "y": 0.656,
+      "label": "Activate the prepared-stock file that the run will resolve."
+    },
+    {
+      "number": 3,
+      "x": 0.44,
+      "y": 0.723,
+      "label": "Read an empty selection as an explicit no-file state, not as a validated stock."
+    }
+  ]
+}

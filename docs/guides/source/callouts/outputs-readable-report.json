@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-readable-report",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.31,
+      "y": 0.037,
+      "label": "Start from the interpretation summary: result, building scope, energy basis and QA."
+    },
+    {
+      "number": 2,
+      "x": 0.3,
+      "y": 0.535,
+      "label": "Read the period, energy and emissions strip together with its stated denominator."
+    },
+    {
+      "number": 3,
+      "x": 0.3,
+      "y": 0.615,
+      "label": "Quote any number only with the scope and limitations printed beneath it."
+    }
+  ]
+}

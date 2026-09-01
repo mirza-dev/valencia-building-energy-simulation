@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-valencia-heatmap",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.31,
+      "y": 0.131,
+      "label": "Read the annual period, denominator and panel metric before comparing colours."
+    },
+    {
+      "number": 2,
+      "x": 0.825,
+      "y": 0.931,
+      "label": "Interpret P2-P98 clipping as a display rule; the recorded totals still include values outside that colour range."
+    },
+    {
+      "number": 3,
+      "x": 0.725,
+      "y": 0.973,
+      "label": "Use the status legend to distinguish simulated, failed, excluded and unavailable buildings."
+    }
+  ]
+}

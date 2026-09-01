@@ -34,6 +34,7 @@ JOB_ESTIMATES = {
     "neighborhood": 2 * GIB,
     "city": 3 * GIB,
     "lhs": 2 * GIB,
+    "lhs_event": 2 * GIB,
 }
 HEAVY_JOB_KINDS = frozenset(JOB_ESTIMATES)
 SAFE_CLEANUP_CATEGORIES = frozenset({

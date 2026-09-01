@@ -1,0 +1,118 @@
+{
+  "crs": "EPSG:25830",
+  "denominator": "whole-site energy / geometric residential floor area",
+  "display_scale": {
+    "lower_quantile": 0.02,
+    "upper_quantile": 0.98,
+    "values_are_not_modified": true
+  },
+  "districts": 19,
+  "geography": {
+    "link_distance_m": 1200.0,
+    "method": "Delaunay proximity components grouped into at most two insets",
+    "outside_frame": 0,
+    "views": [
+      {
+        "buildings": 25507,
+        "districts": [
+          "POBLATS MARITIMS",
+          "CIUTAT VELLA",
+          "L'EIXAMPLE"
+        ],
+        "extent": [
+          720688.3628444257,
+          4366327.310744213,
+          730738.4202199024,
+          4379423.872118149
+        ],
+        "id": "main",
+        "label": "Main urban extent"
+      },
+      {
+        "buildings": 344,
+        "districts": [
+          "POBLATS DEL NORD",
+          "POBLATS DE L'OEST"
+        ],
+        "extent": [
+          721324.7599726571,
+          4379023.927886991,
+          729429.3401024146,
+          4381402.180059463
+        ],
+        "id": "inset_1",
+        "label": "POBLATS DEL NORD / POBLATS DE L'OEST"
+      },
+      {
+        "buildings": 594,
+        "districts": [
+          "POBLATS DEL SUD"
+        ],
+        "extent": [
+          729231.3845715033,
+          4350880.877520631,
+          735388.6885208372,
+          4363298.547439334
+        ],
+        "id": "inset_2",
+        "label": "POBLATS DEL SUD"
+      }
+    ]
+  },
+  "panels": {
+    "cooling_kwh_m2": {
+      "above_scale": 523,
+      "below_scale": 508,
+      "max": 8.34,
+      "min": 0.0,
+      "missing": 39,
+      "p02": 0.28,
+      "p50": 2.03,
+      "p98": 4.45,
+      "valid": 26406
+    },
+    "space_heating_kwh_m2": {
+      "above_scale": 529,
+      "below_scale": 517,
+      "max": 37.0,
+      "min": 0.0,
+      "missing": 39,
+      "p02": 0.13,
+      "p50": 3.92,
+      "p98": 12.498999999999977,
+      "valid": 26406
+    },
+    "total_site_kwh_m2": {
+      "above_scale": 529,
+      "below_scale": 527,
+      "max": 108.04,
+      "min": 18.24,
+      "missing": 39,
+      "p02": 26.76,
+      "p50": 44.81,
+      "p98": 72.42899999999999,
+      "valid": 26406
+    }
+  },
+  "panels_omitted_constant": {},
+  "period": {
+    "period": "annual",
+    "unit": "kWh/m\u00b2\u00b7yr"
+  },
+  "png": {
+    "bytes": 1262884,
+    "file": "results_heatmap.png",
+    "sha256": "9c92626a8868be3b4c34b0348507c5299f3b68cd0a68b6c2b4615bbf4fb39e53"
+  },
+  "profile_fingerprint": "cbf17543cfee3ff1d1daab3554689ee3326f374f99d4cb19ee06a774bc726d08",
+  "run": "ALL_VALENC-A_REAL",
+  "schema": "bsew-heatmap-evidence-v1",
+  "simulated_not_measured": true,
+  "status_classes": {
+    "excluded": 38,
+    "failed": 1,
+    "metric_missing": 0,
+    "successful": 26406
+  },
+  "unit": "kWh/m\u00b2\u00b7yr"
+}

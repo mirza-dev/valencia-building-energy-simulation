@@ -1,4 +1,4 @@
-"""Verify the exact runtime required by Valencia Stock Energy Workbench.
+"""Verify the exact runtime required by Building Stock Energy Workbench.
 
 Run with::
 

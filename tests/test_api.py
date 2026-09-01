@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 
 from fastapi.testclient import TestClient
 import pytest
@@ -34,6 +35,20 @@ def test_health_config_building_and_code_contracts():
         code = client.get("/api/code/symbols/build_model_with_config")
         assert code.status_code == 200
         assert "BuildResult" in code.json()["source"]
+
+
+def test_frontend_shell_is_not_cached_but_hashed_assets_are_immutable():
+    with TestClient(app) as client:
+        shell = client.get("/")
+        assert shell.status_code == 200
+        assert shell.headers["cache-control"] == "no-store"
+        assert shell.headers["x-content-type-options"] == "nosniff"
+        match = re.search(r'(?:src|href)="(/assets/[^"]+)"', shell.text)
+        assert match, "built frontend shell did not reference a hashed asset"
+        asset = client.get(match.group(1))
+        assert asset.status_code == 200
+        assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+        assert asset.headers["x-content-type-options"] == "nosniff"
 
 def test_storage_inventory_cleanup_plan_and_stale_confirmation():
     with TestClient(app) as client:

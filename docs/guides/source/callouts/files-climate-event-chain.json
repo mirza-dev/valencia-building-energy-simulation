@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "files-climate-event-chain",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.245,
+      "y": 0.381,
+      "label": "Confirm that the EPW and DDY files were activated as one validated pair."
+    },
+    {
+      "number": 2,
+      "x": 0.76,
+      "y": 0.316,
+      "label": "Record the OpenStudio template fingerprint used to prepare every building model."
+    },
+    {
+      "number": 3,
+      "x": 0.4,
+      "y": 0.875,
+      "label": "Register the PALM slice separately and read its contract, CRS and slice identity."
+    }
+  ]
+}

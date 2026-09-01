@@ -1,0 +1,5 @@
+.DS_Store
+**/.DS_Store
+
+# Rendered inspection material is reproducible and must not become publication source.
+tmp-*/

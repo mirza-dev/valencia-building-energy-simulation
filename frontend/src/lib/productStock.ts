@@ -146,3 +146,37 @@ export function lhsBelongsToRun(
   if (!refparcela) return false
   return (items ?? []).some((item) => item.refparcela === refparcela)
 }
+
+/**
+ * Which uncertainty study, if any, belongs on this run's Outputs page.
+ *
+ * A microclimate event run and an annual run are answered by two different
+ * studies on two different engines, and the wrong one is worse than none: the
+ * annual study samples a Valencia pilot on the retired demand chain, so
+ * printing its band beside an eight-day Lecco result would put one engine's
+ * uncertainty next to another engine's numbers.
+ *
+ * Event studies are therefore chosen first and only from studies committed
+ * against *this* stock run, and among those only ones whose artifacts verified
+ * and whose engine sources have not moved since.  When none qualifies the
+ * caller falls back to the annual path unchanged, which is why this returns a
+ * decision rather than a component.
+ */
+export function pickUncertaintyStudy<T extends {
+  id: string
+  verification?: { ok?: boolean } | null
+  verification_status?: string
+  current_compatibility?: { current?: boolean } | null
+  config?: { stock_run?: string } | null
+}>(runs: T[] | undefined, stockRun: string): { kind: 'event'; run: T } | { kind: 'annual' } {
+  const mine = (runs ?? []).filter((run) => (run.config?.stock_run ?? '') === stockRun)
+  if (mine.length === 0) return { kind: 'annual' }
+  // A study whose artifacts failed to verify, or that describes an earlier
+  // configuration, still says something true about provenance - so it is shown
+  // rather than hidden, and the section withholds its numbers instead.
+  const usable = mine.find((run) =>
+    run.verification?.ok !== false
+    && run.verification_status === 'VERIFIED'
+    && run.current_compatibility?.current !== false)
+  return { kind: 'event', run: usable ?? mine[0] }
+}

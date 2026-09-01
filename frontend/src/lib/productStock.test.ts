@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countDone, formatDuration, formatProductBytes, inputReadiness, lhsBelongsToRun, runProgress, safeRunName, shortHash } from './productStock'
+import { countDone, formatDuration, formatProductBytes, inputReadiness, lhsBelongsToRun, pickUncertaintyStudy, runProgress, safeRunName, shortHash } from './productStock'
 
 describe('product stock presentation helpers', () => {
   it('formats evidence without changing values', () => {
@@ -165,5 +165,43 @@ describe('runProgress on a resumed run', () => {
   it('still prefers the recorded scope while the run is live', () => {
     const live = { ...resumed, running: true, summary_is_partial: true }
     expect(runProgress(live).total).toBe(7602)
+  })
+})
+
+describe('pickUncertaintyStudy', () => {
+  const base = {
+    id: 'a', verification: { ok: true }, verification_status: 'VERIFIED',
+    current_compatibility: { current: true }, config: { stock_run: 'LECCO_REAL' },
+  }
+
+  it('falls back to the annual study when no event study belongs to this run', () => {
+    expect(pickUncertaintyStudy([], 'LECCO_REAL')).toEqual({ kind: 'annual' })
+    expect(pickUncertaintyStudy(undefined, 'LECCO_REAL')).toEqual({ kind: 'annual' })
+  })
+
+  it('never shows a study committed against a different stock run', () => {
+    // The failure this replaces: the newest study in the system rendered on
+    // every Outputs page, so one run's band appeared under another's heading.
+    expect(pickUncertaintyStudy([{ ...base, config: { stock_run: 'LECCO_1' } }], 'LECCO_REAL'))
+      .toEqual({ kind: 'annual' })
+  })
+
+  it('prefers a verified, current study over an outdated one', () => {
+    const stale = { ...base, id: 'stale', current_compatibility: { current: false } }
+    const good = { ...base, id: 'good' }
+    expect(pickUncertaintyStudy([stale, good], 'LECCO_REAL')).toEqual({ kind: 'event', run: good })
+  })
+
+  it('still surfaces an unusable study rather than hiding it', () => {
+    // An outdated or unverified study says something true about provenance; the
+    // section withholds its numbers instead of pretending it is not there.
+    const stale = { ...base, id: 'stale', current_compatibility: { current: false } }
+    expect(pickUncertaintyStudy([stale], 'LECCO_REAL')).toEqual({ kind: 'event', run: stale })
+  })
+
+  it('does not accept a study whose artifacts failed to verify as the current one', () => {
+    const tampered = { ...base, id: 'bad', verification: { ok: false }, verification_status: 'TAMPERED' }
+    const good = { ...base, id: 'good' }
+    expect(pickUncertaintyStudy([tampered, good], 'LECCO_REAL')).toEqual({ kind: 'event', run: good })
   })
 })

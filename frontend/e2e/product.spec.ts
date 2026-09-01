@@ -27,6 +27,30 @@ test('stock product exposes Files → Run → Outputs with verified evidence', a
 
   await page.getByRole('link', { name: /Outputs Evidence/ }).click()
   await expect(page.getByRole('heading', { name: 'Outputs' })).toBeVisible()
+  await page.locator('.output-run-picker select').selectOption('ALL-VALENC-A')
+  await expect(page.getByRole('link', { name: /GIS layer/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Heat map/ })).toBeVisible()
+  const toolbar = await page.locator('.output-run-picker').boundingBox()
+  const selector = await page.locator('.output-run-picker select').boundingBox()
+  const actions = await page.locator('.output-run-actions').boundingBox()
+  expect(toolbar).not.toBeNull()
+  expect(selector?.width).toBeGreaterThanOrEqual(220)
+  expect(selector?.height).toBe(38)
+  expect((selector?.x ?? 0) + (selector?.width ?? 0)).toBeLessThanOrEqual((actions?.x ?? 0) + 1)
+
+  // A destructive action is separate from the native run chooser and needs
+  // the exact run name.  The acceptance suite never presses the final button:
+  // these are real product runs, while removal itself is proven against an
+  // isolated stock root by the API tests.
+  await page.getByRole('button', { name: 'Delete run' }).click()
+  const deleteBanner = page.locator('.delete-run-banner')
+  await expect(deleteBanner).toContainText('Delete ALL-VALENC-A permanently?')
+  const deletePermanently = page.getByRole('button', { name: 'Delete permanently' })
+  await expect(deletePermanently).toBeDisabled()
+  await deleteBanner.getByRole('textbox').fill('ALL-VALENC-A')
+  await expect(deletePermanently).toBeEnabled()
+  await deleteBanner.getByRole('button', { name: 'Cancel' }).click()
+  await expect(deleteBanner).toHaveCount(0)
   await expect(page.getByText('TOTAL SITE ENERGY')).toBeVisible()
   await expect(page.getByText('RESIDENTIAL-AREA EUI', { exact: true })).toBeVisible()
   await expect(page.getByText('conditioned geometry', { exact: true })).toHaveCount(0)
@@ -88,14 +112,43 @@ test('stock product exposes Files → Run → Outputs with verified evidence', a
   // The preserved record is offered as a page, not only as raw JSON: of the
   // five preserved files only `eplustbl.htm` ever rendered, so in practice the
   // richest one - `deep_layers.json` - went unread.
-  const report = page.getByRole('link', { name: /Building report/ })
+  const report = page.getByRole('link', { name: /Readable building report/ })
   await expect(report).toBeVisible()
   const reportHref = await report.getAttribute('href')
   expect(reportHref).toContain('/report')
   const reportResponse = await page.request.get(reportHref!)
   expect(reportResponse.status()).toBe(200)
   expect(reportResponse.headers()['content-type']).toContain('text/html')
-  expect(await reportResponse.text()).toContain('Quality checks')
+  const reportHtml = await reportResponse.text()
+  expect(reportHtml).toContain('Quality assurance and diagnostics')
+
+  // Every fragment the product links at has to exist in the document the link
+  // returns. `#overview` and `#diagnostics` did not: nothing emitted them, so
+  // the browser silently stayed at the top of the report and the failure was
+  // invisible from the outside. Checking the whole set, rather than the one
+  // link that was noticed, is what turns this into a guard.
+  const evidenceNav = page.getByRole('navigation', { name: 'Readable building evidence' })
+  const reportLinks = [reportHref!, ...await evidenceNav.getByRole('link').evaluateAll(
+    (nodes) => nodes.map((node) => (node as HTMLAnchorElement).getAttribute('href') ?? ''),
+  )]
+  const fragments = reportLinks
+    .filter((href) => href.includes('/report#'))
+    .map((href) => href.split('#')[1])
+  expect(fragments.length).toBeGreaterThan(1)
+  for (const fragment of fragments) {
+    expect(reportHtml, `report has no anchor #${fragment}`).toContain(`id="${fragment}"`)
+  }
+  expect(fragments).toContain('interpretation')
+  await expect(page.getByRole('navigation', { name: 'Readable building evidence' })).toContainText('Warnings and errors')
+  await expect(page.getByRole('navigation', { name: 'Readable building evidence' })).toContainText('What the model claimed')
+  const resultTables = page.getByRole('navigation', { name: 'Readable building evidence' })
+    .getByRole('link', { name: /EnergyPlus result tables/ })
+  await expect(resultTables).toBeVisible()
+  await expect(resultTables).toHaveAttribute('href', /eplustbl\.htm$/)
+  const rawFiles = page.locator('.raw-evidence-files')
+  await expect(rawFiles).not.toHaveAttribute('open', '')
+  await expect(rawFiles.getByText('These source files are preserved for audit software')).not.toBeVisible()
+  await expect(rawFiles.getByRole('link', { name: /EnergyPlus result tables/ })).toHaveCount(0)
 
   // Both leftovers are named, and separately: a failure can be retried into
   // this ledger, an exclusion cannot.

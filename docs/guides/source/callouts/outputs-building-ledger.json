@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-building-ledger",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.69,
+      "y": 0.792,
+      "label": "Search by cadastral reference and apply the status filter before selecting a row."
+    },
+    {
+      "number": 2,
+      "x": 0.9,
+      "y": 0.262,
+      "label": "Keep the selected row identity visible while its evidence drawer is open."
+    },
+    {
+      "number": 3,
+      "x": 0.955,
+      "y": 0.567,
+      "label": "Open the readable report before consulting raw expert files."
+    }
+  ]
+}

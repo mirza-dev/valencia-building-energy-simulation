@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-exports",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.556,
+      "y": 0.205,
+      "label": "Choose Building CSV for tabular review and the GIS layer for spatial analysis."
+    },
+    {
+      "number": 2,
+      "x": 0.754,
+      "y": 0.205,
+      "label": "Use the heat map as a visual derivative and the signed ZIP as the archival evidence package."
+    },
+    {
+      "number": 3,
+      "x": 0.943,
+      "y": 0.205,
+      "label": "Delete only a non-running run, and only after exact-name confirmation."
+    }
+  ]
+}

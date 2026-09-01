@@ -1,13 +1,13 @@
 # Getting started
 
-Valencia Stock Energy Workbench is a local, English-only desktop-style web
+Building Stock Energy Workbench (BSEW) is a local, English-only desktop-style web
 application. Its operational flow is deliberately small: **Files → Run →
 Outputs**. The simulation stays on your computer; the browser is only the user
 interface.
 
 ## 1. Get the correct package
 
-Use the complete Valencia Workbench research distribution supplied by the
+Use the complete Building Stock Energy Workbench research distribution supplied by the
 project team. A plain source-code clone does **not** contain the licensed UPV
 inputs or the 4.4 GB completed Benicalap evidence run.
 
@@ -137,7 +137,7 @@ The distribution already includes the completed `benicalap_v8` run, so Outputs
 is useful before starting a new simulation.
 
 For what every number on that screen means, and for what the product can and
-cannot do, read the user guide: [`Valencia Workbench - User Guide.pdf`](Valencia%20Workbench%20-%20User%20Guide.pdf)
+cannot do, read the current [Building Stock Energy Workbench User Guide](guides/published/Building%20Stock%20Energy%20Workbench%20-%20User%20Guide.pdf).
 (the same document as [`user-guide.html`](user-guide.html), which is what the
 PDF is rendered from).
 

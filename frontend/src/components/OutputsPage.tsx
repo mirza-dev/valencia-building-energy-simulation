@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, BarChart3, Box, Building2, CheckCircle2, Download, ExternalLink, FileSearch, FileText, Image, Map, PackageCheck, Play, RotateCcw, Search } from 'lucide-react'
+import { AlertTriangle, BarChart3, Box, Building2, CheckCircle2, Download, ExternalLink, FileSearch, FileText, Image, Map, PackageCheck, Play, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { api } from '../lib/api'
-import { formatProductBytes, lhsBelongsToRun, safeRunName } from '../lib/productStock'
-import type { ProductLedgerRow } from '../lib/types'
+import { formatProductBytes, lhsBelongsToRun, pickUncertaintyStudy, safeRunName } from '../lib/productStock'
+import type { LhsEventRun, ProductLedgerRow } from '../lib/types'
 import { useFeedback } from './FeedbackProvider'
 import GeometryCheckDrawer from './GeometryCheckDrawer'
 
@@ -12,10 +12,19 @@ const PAGE_SIZE = 100
 // actually preserves.  `qa_report.txt` used to be listed here and always 404'd:
 // it belongs to the single-building Part B path, not to the stock runner, whose
 // QA record lives inside `deep_layers.json`.
-const ARTIFACTS = [
-  ['eplustbl.htm', 'EnergyPlus table'], ['deep_layers.json', 'Model layers and QA'],
-  ['model_python.osm', 'OpenStudio model'], ['eplusout.err', 'EnergyPlus errors'],
-  ['verified_profile.json', 'Verified profile'],
+const RAW_ARTIFACTS = [
+  ['deep_layers.json', 'Model record (JSON)', 'Machine-readable model, energy and QA record'],
+  ['model_python.osm', 'OpenStudio model (OSM)', 'Source model for OpenStudio and specialist tools'],
+  ['eplusout.err', 'EnergyPlus log (ERR)', 'Original warning and error stream'],
+  ['verified_profile.json', 'Verified profile (JSON)', 'Machine-readable source hashes and profile identity'],
+] as const
+
+const READABLE_EVIDENCE = [
+  ['energy', 'Simulation results', 'Heating, cooling, hot water, total energy and carbon'],
+  ['quality', 'Quality checks', 'What the model claimed, what EnergyPlus returned and whether they matched'],
+  ['diagnostics', 'Warnings and errors', 'Warning, severe and fatal counts, with their impact explained'],
+  ['methods', 'How the model was prepared', 'Occupancy, mixed use, top floor, hot water, HVAC and weather'],
+  ['provenance', 'Verification and sources', 'The run, profile, climate and source records behind this result'],
 ] as const
 
 function number(value?: number, digits = 2) {
@@ -29,6 +38,93 @@ const LHS_OUTPUTS = [
   ['cooling_kwh_m2', 'Space cooling', 'kWh/m²'],
   ['co2_kg_m2', 'Carbon', 'kgCO₂/m²'],
 ] as const
+
+// An eight-day August event has no heating to speak of - it was measured at
+// exactly zero on all 995 rows of the run - so the annual study's heating line
+// is not carried over. Total site energy takes its place and the constant is
+// reported in words rather than shown as an empty row.
+const LHS_EVENT_OUTPUTS = [
+  ['total_site_kwh_m2', 'Total site energy'],
+  ['cooling_kwh_m2', 'Space cooling'],
+  ['co2_kg_m2', 'Operational carbon'],
+] as const
+
+/**
+ * The uncertainty band for a microclimate event run.
+ *
+ * This is a second study, not the annual one pointed at another city. The
+ * annual study runs on the retired demand chain - ideal loads, no hot water, no
+ * heat pump, a massless wall - so its interval cannot be printed beside numbers
+ * produced by the deep chain over an eight-day event. This one perturbs the
+ * event run's own engine, on the event run's own building, over the event's own
+ * period, and every number it shows carries that period in its unit.
+ */
+function EventUncertaintySection({ run: committed, stockRun }: { run: LhsEventRun; stockRun: string }) {
+  const detail = useQuery({
+    queryKey: ['lhs-event-run', committed.id], queryFn: () => api.lhsEventRun(committed.id),
+    placeholderData: committed,
+  })
+  const run = detail.data ?? committed
+  const verified = run.verification?.ok !== false && run.verification_status === 'VERIFIED'
+  const current = run.current_compatibility?.current !== false
+  const changed = run.current_compatibility?.changed_roles ?? []
+  const result = run.result
+  const statistics = result?.summary.statistics ?? {}
+  const usable = verified && current && result?.qa.scientific_status === 'VALIDATED'
+  const period = result?.summary.energy_period ?? 'over the event'
+  const constants = result?.qa.constant_outputs ?? {}
+  const assumed = (result?.variables ?? []).filter((item) => item.source === 'assumed')
+
+  return <section className="output-section">
+    <header><div><BarChart3 size={17} /><span><strong>Uncertainty study (Latin hypercube)</strong>
+      <small>
+        {result ? `${result.settings.n} samples · seed ${result.settings.seed}` : 'Sampling study'} on <code>{run.refparcela}</code>,
+        one building in <code>{stockRun}</code> over the {result?.summary.event_window ?? 'event'} window
+        {result ? ` (${result.summary.event_days} days)` : ''} — a band on that building, not on the totals above.
+      </small>
+    </span></div>
+      {usable && <nav className="lhs-downloads">
+        <a className="secondary-button" href={api.lhsEventArtifactUrl(run.id, 'runs.csv')}><Download size={14} /> Sample ledger (.csv)</a>
+        <a className="secondary-button" href={api.lhsEventArtifactUrl(run.id, 'summary.txt')} target="_blank" rel="noreferrer"><FileText size={14} /> Written summary (.txt)</a>
+        <a className="secondary-button" href={api.lhsEventArtifactUrl(run.id, 'histograms.png')} target="_blank" rel="noreferrer"><Image size={14} /> Distributions (.png)</a>
+        <a className="secondary-button" href={api.lhsEventArtifactUrl(run.id, 'tornado.png')} target="_blank" rel="noreferrer"><Image size={14} /> Sensitivity (.png)</a>
+        <a className="secondary-button" href={api.lhsExportUrl(run.id)}><PackageCheck size={14} /> Signed ZIP</a>
+      </nav>}
+    </header>
+
+    {!verified ? <div className="output-interpretation-note"><AlertTriangle size={17} /><div>
+      <strong>This study&apos;s artifacts did not verify</strong>
+      <p>Its statistics are withheld: {run.verification?.status ?? run.verification_status}.</p>
+    </div></div> : !current ? <div className="output-interpretation-note"><AlertTriangle size={17} /><div>
+      <strong>This study describes an earlier configuration of this run</strong>
+      <p>Its evidence is intact and still traceable, but {changed.length} input{changed.length === 1 ? ' has' : 's have'} changed since it ran, so its interval is not a confidence interval for anything on this page. Re-run the study to restore one.</p>
+      <small><code>{changed.join(' · ')}</code></small>
+    </div></div> : <>
+      <div className="product-table-scroll"><table className="product-table"><thead><tr>
+        <th>Output</th><th>P5</th><th>Median</th><th>P95</th><th>Mean</th>
+      </tr></thead><tbody>
+        {LHS_EVENT_OUTPUTS.map(([key, label]) => {
+          const value = statistics[key]
+          const unit = key === 'co2_kg_m2' ? `kgCO₂/m² ${period.replace(/^kWh\/m² /, '')}` : period
+          return <tr key={key}><td>{label} <small>{unit}</small></td>
+            <td>{number(value?.p5, 4)}</td><td>{number(value?.median, 4)}</td>
+            <td>{number(value?.p95, 4)}</td><td>{number(value?.mean, 4)}</td></tr>
+        })}
+      </tbody></table></div>
+      {Object.keys(constants).length > 0 && <p className="output-note">
+        Measured and found constant across all {result?.summary.samples_completed} samples: {Object.entries(constants).map(([key, value]) => `${key} = ${value}`).join(' · ')}. Reported rather than omitted.
+      </p>}
+      {assumed.length > 0 && <p className="output-note">
+        Ranges without an external source, sampled as stated assumptions: <code>{assumed.map((item) => item.name).join(' · ')}</code>.
+        {result && Object.keys(result.excluded_variables).length > 0 && <> Excluded on purpose: <code>{Object.keys(result.excluded_variables).join(' · ')}</code> — this run reports metered consumption under a locked heat-pump COP, so dividing by a second one would count the system twice.</>}
+      </p>}
+      <figure className="lhs-figures">
+        <img src={api.lhsEventFigureUrl(run.id, 'histograms.png')} alt="Sampled output distributions over the event window" loading="lazy" />
+        <img src={api.lhsEventFigureUrl(run.id, 'tornado.png')} alt="Rank correlation of each sampled variable with each output" loading="lazy" />
+      </figure>
+    </>}
+  </section>
+}
 
 /**
  * Uncertainty evidence, kept deliberately apart from the stock totals above.
@@ -49,6 +145,11 @@ const LHS_OUTPUTS = [
  * envelope. The study was fine; the page it was on was not.
  */
 function UncertaintySection({ run: stockRun }: { run: string }) {
+  // Event studies are asked about first and scoped to this run, so a study
+  // committed for another stock run can never surface here.
+  const eventRuns = useQuery({
+    queryKey: ['lhs-event-runs', stockRun], queryFn: () => api.lhsEventRuns(stockRun),
+  })
   const runs = useQuery({ queryKey: ['lhs-runs'], queryFn: api.lhsRuns })
   const newest = (runs.data ?? [])[0]
   const detail = useQuery({
@@ -63,6 +164,11 @@ function UncertaintySection({ run: stockRun }: { run: string }) {
     enabled: Boolean(stockRun && newest?.refparcela),
     staleTime: Infinity,
   })
+  // Hidden while either lookup is in flight: appearing late is recoverable,
+  // showing the wrong engine's band even briefly is not.
+  if (eventRuns.isLoading) return null
+  const choice = pickUncertaintyStudy(eventRuns.data, stockRun)
+  if (choice.kind === 'event') return <EventUncertaintySection run={choice.run} stockRun={stockRun} />
   if (runs.isLoading || !newest) return null
   // Hidden while the lookup is in flight: appearing late is recoverable,
   // showing another city's band even briefly is not.
@@ -125,6 +231,8 @@ export default function OutputsPage() {
   const [geometry, setGeometry] = useState(false)
   const [exportPlan, setExportPlan] = useState<Awaited<ReturnType<typeof api.stockExportPlan>> | null>(null)
   const [exportConfirmed, setExportConfirmed] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
 
   const runs = useQuery({ queryKey: ['stock-runs'], queryFn: api.stockRuns, refetchInterval: 10_000 })
   useEffect(() => {
@@ -140,6 +248,7 @@ export default function OutputsPage() {
     enabled: Boolean(selected),
   })
   const summary = detail.data?.summary
+  const selectedRun = runs.data?.runs.find((run) => run.run === selected)
   const totals = summary?.totals
   // A microclimate event run fills the same fields as an annual one, so these
   // labels are read off the run rather than assumed.  A run that predates the
@@ -174,6 +283,35 @@ export default function OutputsPage() {
     // is the only mutation on the page, so nothing else would report it.
     onError: (error) => notify(error instanceof Error ? error.message : 'Export plan failed.', 'error'),
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: (name: string) => api.deleteStockRun(name),
+    onSuccess: async (_value, deleted) => {
+      const next = runs.data?.runs.find((run) => run.run !== deleted)?.run ?? ''
+      setDeleteTarget(null)
+      setDeleteConfirmation('')
+      setSelected(next)
+      setOffset(0)
+      setBuilding(null)
+      setGeometry(false)
+      setExportPlan(null)
+      queryClient.removeQueries({ queryKey: ['stock-run', deleted] })
+      queryClient.removeQueries({ queryKey: ['stock-ledger', deleted] })
+      await queryClient.invalidateQueries({ queryKey: ['stock-runs'] })
+      notify(`Run ${deleted} was permanently deleted.`, 'success')
+    },
+    onError: (error) => notify(error instanceof Error ? error.message : 'Could not delete the run.', 'error'),
+  })
+
+  const changeRun = (name: string) => {
+    setSelected(name)
+    setOffset(0)
+    setBuilding(null)
+    setGeometry(false)
+    setExportPlan(null)
+    setDeleteTarget(null)
+    setDeleteConfirmation('')
+  }
 
   // What this run has left over.  Read once per run and not polled: a finished
   // run's leftovers do not change on their own, and a live one is not offered
@@ -221,18 +359,28 @@ export default function OutputsPage() {
   return <div className={`product-page outputs-page ${geometryOpen ? 'geometry-open' : ''}`}>
     <header className="product-page-header outputs-header">
       <div><span>03 / EVIDENCE</span><h1>Outputs</h1><p>Read aggregate results, audit every building and open the files preserved by the runner.</p></div>
-      <div className="output-run-picker"><label><span>RUN</span><select value={selected} onChange={(event) => { setSelected(event.target.value); setOffset(0); setBuilding(null); setGeometry(false); setExportPlan(null) }}>
+      <div className="output-run-picker"><label><span>RUN</span><select value={selected} disabled={runs.isLoading || !(runs.data?.runs.length)} onChange={(event) => changeRun(event.target.value)}>
         {(runs.data?.runs ?? []).map((run) => <option key={run.run} value={run.run}>{run.run}{run.running ? ' · RUNNING' : ''}</option>)}
-      </select></label>{selected && <><a className="secondary-button" href={api.stockLedgerCsvUrl(selected)}><Download size={14} /> Building CSV</a>{summary?.results_layer?.written && <a className="secondary-button" href={api.stockResultsLayerUrl(selected)} title={`One feature per building in ${summary.results_layer.crs ?? 'the run projection'}, plus ${Object.keys(summary.results_layer.zone_layers ?? {}).join(' and ') || 'no'} roll-up layers, styled on opening — drag into QGIS`}><Map size={14} /> GIS layer (.gpkg)</a>}{summary?.results_layer?.heatmap?.written && <a className="secondary-button" href={api.stockHeatmapUrl(selected)} title={`${(summary.results_layer.heatmap.panels ?? []).length} panels; buildings with no result drawn grey — a picture for a report, no GIS needed`}><Image size={14} /> Heat map (.png)</a>}<button className="secondary-button" disabled={detail.data?.running || exportPlanMutation.isPending} onClick={() => exportPlanMutation.mutate()}><PackageCheck size={14} /> {exportPlanMutation.isPending ? 'Sizing…' : 'Full signed ZIP'}</button></>}</div>
+      </select></label>{selected && <nav className="output-run-actions" aria-label="Run files and controls">{detail.data?.running || detail.data?.summary_is_partial
+        ? <button className="secondary-button" disabled title="Available when the run completes: a partial ledger would download under a final-looking name."><Download size={14} /> Building CSV</button>
+        : <a className="secondary-button" href={api.stockBuildingsCsvUrl(selected)} title="One row per building, fixed published schema, with a companion dictionary of what every column means"><Download size={14} /> Building CSV</a>}{summary?.results_layer?.written && <a className="secondary-button" href={api.stockResultsLayerUrl(selected)} title={`One feature per building in ${summary.results_layer.crs ?? 'the run projection'}, plus ${Object.keys(summary.results_layer.zone_layers ?? {}).join(' and ') || 'no'} roll-up layers, styled on opening — drag into QGIS`}><Map size={14} /> GIS layer (.gpkg)</a>}{summary?.results_layer?.heatmap?.written && (detail.data?.running === false && summary?.results_layer?.heatmap?.written ? <a className="secondary-button" href={api.stockHeatmapUrl(selected)} title={`${(summary.results_layer.heatmap.panels ?? []).length} panels with explicit P2–P98 limits, geographic insets and separate result-status evidence — a publication image, not a substitute for GIS`}><Image size={14} /> Heat map (.png)</a> : <button className="secondary-button" disabled title="Available when run completes"><Image size={14} /> Heat map (.png)</button>)}<button className="secondary-button" disabled={detail.data?.running || exportPlanMutation.isPending} onClick={() => exportPlanMutation.mutate()}><PackageCheck size={14} /> {exportPlanMutation.isPending ? 'Sizing…' : 'Full signed ZIP'}</button><button className="danger-button" disabled={selectedRun?.running || detail.data?.running || deleteMutation.isPending} title={selectedRun?.running || detail.data?.running ? 'A running run cannot be deleted.' : 'Permanently delete this run'} onClick={() => { setDeleteTarget(selected); setDeleteConfirmation('') }}><Trash2 size={14} /> Delete run</button></nav>}
+      </div>
     </header>
 
     <div className="product-scroll outputs-scroll">
+      {runs.isError && <section className="output-pending output-error"><AlertTriangle size={24} /><strong>Run list could not be loaded</strong><p>{runs.error instanceof Error ? runs.error.message : 'The Workbench did not return a run list.'}</p><button className="secondary-button" onClick={() => runs.refetch()}>Retry</button></section>}
+      {!runs.isLoading && !runs.isError && (runs.data?.runs.length ?? 0) === 0 && <section className="output-pending"><FileSearch size={24} /><strong>No stock runs yet</strong><p>Start a run from the Run tab; completed and active runs will appear here.</p></section>}
+      {deleteTarget && <section className="delete-run-banner" role="alert">
+        <Trash2 size={20} /><div><strong>Delete {deleteTarget} permanently?</strong><p>The run ledger, aggregate and preserved building files will be removed. This cannot be undone.</p></div>
+        <label><span>TYPE THE RUN NAME TO CONFIRM</span><input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoComplete="off" /></label>
+        <div><button className="secondary-button" onClick={() => { setDeleteTarget(null); setDeleteConfirmation('') }}>Cancel</button><button className="danger-button" disabled={deleteConfirmation !== deleteTarget || deleteMutation.isPending} onClick={() => deleteMutation.mutate(deleteTarget)}>{deleteMutation.isPending ? 'Deleting…' : 'Delete permanently'}</button></div>
+      </section>}
       {exportPlan && <section className="export-plan-banner">
         <PackageCheck size={20} /><div><strong>Full signed package</strong><p>{exportPlan.files.toLocaleString()} files · {formatProductBytes(exportPlan.uncompressed_bytes)} before ZIP compression · Ed25519 manifest included.</p></div>
         <label><input type="checkbox" checked={exportConfirmed} onChange={(event) => setExportConfirmed(event.target.checked)} /> I reviewed the package size.</label>
         <a className={`primary-button ${exportConfirmed ? '' : 'disabled-link'}`} aria-disabled={!exportConfirmed} href={exportConfirmed ? api.stockExportUrl(selected) : undefined}><Download size={14} /> Create & download</a>
       </section>}
-      {summary ? <>
+      {detail.isError ? <section className="output-pending output-error"><AlertTriangle size={24} /><strong>Run details could not be loaded</strong><p>{detail.error instanceof Error ? detail.error.message : 'The Workbench did not return this run.'}</p><button className="secondary-button" onClick={() => detail.refetch()}>Retry</button></section> : detail.isLoading && selected ? <section className="output-pending"><strong>Loading run evidence…</strong><p>Reading the aggregate and progress record.</p></section> : summary ? <>
         {/* A run that has not written its aggregate is totalled from the rows
             it has finished so far.  Those totals carry the same field names as
             a final run's, so without this banner the page headlines a fraction
@@ -274,7 +422,7 @@ export default function OutputsPage() {
         </section>
       </> : <section className="output-pending"><AlertTriangle size={24} /><strong>{detail.data?.running ? 'Aggregate pending while the run continues' : 'No aggregate is available for this run'}</strong><p>The building ledger remains inspectable below.</p></section>}
 
-      <UncertaintySection run={selected} />
+      {selected && <UncertaintySection run={selected} />}
 
 
       {(nFailed > 0 || nExcluded > 0) && <section className="output-section unfinished-section">
@@ -302,12 +450,22 @@ export default function OutputsPage() {
         <header><div><FileSearch size={17} /><span><strong>Building ledger</strong><small>{ledger.data?.total.toLocaleString() ?? '—'} matching terminal records</small></span></div>
           <div className="ledger-tools"><label className="ledger-search"><Search size={14} /><input value={query} onChange={(event) => { setQuery(event.target.value); setOffset(0) }} placeholder="Reference, cluster, error…" /></label><select value={status} onChange={(event) => { setStatus(event.target.value); setOffset(0) }} aria-label="Filter ledger by status"><option value="">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option><option value="excluded">Excluded</option></select></div>
         </header>
-        <div className="product-table-scroll"><table className="product-table ledger-table"><thead><tr><th>Status</th><th>refparcela</th><th>Cluster</th><th>Site EUI</th><th>Energy</th><th>CO₂</th><th>Occupancy</th><th>QA</th></tr></thead><tbody>
-          {(ledger.data?.items ?? []).map((row) => <tr key={`${row.refparcela}-${row.status}`} tabIndex={0} onClick={() => selectRow(row)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') selectRow(row) }} className={building?.refparcela === row.refparcela ? 'selected' : ''}>
+        {ledger.isError ? <div className="ledger-inline-error"><AlertTriangle size={17} /><span><strong>Building ledger could not be loaded</strong><small>{ledger.error instanceof Error ? ledger.error.message : 'The ledger request failed.'}</small></span><button className="secondary-button" onClick={() => ledger.refetch()}>Retry</button></div> : <div className="product-table-scroll"><table className="product-table ledger-table"><thead><tr><th>Status</th><th>refparcela</th><th>Cluster</th><th>Site EUI</th><th>Energy</th><th>CO₂</th><th>Occupancy</th><th>QA</th></tr></thead><tbody>
+          {(ledger.data?.items ?? []).map((row) => <tr key={`${row.refparcela}-${row.status}`} tabIndex={0} aria-selected={building?.refparcela === row.refparcela} onClick={() => selectRow(row)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectRow(row) } }} className={building?.refparcela === row.refparcela ? 'selected' : ''}>
             <td><span className={`ledger-status ${row.status}`}>{row.status === 'ok' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}{row.status}</span></td><td><code>{row.refparcela}</code></td><td>{String(row.cluster ?? '—')}</td><td>{number(row.total_site_kwh_m2 as number, 1)}</td><td>{number((row.total_site_kwh as number) / 1000, 1)} MWh</td><td>{number(row.total_site_co2_t_yr as number, 1)} t</td><td>{String(row.occupancy_plausibility ?? '—')}</td><td>{row.qa_all_passed === true ? 'PASS' : row.qa_all_passed === false ? 'FAIL' : '—'}</td>
           </tr>)}
-        </tbody></table></div>
+        </tbody></table></div>}
         <footer className="ledger-pagination"><span>{offset + 1}–{Math.min(offset + PAGE_SIZE, ledger.data?.total ?? 0)} of {ledger.data?.total ?? 0}</span><div><button className="secondary-button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>Previous</button><button className="secondary-button" disabled={offset + PAGE_SIZE >= (ledger.data?.total ?? 0)} onClick={() => setOffset(offset + PAGE_SIZE)}>Next</button></div></footer>
+      </section>}
+
+      {selected && <section className="output-section technical-downloads">
+        <header><div><Download size={17} /><span><strong>Technical downloads</strong>
+          <small>The <strong>Building CSV</strong> in the run bar above is the table to read and cite — these are the machine records behind it.</small></span></div></header>
+        <div>
+          <a className="secondary-button" href={api.stockBuildingsDictionaryUrl(selected)}><Download size={14} /> Field dictionary (.csv)</a>
+          <a className="secondary-button" href={api.stockLedgerCsvUrl(selected)}><Download size={14} /> Raw ledger CSV</a>
+          <p>The dictionary names every column of the published Building CSV. The raw ledger is the runner&apos;s own line-per-building record, kept for audit software and specialist inspection.</p>
+        </div>
       </section>}
     </div>
 
@@ -315,8 +473,9 @@ export default function OutputsPage() {
       <header><div><Building2 size={17} /><span><small>BUILDING EVIDENCE</small><strong>{building.refparcela}</strong></span></div><button className="icon-button" onClick={() => { setBuilding(null); setGeometry(false) }} aria-label="Close evidence">×</button></header>
       <dl><div><dt>Status</dt><dd>{building.status}</dd></div><div><dt>Cluster</dt><dd>{String(building.cluster ?? '—')}</dd></div><div><dt>Total site EUI</dt><dd>{number(building.total_site_kwh_m2, 2)} kWh/m²</dd></div><div><dt>QA</dt><dd>{building.qa_all_passed === true ? 'PASS' : building.qa_all_passed === false ? 'FAIL' : '—'}</dd></div>{(building.error || building.message || building.reason) && <div><dt>Failure</dt><dd><strong>{building.reason ?? 'Error'}</strong>{building.message || building.error ? <span>{String(building.message ?? building.error)}</span> : null}</dd></div>}</dl>
       {building.status === 'ok' && <button className="geometry-check-button" onClick={() => setGeometry(true)}><Box size={14} /><span><strong>Geometry check</strong><small>Open the model this building was simulated from</small></span></button>}
-      {building.status === 'ok' && <a className="building-report-link" href={api.stockBuildingReportUrl(selected, building.refparcela)} target="_blank" rel="noreferrer"><FileText size={14} /><span><strong>Building report</strong><small>Everything the run preserved about this building, on one page</small></span></a>}
-      {building.status === 'ok' && <nav><span>PRESERVED FILES (RAW)</span>{ARTIFACTS.map(([file, label]) => <a key={file} href={api.stockArtifactUrl(selected, building.refparcela, file)} target="_blank" rel="noreferrer"><ExternalLink size={14} /><span><strong>{label}</strong><code>{file}</code></span></a>)}</nav>}
+      {building.status === 'ok' && <a className="building-report-link" href={`${api.stockBuildingReportUrl(selected, building.refparcela)}#interpretation`} target="_blank" rel="noreferrer"><FileText size={14} /><span><strong>Readable building report</strong><small>Start here: a plain-language summary of this building and its result</small></span></a>}
+      {building.status === 'ok' && <nav className="readable-evidence-links" aria-label="Readable building evidence"><span>READABLE EVIDENCE</span><a href={api.stockArtifactUrl(selected, building.refparcela, 'eplustbl.htm')} target="_blank" rel="noreferrer"><ExternalLink size={14} /><span><strong>EnergyPlus result tables</strong><small>Open the original structured tables for end uses, zones, comfort and annual simulation results</small></span></a>{READABLE_EVIDENCE.map(([section, label, description]) => <a key={section} href={`${api.stockBuildingReportUrl(selected, building.refparcela)}#${section}`} target="_blank" rel="noreferrer"><ExternalLink size={14} /><span><strong>{label}</strong><small>{description}</small></span></a>)}</nav>}
+      {building.status === 'ok' && <details className="raw-evidence-files"><summary>Original technical files</summary><p>These source files are preserved for audit software and specialist inspection. They are not intended to be read as a report; use the readable evidence above for interpretation.</p><nav aria-label="Original technical files">{RAW_ARTIFACTS.map(([file, label, description]) => <a key={file} href={api.stockArtifactUrl(selected, building.refparcela, file)} target="_blank" rel="noreferrer"><ExternalLink size={14} /><span><strong>{label}</strong><small>{description}</small><code>{file}</code></span></a>)}</nav></details>}
       <a className="building-package-link" href={api.stockExportUrl(selected, [building.refparcela])}><PackageCheck size={14} /><span><strong>Signed building package</strong><small>Model, preserved outputs, ledger evidence and Ed25519 manifest</small></span></a>
     </aside>}
 

@@ -32,6 +32,6 @@ if [[ "${VALENCIA_NO_BROWSER:-0}" != "1" ]]; then
     fi
   ) &
 fi
-printf 'Valencia Workbench: %s\nPress Ctrl+C to stop.\n' "$URL"
+printf 'Building Stock Energy Workbench: %s\nPress Ctrl+C to stop.\n' "$URL"
 cd "$PROJECT_DIR"
 exec "$PYTHON" -m workbench

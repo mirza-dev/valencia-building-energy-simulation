@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "files-building-database",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.44,
+      "y": 0.586,
+      "label": "Select the supported EU or GEM building-database route, not an arbitrary SQLite file."
+    },
+    {
+      "number": 2,
+      "x": 0.3,
+      "y": 0.729,
+      "label": "Enter the resident population that the preparation policy allocates across dwelling area."
+    },
+    {
+      "number": 3,
+      "x": 0.2,
+      "y": 0.765,
+      "label": "Build and validate the prepared stock before it can become an active simulation input."
+    }
+  ]
+}

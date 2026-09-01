@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-geometry-viewer",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.71,
+      "y": 0.269,
+      "label": "Match the viewer reference to the selected building ledger row."
+    },
+    {
+      "number": 2,
+      "x": 0.755,
+      "y": 0.435,
+      "label": "Inspect exterior walls, party walls, roofs, openings and context masses for topology errors."
+    },
+    {
+      "number": 3,
+      "x": 0.945,
+      "y": 0.893,
+      "label": "Check that the listed storeys match the storey evidence recorded for the building."
+    }
+  ]
+}

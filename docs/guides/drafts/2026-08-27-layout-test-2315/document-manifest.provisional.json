@@ -1,0 +1,21 @@
+{
+  "product": "Building Stock Energy Workbench",
+  "document_status": "provisional",
+  "publication_date": "2026-08-27",
+  "software_commit": "0836bdb1c689a34d13d1af76f764ed21f42a112b",
+  "source": {
+    "installation-guide.md": "b2ace9123f0882845f849556b9d78cea756f31690a9c3e177ae0588c6226e6a7",
+    "user-guide-figure-plan.json": "fd63b86e5f5a1ae2f4503b8b3cb795f72027fd31de2c1fd113c8c7601ae74566",
+    "user-guide.md": "0aa6b6003f16d843b3b1f2ab44083a6018a913cad73b11cbb7d5bca590e740b0",
+    "valencia-simulation-report.md": "0abd118e025cbe96936a638329c234d4d357c8eddfda7636f8435d91bf56dc7d"
+  },
+  "outputs": {
+    "Building Stock Energy Workbench - Installation Guide (Provisional 2026-08-27).docx": "1b1ac59f478b2b0b428844ae944b414bc359dad2eae4fb5340f45e6ea545a6be",
+    "installation-guide.html": "cce1f2b0a3e690d2b319d47959cb674f18f95ed9e9a27efa8030dfa17a2c65c1",
+    "Building Stock Energy Workbench - User Guide (Provisional 2026-08-27).docx": "619ba3bd5cb6373fac480696c8e853733fec301710f6497aa4f4825f34c01f9a",
+    "user-guide.html": "ade62ba192b45dd45e95e299c9ef32ceb1d6d78d0d3fad5062f397f84ea12c62",
+    "Building Stock Energy Workbench - Valencia Simulation Report (Provisional 2026-08-27).docx": "71c30dde3e469f8dd223f6eb17ad42229cb6e9240353c806bfab9b400316786b",
+    "valencia-simulation-report.html": "a83a8b6e7ab247b334113cc7667123ff1f51b411efb21790bd86708f497ad434"
+  },
+  "note": "PDF hashes are added after DOCX render verification. Final ALL_VALENC-A_REAL evidence is pending."
+}

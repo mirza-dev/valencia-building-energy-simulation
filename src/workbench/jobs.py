@@ -53,6 +53,11 @@ class JobManager:
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
+        # `stop()` sets this and nothing used to clear it, so a manager that had
+        # been stopped once started a thread that immediately fell out of its
+        # own loop: `status()` then reported `running: false` for the life of
+        # the process and `/api/health` stayed BLOCKED with every input valid.
+        self._stop.clear()
         self._thread = threading.Thread(target=self._loop, name="workbench-queue", daemon=True)
         self._thread.start()
 

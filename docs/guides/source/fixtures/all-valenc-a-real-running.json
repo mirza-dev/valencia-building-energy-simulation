@@ -1,0 +1,36 @@
+{
+  "schema": "bsew-documentation-run-state-v1",
+  "captured_at": "2026-08-27T22:53:13+03:00",
+  "source": "read-only GET /api/stock/runs/ALL_VALENC-A_REAL",
+  "source_response_sha256": "4793fc58415299b22e4a3a0ac8625de1b849a54c4c06e2e6c714ab6ddbd47269",
+  "publication_status": "operational progress evidence only; not a final result",
+  "path_scrubbed": true,
+  "response": {
+    "running": true,
+    "progress": {
+      "run": "ALL_VALENC-A_REAL",
+      "started": true,
+      "counts": {
+        "excluded": 38,
+        "ok": 25005,
+        "failed": 14
+      },
+      "completed": 25019,
+      "cpu_seconds": 2558739.3
+    },
+    "scope": {
+      "runnable": 1414,
+      "excluded": 38,
+      "total": 26445
+    },
+    "summary": {
+      "buildings_ok": 25005,
+      "buildings_failed": 1,
+      "buildings_excluded": 38,
+      "energy_period": {
+        "period": "annual",
+        "unit": "kWh/m²·yr"
+      }
+    }
+  }
+}

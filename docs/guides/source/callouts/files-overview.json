@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "files-overview",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.775,
+      "y": 0.128,
+      "label": "Confirm that the page reports RUN READY before leaving Files."
+    },
+    {
+      "number": 2,
+      "x": 0.42,
+      "y": 0.656,
+      "label": "Check which cadastre snapshot is active for the Cadastre + ledger route."
+    },
+    {
+      "number": 3,
+      "x": 0.38,
+      "y": 0.826,
+      "label": "Record the stock snapshot, contract, row count and CRS before moving to Run."
+    }
+  ]
+}

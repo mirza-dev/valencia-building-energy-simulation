@@ -46,16 +46,17 @@ function EvidenceRows({ dataset }: { dataset: DatasetRecord | null | undefined }
     {meta.envelope_source && <div><dt>Envelope from</dt><dd>{meta.envelope_source === 'pinned'
       ? 'this file’s own U-values' : 'cluster → Spanish TABULA table'}</dd></div>}
     {meta.slice_name && <div><dt>Slice</dt><dd>{meta.slice_name}</dd></div>}
-    <div className="file-path-row"><dt>Managed path</dt><dd title={dataset.path}>{dataset.path}</dd></div>
+    <div className="file-path-row"><dt>File</dt><dd>{dataset.name}</dd></div>
   </dl>
 }
 
 function DatasetControl({
-  label, kind, accept, active, datasets, setting, activate, upload, busy,
+  label, kind, accept, active, datasets, setting, activate, upload, busy, hint,
 }: {
   label: string
   kind: DatasetRecord['kind']
   accept: string
+  hint?: string
   active: DatasetRecord | null | undefined
   datasets: DatasetRecord[]
   setting: SettingKey
@@ -80,6 +81,7 @@ function DatasetControl({
         event.currentTarget.value = ''
       }} />
     </label>
+    {hint && <small className="dataset-control-hint">{hint}</small>}
   </div>
 }
 
@@ -393,7 +395,7 @@ export default function FilesPage() {
                 <EvidenceRows dataset={active.stock_dataset_id} />
               </>
             : <>
-                <DatasetControl label="Active cadastre" kind="gis" accept=".gpkg,.shp,.geojson,.zip" active={active.building_dataset_id} datasets={all} setting="building_dataset_id" activate={activate} upload={upload} busy={busy} />
+                <DatasetControl label="Active cadastre" kind="gis" accept=".gpkg,.geojson,.zip" hint="A shapefile is a set of files, not one: upload .shp with .shx and .dbf (plus .prj and .cpg) together in a ZIP. A bare .shp cannot be read and is refused." active={active.building_dataset_id} datasets={all} setting="building_dataset_id" activate={activate} upload={upload} busy={busy} />
                 <DatasetControl label="Or a prepared stock" kind="stock" accept=".gpkg,.geojson,.json" active={active.stock_dataset_id} datasets={all} setting="stock_dataset_id" activate={activate} upload={upload} busy={busy} />
                 <EvidenceRows dataset={active.building_dataset_id} />
               </>}

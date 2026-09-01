@@ -296,3 +296,30 @@ def test_manager_timeout_terminates_and_retries_once(tmp_path, monkeypatch):
     manager.stop()
     assert failed["attempt_count"] == 2
     assert "timeout" in (failed["error"] or "").lower()
+
+
+def test_a_stopped_manager_can_be_started_again():
+    """`stop()` set a flag that `start()` never cleared.
+
+    The second thread started and fell straight out of its own loop, so
+    `status()` reported `running: false` for the rest of the process and
+    `/api/health` stayed BLOCKED with every input valid and every file present.
+    """
+    manager = jobs.JobManager()
+    try:
+        manager.start()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and not manager.status()["running"]:
+            time.sleep(0.05)
+        assert manager.status()["running"] is True
+
+        manager.stop()
+        assert manager.status()["running"] is False
+
+        manager.start()
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and not manager.status()["running"]:
+            time.sleep(0.05)
+        assert manager.status()["running"] is True
+    finally:
+        manager.stop()

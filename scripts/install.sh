@@ -28,7 +28,7 @@ if ! "$PROJECT_DIR/.venv/bin/python" "$PROJECT_DIR/src/verify_toolchain.py"; the
   fail "OpenStudio 3.11.0 with bundled EnergyPlus 25.2.0 was not found. Install it from https://github.com/NREL/OpenStudio/releases/tag/v3.11.0 or set VALENCIA_EPLUS_DIR."
 fi
 if ! "$PROJECT_DIR/.venv/bin/python" "$PROJECT_DIR/scripts/verify_distribution.py" --require; then
-  fail "This source checkout does not contain the release data payload. Use the full Valencia Workbench release bundle or add the four inputs in Files."
+  fail "This source checkout does not contain the release data payload. Use the full Building Stock Energy Workbench release bundle or add the four inputs in Files."
 fi
 
 printf '\nInstallation complete. Start with: %s/scripts/start.sh\n' "$PROJECT_DIR"

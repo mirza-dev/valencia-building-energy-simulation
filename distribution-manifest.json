@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "product": "Valencia Stock Energy Workbench",
+  "product": "Building Stock Energy Workbench",
   "required_python": "3.13",
   "openstudio_version": "3.11.0",
   "energyplus_version": "25.2.0",

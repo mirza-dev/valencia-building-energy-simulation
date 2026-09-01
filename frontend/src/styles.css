@@ -1681,8 +1681,11 @@ button:disabled { opacity: .5; }
 
 .outputs-header { align-items: center; }
 .outputs-header > div:first-child { flex: 1; }
-.output-run-picker { min-width: 0; width: min(570px,58%); display: flex; align-items: end; justify-content: flex-end; gap: 7px; }
-.output-run-picker label { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.output-run-picker { min-width: 0; width: min(980px,68%); display: grid; grid-template-columns: minmax(240px,1fr) auto; align-items: end; gap: 7px; }
+.output-run-picker label { min-width: 0; display: grid; gap: 4px; }
+.output-run-picker select { height: 38px; }
+.output-run-actions { min-width: 0; display: flex; align-items: stretch; justify-content: flex-end; gap: 7px; }
+.output-run-actions > * { flex: 0 0 auto; }
 .outputs-scroll { padding-right: 24px; }
 .export-plan-banner { min-height: 66px; margin-bottom: 13px; padding: 10px 12px; display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 11px; border: 1px solid #9ab5aa; border-left: 3px solid var(--teal); background: #f3f7f4; }
 .export-plan-banner > svg { color: var(--teal-dark); }
@@ -1690,6 +1693,15 @@ button:disabled { opacity: .5; }
 .export-plan-banner strong { font-size: 11px; }
 .export-plan-banner p { margin: 0; color: var(--muted); font-size: 9px; }
 .export-plan-banner label { display: flex; align-items: center; gap: 6px; font-size: 9px; }
+.delete-run-banner { min-height: 78px; margin-bottom: 13px; padding: 10px 12px; display: grid; grid-template-columns: auto minmax(210px,1fr) minmax(220px,.65fr) auto; align-items: center; gap: 11px; border: 1px solid #cf8f86; border-left: 3px solid var(--red); background: #fff3f0; }
+.delete-run-banner > svg { color: var(--red); }
+.delete-run-banner > div:first-of-type { display: grid; gap: 3px; }
+.delete-run-banner strong { font-size: 11px; }
+.delete-run-banner p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.delete-run-banner label { min-width: 0; display: grid; gap: 4px; }
+.delete-run-banner label span { color: #8d4138; font: 8px var(--mono); letter-spacing: .06em; }
+.delete-run-banner input { width: 100%; min-width: 0; height: 34px; padding: 0 8px; border: 1px solid #c58b83; background: white; font: 10px var(--mono); }
+.delete-run-banner > div:last-child { display: flex; gap: 7px; }
 .disabled-link { opacity: .42; pointer-events: none; }
 /* Columns follow the number of cards rather than a fixed six: the cadastral
    card only exists for a stock that carries a Spanish cadastre, and a fixed
@@ -1749,8 +1761,14 @@ button:disabled { opacity: .5; }
 .ledger-pagination > div { display: flex; gap: 6px; }
 .output-pending { min-height: 170px; display: grid; place-content: center; justify-items: center; gap: 7px; border: 1px solid var(--line-strong); background: #fafbf8; }
 .output-pending p { margin: 0; color: var(--muted); font-size: 10px; }
-.building-evidence-drawer { position: absolute; z-index: 15; top: 104px; right: 0; bottom: 0; width: 360px; display: flex; flex-direction: column; background: #fafbf8; border-left: 1px solid var(--line-strong); box-shadow: -14px 0 28px rgba(25,40,34,.14); }
-.building-evidence-drawer > header { min-height: 62px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.output-error { color: #8a3d2f; border-color: #cf8f86; background: #fff5f2; }
+.output-error p { max-width: 70ch; text-align: center; }
+.ledger-inline-error { min-height: 88px; padding: 12px; display: flex; align-items: center; gap: 9px; color: #8a3d2f; background: #fff5f2; }
+.ledger-inline-error span { display: grid; gap: 3px; }
+.ledger-inline-error small { color: var(--muted); }
+.ledger-inline-error button { margin-left: auto; }
+.building-evidence-drawer { position: absolute; z-index: 15; top: 104px; right: 0; bottom: 0; width: 360px; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; background: #fafbf8; border-left: 1px solid var(--line-strong); box-shadow: -14px 0 28px rgba(25,40,34,.14); }
+.building-evidence-drawer > header { position: sticky; z-index: 2; top: 0; flex: 0 0 auto; min-height: 62px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: #fafbf8; }
 .building-evidence-drawer > header > div { display: flex; align-items: center; gap: 8px; }
 .building-evidence-drawer > header span { display: grid; gap: 2px; }
 .building-evidence-drawer > header small { color: var(--teal); font: 8px var(--mono); }
@@ -1759,22 +1777,58 @@ button:disabled { opacity: .5; }
 .building-evidence-drawer dl > div { min-height: 34px; display: grid; grid-template-columns: 1fr 1.5fr; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
 .building-evidence-drawer dt { color: var(--faint); font-size: 9px; }
 .building-evidence-drawer dd { margin: 0; overflow-wrap: anywhere; font-size: 10px; text-align: right; }
-.building-evidence-drawer nav { margin-top: 6px; display: grid; }
-.building-evidence-drawer nav > span { padding: 9px 13px; color: var(--faint); font: 8px var(--mono); }
-.building-evidence-drawer nav a { min-height: 52px; padding: 8px 13px; display: flex; align-items: center; gap: 9px; border-top: 1px solid var(--line); }
+.building-evidence-drawer nav { display: grid; }
+.readable-evidence-links { margin-top: 3px; border-top: 1px solid var(--line); }
+.building-evidence-drawer nav > span { padding: 10px 13px 7px; color: var(--faint); font: 8px var(--mono); letter-spacing: .06em; }
+.building-evidence-drawer nav a { min-height: 58px; padding: 9px 13px; display: flex; align-items: flex-start; gap: 9px; border-top: 1px solid var(--line); }
 .building-evidence-drawer nav a:hover { background: #eaf2ef; }
-.building-evidence-drawer nav a span { display: grid; gap: 2px; }
+.building-evidence-drawer nav a > svg { flex: 0 0 auto; margin-top: 2px; }
+.building-evidence-drawer nav a span { min-width: 0; display: grid; gap: 2px; }
 .building-evidence-drawer nav a strong { font-size: 10px; }
+.building-evidence-drawer nav a small { color: var(--muted); font-size: 8px; line-height: 1.4; text-wrap: pretty; }
 .building-evidence-drawer nav a code { color: var(--faint); font-size: 8px; }
-.building-package-link { min-height: 62px; margin: auto 12px 12px; padding: 10px; display: flex; align-items: center; gap: 9px; border: 1px solid #719d8f; color: #174e57; background: #e7f0ec; }
+.raw-evidence-files { margin: 8px 12px 10px; border: 1px solid var(--line-strong); background: #fff; }
+.raw-evidence-files > summary { min-height: 38px; padding: 9px 10px; color: var(--muted); font-size: 9px; font-weight: 600; cursor: pointer; }
+.raw-evidence-files > summary:hover { background: #f2f5f2; color: var(--ink); }
+.raw-evidence-files > p { margin: 0; padding: 0 10px 10px; color: var(--muted); font-size: 8px; line-height: 1.45; text-wrap: pretty; }
+.raw-evidence-files nav { border-top: 1px solid var(--line); }
+.raw-evidence-files nav a { padding-inline: 10px; }
+.dataset-control-hint { display: block; margin-top: 5px; color: var(--muted); font-size: 8px; line-height: 1.45; text-wrap: pretty; }
+
+/* Help entries are links out of the application, not routes inside it, so the
+   numbered workflow marker is replaced by a book glyph. */
+.help-nav-link { text-decoration: none; }
+.help-nav-link > i { display: flex; align-items: center; justify-content: center; font-style: normal; }
+
+/* The run-level twin of `.raw-evidence-files`: the published Building CSV is
+   the table to read, and the machine records sit behind one disclosure so the
+   toolbar carries exactly one CSV action. */
+/* Downloads for audit software rather than for reading.  Position carries the
+   hierarchy here - last section on the page, under the ledger it describes - so
+   it needs no disclosure of its own.
+
+   It lived in the run bar until that was measured.  `.output-run-picker` is a
+   two-column grid, so a third child auto-places onto row 2 column 1: measured
+   live, it took the select's exact left edge and width (503.4 px at 1440,
+   240 px at 1600) - a panel hanging under the dropdown, aligned with nothing
+   else in the bar.  And the header is a fixed-basis flex item (104 px, 154 px
+   below the 1500 px breakpoint), so it cannot absorb that row: adding one grew
+   the grid to `52px 22px` while the header height stayed 154 -> 154, and the
+   bar already overflowed it by 3 px with nothing but a 22 px stub inside.  The
+   real panel overflowed by its whole height and the results below painted over
+   it, which is what it looked like open. */
+.technical-downloads > div { padding: 11px 12px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.technical-downloads p { flex: 1 1 250px; min-width: 0; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.5; text-wrap: pretty; }
+
+.building-package-link { flex: 0 0 auto; min-height: 62px; margin: 0 12px 12px; padding: 10px; display: flex; align-items: center; gap: 9px; border: 1px solid #719d8f; color: #174e57; background: #e7f0ec; }
 .building-package-link > span { display: grid; gap: 2px; }
 .building-package-link strong { font-size: 10px; }
 .building-package-link small { color: var(--muted); font-size: 8px; line-height: 1.35; }
 
 /* Reuses the geometry-check button's shape: both are "open this building's
    evidence in a form you can actually read", and they sit next to each other. */
-.building-report-link { min-height: 52px; margin: 0 12px 10px; padding: 9px 10px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line-strong); background: #f2f5f2; text-decoration: none; color: inherit; }
-.building-report-link:hover { background: #eaf2ef; }
+.building-report-link { min-height: 58px; margin: 0 12px 10px; padding: 10px; display: flex; align-items: center; gap: 9px; border: 1px solid #719d8f; background: #e7f0ec; text-decoration: none; color: #174e57; }
+.building-report-link:hover { background: #dceae4; }
 .building-report-link > span { display: grid; gap: 2px; }
 .building-report-link strong { font-size: 10px; }
 .building-report-link small { color: var(--muted); font-size: 8px; line-height: 1.35; }
@@ -1817,6 +1871,12 @@ button:disabled { opacity: .5; }
 .geometry-check-note { margin: 0; padding: 9px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; line-height: 1.45; }
 .geometry-check-note code { font-size: 8px; }
 
+@media (max-width: 1500px) {
+  .outputs-header { min-height: 154px; flex-basis: 154px; display: grid; grid-template-columns: minmax(0,1fr); align-content: center; gap: 10px; }
+  .output-run-picker { width: 100%; grid-template-columns: minmax(220px,1fr) auto; }
+  .building-evidence-drawer, .geometry-check-drawer { top: 154px; }
+}
+
 @media (max-width: 1320px) {
   /* Back to wrapping rows here: the auto-column flow above would keep adding
      implicit columns instead of honouring this three-wide template. */
@@ -1824,11 +1884,13 @@ button:disabled { opacity: .5; }
   .output-kpi-grid article:nth-child(3) { border-right: 0; }
   .run-layout { grid-template-columns: minmax(470px,.95fr) minmax(390px,1.05fr); }
   .preflight-metrics { grid-template-columns: repeat(3,1fr); }
-  .outputs-header { align-items: flex-end; }
-  .output-run-picker { width: 540px; }
+  .outputs-header { align-items: stretch; }
   .output-run-picker .secondary-button { padding-inline: 8px; }
   .export-plan-banner { grid-template-columns: auto 1fr auto; }
   .export-plan-banner > a { grid-column: 2 / -1; justify-self: end; }
+  .delete-run-banner { grid-template-columns: auto 1fr auto; }
+  .delete-run-banner label { grid-column: 2 / -1; }
+  .delete-run-banner > div:last-child { grid-column: 2 / -1; justify-self: end; }
 }
 
 /* Phase E0/E1: OpenStudio model x-ray and expert-authored edit surface. */

@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import tempfile
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
@@ -25,6 +26,7 @@ from workbench.capability_sync import revalidation_plan
 from workbench.environment import TEST_REQUEST_HEADER, runtime_environment
 from workbench.jobs import log_paths, manager, read_log_chunk
 from workbench.schemas import (
+    EventLhsRequest,
     BatchPreflightRequest, BatchRequest, CapabilityRevalidationRequest, CityRunRequest,
     CommitRequest, DatasetFieldNoteRequest, FieldMappingRequest, GeometryRequest,
     NeighborhoodRunRequest, PreviewRequest,
@@ -58,6 +60,12 @@ from workbench.lhs_service import (
     compare_lhs, create_lhs_job, lhs_artifact, lhs_detail, lhs_figure,
     lhs_preflight, list_lhs_runs,
 )
+
+from workbench.lhs_event_service import (
+    create_event_lhs_job, event_lhs_artifact, event_lhs_detail, event_lhs_figure,
+    event_lhs_preflight, list_event_lhs_runs,
+)
+from workbench.lhs_event_adapter import event_runs as event_lhs_runs_available
 from workbench.model_graph import (
     enrich_scene_construction_ids, extract_model_graph, public_artifact_metadata,
     resolve_model_artifact,
@@ -111,9 +119,30 @@ RUN_ARTIFACT_VIEW_TYPES = {
 }
 
 
+def _warm_input_digests() -> None:
+    """Read the registered inputs once at start-up so no request has to.
+
+    Failures here are not worth reporting: nothing depends on the warm-up
+    having happened, only on it being cheap when it does.
+    """
+    try:
+        from workbench import lhs_adapter
+        integrity.warm_digest_memo(
+            (path, kind) for path, kind in lhs_adapter.source_paths().values())
+    except Exception:  # noqa: BLE001 - a cache warm-up may never break start-up
+        pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     bootstrap()
+    # Finish reclaiming anything a previous exit interrupted mid-deletion.  A
+    # deleted run is already gone from the interface at this point; this is only
+    # about giving the disk space back.
+    threading.Thread(target=stock_adapter.reclaim_discarded_runs,
+                     name="reclaim-discarded-startup", daemon=True).start()
+    threading.Thread(target=_warm_input_digests,
+                     name="warm-input-digests", daemon=True).start()
     manager.start()
     manager.notify()
     yield
@@ -121,7 +150,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Model Builder Research Workbench",
+    title="Building Stock Energy Workbench",
     version=__version__,
     lifespan=lifespan,
 )
@@ -1443,6 +1472,102 @@ def get_lhs_run(run_id: str):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.get("/api/lhs-event/preflight")
+def get_event_lhs_preflight(stock_run: str, refparcela: str):
+    try:
+        return event_lhs_preflight(stock_run, refparcela)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(str(exc)) from exc
+    except Exception as exc:  # EventStudyError: the run cannot host a study
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/lhs-event/available")
+def event_lhs_available():
+    return {"runs": event_lhs_runs_available()}
+
+
+@app.get("/api/lhs-event/runs")
+def event_lhs_runs(stock_run: str | None = None):
+    return list_event_lhs_runs(stock_run)
+
+
+@app.get("/api/lhs-event/jobs/active")
+def active_event_lhs_job():
+    return {"job": db.find_current_job("lhs_event")}
+
+
+@app.get("/api/lhs-event/jobs/{job_id}")
+def get_event_lhs_job(job_id: str):
+    job = db.get_job(job_id)
+    if job is None:
+        raise not_found(job_id)
+    if job["kind"] != "lhs_event":
+        raise HTTPException(status_code=422, detail="Job is not an event LHS run")
+    return job
+
+
+@app.post("/api/lhs-event/runs", status_code=202)
+def create_event_lhs_run(request: EventLhsRequest):
+    try:
+        job = create_event_lhs_job(request.stock_run, request.refparcela,
+                                   request.n, request.seed)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    manager.notify()
+    return job
+
+
+# Registered before the `{run_id}` route on purpose: Starlette matches in
+# declaration order, so the reverse would read "figures" as a run id.
+@app.get("/api/lhs-event/runs/{run_id}/figures/{name}")
+def get_event_lhs_figure(run_id: str, name: str):
+    try:
+        path = event_lhs_figure(run_id, name)
+    except KeyError as exc:
+        raise not_found(str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return FileResponse(path, filename=name, media_type="image/png")
+
+
+@app.get("/api/lhs-event/runs/{run_id}/artifacts/{name}")
+def get_event_lhs_artifact(run_id: str, name: str):
+    try:
+        path, media_type = event_lhs_artifact(run_id, name)
+    except KeyError as exc:
+        raise not_found(str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return FileResponse(path, filename=name, media_type=media_type)
+
+
+@app.get("/api/lhs-event/runs/{run_id}")
+def get_event_lhs_run(run_id: str):
+    try:
+        return event_lhs_detail(run_id)
+    except KeyError as exc:
+        raise not_found(str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.post("/api/batches", status_code=202)
 def create_batch(request: BatchRequest):
     base = workbench_base_config()
@@ -1591,6 +1716,19 @@ def stock_runs():
     return {"runs": runs}
 
 
+@app.delete("/api/stock/runs/{name}")
+def stock_delete(name: str):
+    """Delete one inactive run; a live process is an authoritative conflict."""
+    try:
+        return stock_adapter.delete_run(name)
+    except stock_adapter.RunActiveError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(name) from exc
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+
+
 @app.post("/api/stock/runs")
 def stock_start(payload: dict):
     name = str(payload.get("name") or "").strip()
@@ -1710,6 +1848,95 @@ def stock_ledger_csv(name: str):
         headers={"Content-Disposition": f'attachment; filename="{name}_buildings.csv"'})
 
 
+def _curated_csv_response(rows, columns, filename):
+    """Stream a curated CSV the way a spreadsheet expects to receive one.
+
+    The BOM is what makes Excel open UTF-8 correctly; without it the degree
+    signs and the `m²` in the diagnostics arrive as mojibake.
+    """
+    def stream():
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore",
+                                lineterminator="\r\n")
+        buffer.write("\ufeff")
+        writer.writeheader()
+        yield buffer.getvalue()
+        for row in rows:
+            buffer.seek(0)
+            buffer.truncate(0)
+            writer.writerow(row)
+            yield buffer.getvalue()
+
+    return StreamingResponse(
+        stream(), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+# The three published documents, served from the interface that they describe.
+# The names carry `.html` because the guides link to each other with relative
+# hrefs; a trailing-slash route would resolve those one directory too deep.
+HELP_DOCUMENTS = {
+    "installation-guide.html", "user-guide.html", "valencia-simulation-report.html",
+}
+
+
+@app.get("/help/{document}")
+def help_document(document: str):
+    """Open one of the published guides in the browser, read-only."""
+    if document not in HELP_DOCUMENTS:
+        raise not_found(document)
+    path = PROJECT / "docs/guides/published" / document
+    if not path.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="The published guides have not been built into "
+                   "docs/guides/published yet")
+    return Response(
+        path.read_bytes(), media_type="text/html; charset=utf-8",
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+            # Sandboxed like every other document this service hands over.  The
+            # guides carry their images as data: URIs and link to each other,
+            # so those two are allowed and nothing else is.
+            "Content-Security-Policy": (
+                "sandbox allow-popups allow-top-navigation-by-user-activation; "
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:; "
+                "base-uri 'none'; form-action 'none'"
+            ),
+        })
+
+
+@app.get("/api/stock/runs/{name}/buildings.csv")
+def stock_buildings_csv(name: str):
+    """The published, human-readable building table for a finished run."""
+    try:
+        rows = stock_adapter.curated_building_rows(name)
+    except stock_adapter.RunActiveError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise not_found(name) from exc
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    if not rows:
+        raise not_found(name)
+    return _curated_csv_response(
+        rows, list(stock_adapter.CURATED_BUILDING_CSV_FIELDS),
+        f"{name}_buildings.csv")
+
+
+@app.get("/api/stock/runs/{name}/buildings_dictionary.csv")
+def stock_buildings_dictionary_csv(name: str):
+    """What every column of the Building CSV means, from the same contract."""
+    try:
+        stock_adapter.run_directory(name)
+    except ValueError as exc:
+        raise _stock_bad_request(str(exc)) from exc
+    entries = stock_adapter.curated_building_dictionary()
+    return _curated_csv_response(
+        entries, list(entries[0]), f"{name}_buildings_dictionary.csv")
+
+
 @app.get("/api/stock/runs/{name}/results.gpkg")
 def stock_results_layer(name: str):
     """The run's results as a GeoPackage, ready to open in QGIS."""
@@ -1727,6 +1954,8 @@ def stock_results_heatmap(name: str):
     """The run's heat map, for a reader who will not open a GIS."""
     try:
         path = stock_adapter.results_heatmap(name)
+    except stock_adapter.RunActiveError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return FileResponse(path, media_type="image/png",
@@ -1861,5 +2090,24 @@ def stock_building_artifact(name: str, refparcela: str, filename: str):
 
 
 DIST = PROJECT / "frontend/dist"
+
+
+class WorkbenchStaticFiles(StaticFiles):
+    """Serve deploy-safe HTML and long-lived content-addressed assets."""
+
+    async def get_response(self, path: str, scope: dict) -> Response:
+        response = await super().get_response(path, scope)
+        content_type = response.headers.get("content-type", "")
+        if content_type.startswith("text/html"):
+            # A cached shell can point at hashed chunks removed by the next
+            # build, leaving a blank page until the operator hard-refreshes.
+            response.headers["Cache-Control"] = "no-store"
+        elif path.startswith("assets/"):
+            response.headers["Cache-Control"] = (
+                "public, max-age=31536000, immutable")
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
 if DIST.exists():
-    app.mount("/", StaticFiles(directory=DIST, html=True), name="frontend")
+    app.mount("/", WorkbenchStaticFiles(directory=DIST, html=True), name="frontend")

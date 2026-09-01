@@ -33,6 +33,7 @@ import type {
   StockComparison,
   LhsPreflight,
   LhsRun,
+  LhsEventRun,
   LhsComparison,
   StorageCleanupCategory,
   StorageCleanupPlan,
@@ -193,6 +194,9 @@ export const api = {
   stopStockRun: (name: string) => request<{ stopped: boolean; resumable: boolean; run: string }>(
     `/api/stock/runs/${encodeURIComponent(name)}/stop`, { method: 'POST' },
   ),
+  deleteStockRun: (name: string) => request<{ deleted: true; run: string; removed_exports: number }>(
+    `/api/stock/runs/${encodeURIComponent(name)}`, { method: 'DELETE' },
+  ),
   stockUnfinished: (name: string) => request<ProductUnfinished>(
     `/api/stock/runs/${encodeURIComponent(name)}/unfinished`,
   ),
@@ -201,6 +205,8 @@ export const api = {
     return request<ProductLedgerPage>(`/api/stock/runs/${encodeURIComponent(name)}/ledger?${params}`)
   },
   stockLog: (name: string) => requestText(`/api/stock/runs/${encodeURIComponent(name)}/log`),
+  stockBuildingsCsvUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/buildings.csv`),
+  stockBuildingsDictionaryUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/buildings_dictionary.csv`),
   stockLedgerCsvUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/ledger.csv`),
   stockResultsLayerUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/results.gpkg`),
   stockHeatmapUrl: (name: string) => absoluteApiUrl(`/api/stock/runs/${encodeURIComponent(name)}/results.png`),
@@ -324,6 +330,17 @@ export const api = {
   lhsArtifactUrl: (id: string, name: 'runs.csv' | 'histograms.png' | 'tornado.png') =>
     absoluteApiUrl(`/api/lhs/runs/${encodeURIComponent(id)}/artifacts/${name}`),
   lhsExportUrl: (id: string) => absoluteApiUrl(`/api/runs/${encodeURIComponent(id)}/export`),
+  // Event studies live on their own routes and their own run type. Folding them
+  // into `/api/lhs/*` would put them in the list the product surface indexes
+  // with [0], and the newest event study would silently replace the annual band.
+  lhsEventRuns: (stockRun?: string) => request<LhsEventRun[]>(
+    stockRun ? `/api/lhs-event/runs?stock_run=${encodeURIComponent(stockRun)}` : '/api/lhs-event/runs',
+  ),
+  lhsEventRun: (id: string) => request<LhsEventRun>(`/api/lhs-event/runs/${encodeURIComponent(id)}`),
+  lhsEventFigureUrl: (id: string, name: 'histograms.png' | 'tornado.png') =>
+    absoluteApiUrl(`/api/lhs-event/runs/${encodeURIComponent(id)}/figures/${name}`),
+  lhsEventArtifactUrl: (id: string, name: 'runs.csv' | 'samples.csv' | 'summary.txt' | 'histograms.png' | 'tornado.png') =>
+    absoluteApiUrl(`/api/lhs-event/runs/${encodeURIComponent(id)}/artifacts/${name}`),
   job: (id: string) => request<JobRecord>(`/api/jobs/${id}`),
   runs: () => request<RunRecord[]>('/api/runs'),
   run: (id: string) => request<RunRecord>(`/api/runs/${id}`),

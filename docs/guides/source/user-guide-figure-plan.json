@@ -1,0 +1,405 @@
+{
+  "schema": "bsew-user-guide-figure-plan-v1",
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "device_scale_factor": 1
+  },
+  "required_product_name": "BUILDING STOCK ENERGY WORKBENCH",
+  "forbidden_visible_text": [
+    "/Volumes/",
+    "/Users/",
+    "VALENCIA / STOCK",
+    "Energy simulation workbench",
+    "ACADEMIC RESEARCH DOCUMENTATION",
+    "Academic User Guide"
+  ],
+  "figures": [
+    {
+      "id": "files-overview",
+      "asset": "assets/files-overview-cropped.png",
+      "source_asset": "capture-sources/files-overview.png",
+      "callouts": "callouts/files-overview.json",
+      "callout_labels": [
+        "Confirm that the page reports RUN READY before leaving Files.",
+        "Check which cadastre snapshot is active for the Cadastre + ledger route.",
+        "Record the stock snapshot, contract, row count and CRS before moving to Run."
+      ],
+      "section": "files",
+      "route": "#/files",
+      "state": "Valencia raw-cadastre route active; readiness, city, site conditions, stock and ledger visible",
+      "capture": "viewport crop; exclude every Managed path row",
+      "alt": "Files page showing validated Valencia inputs, active city and the raw cadastre plus dwelling-ledger route.",
+      "caption": "Files overview: readiness and profile, city and site conditions, stock-source route, and companion dwelling ledger.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "files-prepared-stock",
+      "asset": "assets/files-prepared-stock.png",
+      "source_asset": "capture-sources/files-prepared-stock.png",
+      "callouts": "callouts/files-prepared-stock.json",
+      "callout_labels": [
+        "Select Prepared stock only when the dataset already meets the Workbench stock contract.",
+        "Activate the prepared-stock file that the run will resolve.",
+        "Read an empty selection as an explicit no-file state, not as a validated stock."
+      ],
+      "section": "files",
+      "route": "#/files",
+      "state": "Prepared-stock route selected in an isolated documentation session; no activation submitted",
+      "capture": "stock-source card and visible validation contract",
+      "alt": "Files page showing the prepared-stock input route and its validation evidence.",
+      "caption": "Prepared stock: accepted formats, required identity and geometry evidence, metric CRS, and envelope-or-cluster rule.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "files-building-database",
+      "asset": "assets/files-building-database.png",
+      "source_asset": "capture-sources/files-building-database.png",
+      "callouts": "callouts/files-building-database.json",
+      "callout_labels": [
+        "Select the supported EU or GEM building-database route, not an arbitrary SQLite file.",
+        "Enter the resident population that the preparation policy allocates across dwelling area.",
+        "Build and validate the prepared stock before it can become an active simulation input."
+      ],
+      "section": "files",
+      "route": "#/files",
+      "state": "Building-database route selected with preserved Lecco metadata; no stock build submitted",
+      "capture": "database card, population input and Build stock from database action",
+      "alt": "Files page showing the supported building-database route used to prepare the Lecco stock.",
+      "caption": "Building database to prepared stock: supported database contract, resident population, metric CRS and conversion action.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "files-climate-event-chain",
+      "asset": "assets/files-climate-event-chain.png",
+      "source_asset": "capture-sources/files-climate-event-chain.png",
+      "callouts": "callouts/files-climate-event-chain.json",
+      "callout_labels": [
+        "Confirm that the EPW and DDY files were activated as one validated pair.",
+        "Record the OpenStudio template fingerprint used to prepare every building model.",
+        "Register the PALM slice separately and read its contract, CRS and slice identity."
+      ],
+      "section": "files",
+      "route": "#/files",
+      "state": "Climate pair, template and PALM event slice visible with preserved fingerprints",
+      "capture": "three evidence cards; omit managed paths",
+      "alt": "Files page showing the EPW and DDY climate pair, OpenStudio template and PALM event slice.",
+      "caption": "Climate and event chain: matched EPW/DDY, model template and optional microclimate slice with separate fingerprints.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "run-preflight",
+      "asset": "assets/run-preflight.png",
+      "source_asset": "capture-sources/run-preflight.png",
+      "callouts": "callouts/run-preflight.json",
+      "callout_labels": [
+        "Choose the study scope before requesting preflight.",
+        "Use a stable run name because safe resume depends on the same identity.",
+        "Read the preflight evidence - runnable, excluded, time basis and storage - before Start."
+      ],
+      "section": "run",
+      "route": "#/run",
+      "state": "Read-only documentation fixture containing a completed annual full-city preflight",
+      "capture": "scope, mode, run name and preflight evidence; Start not clicked",
+      "alt": "Run page showing annual full-city scope and a completed preflight before simulation starts.",
+      "caption": "Preflight before Start: scope, period, safe run name, runnable and excluded counts, time basis and storage estimate.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "run-live-ledger",
+      "asset": "assets/run-live-ledger.png",
+      "source_asset": "capture-sources/run-live-ledger.png",
+      "callouts": "callouts/run-live-ledger.json",
+      "callout_labels": [
+        "Treat the ledger-derived completed count as operational progress, not as a final result.",
+        "Separate successful, failed-attempt and excluded counts when monitoring coverage.",
+        "Use Stop safely when interruption is necessary; do not terminate worker processes directly."
+      ],
+      "section": "run",
+      "route": "#/run",
+      "state": "Preserved ALL_VALENC-A_REAL running-state fixture; no live process control",
+      "fixture": "fixtures/all-valenc-a-real-running.json",
+      "fixture_sha256": "bb671cf61275d2be987de9c466085e1e23b00de550ce86d20e2bf73e598e33df",
+      "capture": "proposal controls and complete live-ledger panel",
+      "alt": "Run page showing ALL_VALENC-A_REAL progress, ledger-derived counts, safe stop and process diagnostics.",
+      "caption": "Live monitor: proposal controls, active run identity, durable-ledger progress, safe-stop action and diagnostic log.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "run-stop-resume",
+      "asset": "assets/run-stop-resume-protection.png",
+      "source_asset": "capture-sources/run-stop-resume-protection.png",
+      "callouts": "callouts/run-stop-resume-protection.json",
+      "callout_labels": [
+        "Confirm that the earlier run is stopped and its durable ledger is present.",
+        "Resume with the exact same run name and scientific identity.",
+        "Treat an identity mismatch refusal as evidence protection, not as an error to bypass."
+      ],
+      "section": "run",
+      "route": "#/run",
+      "state": "Isolated stopped-run fixture showing same-name resume protection; no runner invoked",
+      "capture": "Stop safely explanation, same-name Resume and identity mismatch refusal",
+      "alt": "Run page showing the stopped-run state and the protected Resume same run workflow.",
+      "caption": "Stop and resume: durable ledger, exact run name, preserved scientific identity and explicit mismatch refusal.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-final-overview",
+      "asset": "assets/outputs-final-overview.png",
+      "source_asset": "capture-sources/outputs-final-overview.png",
+      "callouts": "callouts/outputs-final-overview.json",
+      "callout_labels": [
+        "Confirm which settled run is selected before reading any number.",
+        "Read coverage and Result Status before interpreting any energy or carbon metric.",
+        "Keep each headline value with its displayed unit, period and denominator."
+      ],
+      "section": "outputs",
+      "route": "#/outputs",
+      "state": "Settled ALL_VALENC-A_REAL selected; running false and final aggregate loaded",
+      "capture": "run selector, toolbar, period, coverage, KPI and status boundary",
+      "alt": "Outputs page showing the settled ALL_VALENC-A_REAL toolbar, coverage, energy, carbon and result status.",
+      "caption": "Final Outputs reading order: settled run and period, download actions, coverage, energy and operational-carbon status.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-cluster-district",
+      "asset": "assets/outputs-cluster-district.png",
+      "source_asset": "capture-sources/outputs-cluster-district.png",
+      "callouts": "callouts/outputs-cluster-district.json",
+      "callout_labels": [
+        "Compare a cluster's geometric and cadastral intensity as two different denominators.",
+        "Read Rai comparisons as model-to-reference research comparisons, not as measurements.",
+        "Treat the Latin-hypercube band as pilot-building context, not as a range for the totals."
+      ],
+      "section": "outputs",
+      "route": "#/outputs",
+      "state": "Settled Valencia aggregate with cluster table and honest unavailable district state",
+      "capture": "cluster/district evidence and denominator note",
+      "alt": "Outputs page showing cluster totals, denominator notes and the recorded district-evidence state.",
+      "caption": "Aggregate interpretation: area-weighted cluster results, comparison limits and an explicit unavailable state when district evidence is absent.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-building-ledger",
+      "asset": "assets/outputs-building-ledger.png",
+      "source_asset": "capture-sources/outputs-building-ledger.png",
+      "callouts": "callouts/outputs-building-ledger.json",
+      "callout_labels": [
+        "Search by cadastral reference and apply the status filter before selecting a row.",
+        "Keep the selected row identity visible while its evidence drawer is open.",
+        "Open the readable report before consulting raw expert files."
+      ],
+      "section": "outputs",
+      "route": "#/outputs",
+      "state": "Settled ALL_VALENC-A_REAL ledger filtered to a reproducibly selected accepted building",
+      "capture": "search/filter/table and evidence drawer header",
+      "alt": "Outputs page showing building-ledger search, status filter, selected row and evidence drawer.",
+      "caption": "Building-level audit: search and status filter, one selected ledger record and its readable evidence actions.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-readable-report",
+      "asset": "assets/outputs-readable-report.png",
+      "source_asset": "capture-sources/outputs-readable-report.png",
+      "callouts": "callouts/outputs-readable-report.json",
+      "callout_labels": [
+        "Start from the interpretation summary: result, building scope, energy basis and QA.",
+        "Read the period, energy and emissions strip together with its stated denominator.",
+        "Quote any number only with the scope and limitations printed beneath it."
+      ],
+      "section": "report",
+      "route": "/api/stock/runs/ALL_VALENC-A_REAL/buildings/{reference}/report#overview",
+      "state": "Settled accepted Valencia building chosen by the report evidence selector",
+      "capture": "identity, period, interpretation summary and scope/limitations",
+      "alt": "Readable building report showing identity, period, interpretation summary, limitations and QA status.",
+      "caption": "Readable building report: citation status, simulation boundary, period-aware metrics and classified diagnostics.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-energyplus-tables",
+      "asset": "assets/outputs-energyplus-tables.png",
+      "source_asset": "capture-sources/outputs-energyplus-tables.png",
+      "callouts": "callouts/outputs-energyplus-tables.json",
+      "callout_labels": [
+        "Confirm that the EnergyPlus table belongs to the same run and building reference.",
+        "Read the site-energy table as original engine evidence behind the interpreted report.",
+        "Do not treat these tables as measured consumption or calibrated performance."
+      ],
+      "section": "report",
+      "route": "/api/stock/runs/ALL_VALENC-A_REAL/buildings/{reference}/eplustbl.htm",
+      "state": "Same settled accepted Valencia building as the readable report",
+      "capture": "EnergyPlus result-table title, representative end-use table and source identity",
+      "alt": "EnergyPlus result tables opened directly from Readable evidence for the selected building.",
+      "caption": "Original EnergyPlus tables: end-use and zone evidence supporting, but not replacing, the interpreted report.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-geometry-viewer",
+      "asset": "assets/outputs-geometry-viewer.png",
+      "source_asset": "capture-sources/outputs-geometry-viewer.png",
+      "callouts": "callouts/outputs-geometry-viewer.json",
+      "callout_labels": [
+        "Match the viewer reference to the selected building ledger row.",
+        "Inspect exterior walls, party walls, roofs, openings and context masses for topology errors.",
+        "Check that the listed storeys match the storey evidence recorded for the building."
+      ],
+      "section": "geometry",
+      "route": "#/outputs",
+      "state": "Geometry check open for the same settled accepted Valencia building",
+      "capture": "3D viewer, legend, storey/surface summary and reference identity",
+      "alt": "Geometry viewer showing the selected Valencia building with storeys, envelope surfaces and openings.",
+      "caption": "Geometry check: storeys, roofs, exterior walls, openings and context; visual inspection does not reconstruct WWR.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-exports",
+      "asset": "assets/outputs-exports.png",
+      "source_asset": "capture-sources/outputs-exports.png",
+      "callouts": "callouts/outputs-exports.json",
+      "callout_labels": [
+        "Choose Building CSV for tabular review and the GIS layer for spatial analysis.",
+        "Use the heat map as a visual derivative and the signed ZIP as the archival evidence package.",
+        "Delete only a non-running run, and only after exact-name confirmation."
+      ],
+      "section": "exports",
+      "route": "#/outputs",
+      "state": "Settled ALL_VALENC-A_REAL toolbar and publication export explanation",
+      "capture": "Building CSV, GIS, Heat map, signed ZIP and safe Delete run controls",
+      "alt": "Outputs toolbar showing Building CSV, GIS, heat map, signed ZIP and safe run deletion actions.",
+      "caption": "Export choices: human-readable Building CSV, QGIS layer, publication heat map, signed archive and exact-name deletion safeguard.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-valencia-heatmap",
+      "asset": "assets/outputs-valencia-heatmap.png",
+      "source_asset": "capture-sources/outputs-valencia-heatmap.png",
+      "callouts": "callouts/outputs-valencia-heatmap.json",
+      "callout_labels": [
+        "Read the annual period, denominator and panel metric before comparing colours.",
+        "Interpret P2-P98 clipping as a display rule; the recorded totals still include values outside that colour range.",
+        "Use the status legend to distinguish simulated, failed, excluded and unavailable buildings."
+      ],
+      "section": "heatmap",
+      "route": "/api/stock/runs/ALL_VALENC-A_REAL/results.png",
+      "state": "Corrected derivative generated from settled ledger/GIS without EnergyPlus rerun",
+      "capture": "complete publication PNG including insets, status legend, clipping evidence and provenance footer",
+      "alt": "Final Valencia heat map with three energy panels, complete geography, status legend and percentile clipping evidence.",
+      "caption": "Valencia spatial summary: annual simulated energy, declared denominator, complete geography, P2-P98 display limits and status coverage.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    },
+    {
+      "id": "outputs-lecco-event",
+      "asset": "assets/outputs-lecco-event.png",
+      "source_asset": "capture-sources/outputs-lecco-event.png",
+      "callouts": "callouts/outputs-lecco-event.json",
+      "callout_labels": [
+        "Confirm the eight-day event window before reading any LECCO_1 result.",
+        "Keep event-period energy and operational emissions separate from annual metrics.",
+        "Read coverage and Result Status before comparing event results across clusters."
+      ],
+      "section": "event",
+      "route": "#/outputs",
+      "state": "Completed LECCO_1 selected with eight-day event warning visible",
+      "capture": "toolbar, non-annual banner, event KPI, coverage/status and cluster table",
+      "alt": "Outputs page for LECCO_1 showing the eight-day non-annual warning, event-period results and coverage.",
+      "caption": "LECCO_1 event evidence: eight-day period, non-annual energy and carbon, coverage, status and cluster totals.",
+      "status": "accepted",
+      "acceptance": {
+        "final_ui": true,
+        "no_local_path": true,
+        "legible": true,
+        "alt_caption_checked": true
+      }
+    }
+  ]
+}

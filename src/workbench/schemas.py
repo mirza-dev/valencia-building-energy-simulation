@@ -183,3 +183,12 @@ class StorageCleanupRequest(StrictRequest):
         "abandoned_scratch", "expired_previews", "export_cache", "map_cache",
         "object_store_gc",
     ]] = Field(min_length=1)
+
+
+class EventLhsRequest(StrictRequest):
+    """Start an uncertainty study on one building of a microclimate event run."""
+
+    stock_run: str = Field(min_length=1, max_length=128)
+    refparcela: str = Field(min_length=1, max_length=64)
+    n: int | None = Field(default=None, ge=8, le=200)
+    seed: int | None = Field(default=None, ge=0, le=2**31 - 1)

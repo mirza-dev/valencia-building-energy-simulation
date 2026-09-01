@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "run-live-ledger",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.815,
+      "y": 0.311,
+      "label": "Treat the ledger-derived completed count as operational progress, not as a final result."
+    },
+    {
+      "number": 2,
+      "x": 0.585,
+      "y": 0.372,
+      "label": "Separate successful, failed-attempt and excluded counts when monitoring coverage."
+    },
+    {
+      "number": 3,
+      "x": 0.665,
+      "y": 0.46,
+      "label": "Use Stop safely when interruption is necessary; do not terminate worker processes directly."
+    }
+  ]
+}

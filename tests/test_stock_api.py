@@ -7,10 +7,12 @@ the engine produced - a mocked adapter would prove nothing about that.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import os
 import time
+import types
 import zipfile
 from pathlib import Path
 from unittest import mock
@@ -211,6 +213,62 @@ def test_a_run_totalled_from_a_partial_ledger_is_flagged(tmp_path, monkeypatch,
     assert stock_adapter.summary("partial_run")["buildings_ok"] >= 0
 
 
+def _publication_heatmap_fixture(tmp_path, monkeypatch, name="PUBLISHED_RUN"):
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+    monkeypatch.setattr(stock_adapter, "PUBLICATION_RESULTS_ROOT",
+                        tmp_path / "published")
+    run = stock_adapter.STOCK_ROOT / name
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text(
+        json.dumps(_minimal_ok_row("ONE")) + "\n", encoding="utf-8")
+    (run / "aggregate.json").write_text(json.dumps({
+        "buildings_ok": 1,
+        "results_layer": {"written": True, "heatmap": {
+            "written": True, "image": "results_heatmap.png",
+            "panels": ["total_site_kwh_m2"],
+        }},
+    }), encoding="utf-8")
+    published = stock_adapter.PUBLICATION_RESULTS_ROOT / name
+    published.mkdir(parents=True)
+    image = published / "results_heatmap.png"
+    image.write_bytes(b"publication-png")
+    digest = hashlib.sha256(image.read_bytes()).hexdigest()
+    (published / "results_heatmap.json").write_text(json.dumps({
+        "schema": "bsew-heatmap-evidence-v1", "run": name,
+        "unit": "kWh/m²·yr", "denominator": "named denominator",
+        "panels": {"total_site_kwh_m2": {"valid": 1, "missing": 0}},
+        "status_classes": {"successful": 1, "excluded": 0,
+                           "failed": 0, "metric_missing": 0},
+        "geography": {"outside_frame": 0, "views": [
+            {"id": "main", "buildings": 1}]},
+        "crs": "EPSG:25830", "profile_fingerprint": "abc",
+        "png": {"file": image.name, "sha256": digest},
+    }), encoding="utf-8")
+    return name, image
+
+
+def test_settled_run_prefers_verified_publication_heatmap(tmp_path, monkeypatch):
+    name, image = _publication_heatmap_fixture(tmp_path, monkeypatch)
+
+    assert stock_adapter.results_heatmap(name) == image
+    heatmap = stock_adapter.summary(name)["results_layer"]["heatmap"]
+    assert heatmap["publication_derivative"] is True
+    assert heatmap["outside_frame"] == 0
+    assert heatmap["sha256"] == hashlib.sha256(image.read_bytes()).hexdigest()
+
+
+def test_heatmap_endpoint_refuses_a_running_or_partial_run(client, tmp_path,
+                                                           monkeypatch):
+    name, _ = _publication_heatmap_fixture(tmp_path, monkeypatch, "ACTIVE_MAP")
+    monkeypatch.setattr(stock_adapter, "active_process",
+                        lambda candidate: object() if candidate == name else None)
+
+    response = client.get(f"/api/stock/runs/{name}/results.png")
+
+    assert response.status_code == 409
+    assert "has not settled" in response.json()["detail"]
+
+
 def test_scope_size_comes_from_the_runs_own_config(tmp_path, monkeypatch):
     """The honest denominator while rows are still arriving."""
     monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path)
@@ -239,6 +297,63 @@ def test_scope_size_reports_unknown_rather_than_guessing(tmp_path, monkeypatch,
     if payload is not None:
         (run / "run_config.json").write_text(payload, encoding="utf-8")
     assert stock_adapter.scope_size("unscoped") is None
+
+
+def _finished_run(root, name, *, scope, mean, stamp):
+    """The two files `_seconds_per_building` reads, and nothing else."""
+    run = root / name
+    run.mkdir(parents=True)
+    (run / "run_config.json").write_text(json.dumps({"scope": scope}),
+                                         encoding="utf-8")
+    summary = run / "aggregate.json"
+    summary.write_text(json.dumps({
+        "seconds_per_building": {"mean": mean, "median": mean, "max": mean},
+        "energy_period": {"period": "annual", "unit": "kWh/m2-yr"},
+    }), encoding="utf-8")
+    os.utime(summary, (stamp, stamp))
+    return run
+
+
+def test_the_duration_rate_ignores_a_hand_picked_repair_run(tmp_path, monkeypatch):
+    """A retry of the buildings the last run could not finish is a repair of it,
+    not a sample of the next one.  Measured on ALL-VALENC-A_unfinished, which
+    retried 1 406 buildings: 210.2 s against the city's own 96.8 s, which would have quoted 10.7 days for a run
+    the city's ledger says takes 4.9.  Newest still wins - among comparable runs.
+    """
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path)
+    _finished_run(tmp_path, "city", scope="all", mean=96.8, stamp=1_000)
+    _finished_run(tmp_path, "city_unfinished", scope="references", mean=210.2,
+                  stamp=9_000)                      # newer, and the wrong shape
+    rate, basis = stock_adapter._seconds_per_building()
+    assert rate == pytest.approx(96.8)
+    assert "city" in basis and "unfinished" not in basis
+
+
+def test_the_duration_rate_still_takes_the_newest_comparable_run(tmp_path,
+                                                                 monkeypatch):
+    """The scope guard must narrow the field, not freeze it: engine changes move
+    the time per building, so a newer whole-scope run must still win."""
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path)
+    _finished_run(tmp_path, "older_district", scope="district", mean=143.3,
+                  stamp=1_000)
+    _finished_run(tmp_path, "newer_district", scope="district", mean=56.3,
+                  stamp=9_000)
+    rate, basis = stock_adapter._seconds_per_building()
+    assert rate == pytest.approx(56.3)
+    assert basis == "measured on newer_district"
+
+
+def test_a_run_that_never_recorded_its_scope_still_counts(tmp_path, monkeypatch):
+    """An absent `run_config.json` predates the field, and every run that old
+    covered a whole scope.  Dropping those would leave a fresh installation with
+    no measured rate at all, which is the constant this function exists to
+    replace."""
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path)
+    run = _finished_run(tmp_path, "ancient", scope="all", mean=101.9, stamp=1_000)
+    (run / "run_config.json").unlink()
+    rate, basis = stock_adapter._seconds_per_building()
+    assert rate == pytest.approx(101.9)
+    assert basis == "measured on ancient"
 
 
 def test_unknown_run_is_a_404_not_an_empty_page(client):
@@ -456,6 +571,142 @@ def test_a_live_process_is_still_reported_as_running():
 def test_a_run_name_cannot_escape_the_stock_root():
     with pytest.raises(ValueError):
         stock_adapter.run_directory("../../etc")
+
+
+def test_delete_run_removes_only_the_inactive_run_and_exact_exports(monkeypatch, tmp_path):
+    stock_root = tmp_path / "stock"
+    run = stock_root / "sample"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    exports = tmp_path / "exports"
+    exports.mkdir()
+    exact = exports / "stock_sample_full.zip"
+    selected = exports / "stock_sample_selected-0123456789ab.zip"
+    sibling = exports / "stock_sample_more_full.zip"
+    for path in (exact, selected, sibling):
+        path.write_bytes(b"zip")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+    monkeypatch.setenv("WORKBENCH_EXPORT_ROOT", str(exports))
+
+    result = stock_adapter.delete_run("sample")
+
+    assert result == {"deleted": True, "run": "sample", "removed_exports": 2}
+    assert not run.exists()
+    assert not exact.exists()
+    assert not selected.exists()
+    assert sibling.exists()
+
+
+def test_delete_run_answers_before_the_bytes_are_reclaimed(monkeypatch, tmp_path):
+    """The rename is the deletion; reclaiming the space happens behind it.
+
+    A full-city run is ~133 GB over ~26 000 directories and unlinking that
+    inside the request took minutes.  The contract is that the run is gone the
+    moment the call returns, whether or not its bytes have been given back yet,
+    so the reclaim is stubbed out here rather than waited on.
+    """
+    stock_root = tmp_path / "stock"
+    run = stock_root / "sample"
+    (run / "runs" / "one_deep").mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    (run / "runs" / "one_deep" / "eplusout.err").write_text("evidence", encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+    monkeypatch.setattr(stock_adapter.threading, "Thread",
+                        lambda *a, **k: types.SimpleNamespace(start=lambda: None))
+
+    result = stock_adapter.delete_run("sample")
+
+    assert result["deleted"] is True
+    assert not run.exists()
+    assert [item["run"] for item in stock_adapter.list_runs()] == []
+    held = list((stock_root / ".discarded").iterdir())
+    assert len(held) == 1
+    assert (held[0] / "runs" / "one_deep" / "eplusout.err").read_text() == "evidence"
+
+
+def test_discarded_runs_are_neither_listed_nor_addressable(monkeypatch, tmp_path):
+    """What is waiting to be reclaimed must not look like a run to anyone."""
+    stock_root = tmp_path / "stock"
+    waiting = stock_root / ".discarded" / "sample.deadbeef"
+    waiting.mkdir(parents=True)
+    (waiting / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    assert [item["run"] for item in stock_adapter.list_runs()] == []
+    with pytest.raises(ValueError):
+        stock_adapter.run_directory(".discarded")
+
+
+def test_reclaim_finishes_a_deletion_that_an_exit_interrupted(monkeypatch, tmp_path):
+    stock_root = tmp_path / "stock"
+    waiting = stock_root / ".discarded" / "sample.deadbeef"
+    (waiting / "runs" / "one_deep").mkdir(parents=True)
+    (waiting / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    assert stock_adapter.reclaim_discarded_runs() == 1
+
+    assert not waiting.exists()
+    assert list((stock_root / ".discarded").iterdir()) == []
+
+
+def test_delete_run_refuses_a_live_process(monkeypatch, tmp_path):
+    run = tmp_path / "stock" / "live"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+    monkeypatch.setattr(stock_adapter, "active_process", lambda _name: {"pid": 123})
+
+    with pytest.raises(stock_adapter.RunActiveError):
+        stock_adapter.delete_run("live")
+    assert run.exists()
+
+
+def test_delete_run_refuses_a_symlink_outside_the_stock_root(monkeypatch, tmp_path):
+    stock_root = tmp_path / "stock"
+    outside = tmp_path / "outside"
+    stock_root.mkdir()
+    outside.mkdir()
+    (outside / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    (stock_root / "linked").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+
+    with pytest.raises(ValueError):
+        stock_adapter.delete_run("linked")
+    assert outside.exists()
+
+
+def test_delete_run_route_reports_conflict_without_removing_live_run(monkeypatch, tmp_path):
+    run = tmp_path / "stock" / "live"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+    monkeypatch.setattr(stock_adapter, "active_process", lambda _name: {"pid": 123})
+
+    with TestClient(app) as local_client:
+        response = local_client.delete("/api/stock/runs/live")
+
+    assert response.status_code == 409
+    assert "still running" in response.json()["detail"]
+    assert run.exists()
+
+
+def test_delete_run_route_removes_an_inactive_run(monkeypatch, tmp_path):
+    run = tmp_path / "stock" / "old"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text('{"status":"ok"}\n', encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+    monkeypatch.setattr(stock_adapter, "active_process", lambda _name: None)
+    monkeypatch.setenv("WORKBENCH_EXPORT_ROOT", str(tmp_path / "exports"))
+
+    with TestClient(app) as local_client:
+        response = local_client.delete("/api/stock/runs/old")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "deleted": True, "run": "old", "removed_exports": 0,
+    }
+    assert not run.exists()
 
 
 def test_an_artifact_path_cannot_escape_the_run(has_finished_run):
@@ -697,8 +948,20 @@ def test_building_report_renders_the_runs_own_numbers(client, has_finished_run):
     for check in layers["qa"]:
         assert check["check"] in page
     # the stage records are explained, not dumped
-    assert "Partial top storey" in page or "Mixed use" in page
-    assert "Thermal zoning" in page
+    assert "Storey-use and partial-storey policy" in page
+    assert "Thermal-zoning scheme" in page
+    # The primary reading path is plain-language and addressable from the UI;
+    # raw JSON/OSM/log files stay available only as a clearly technical layer.
+    assert 'id="interpretation"' in page
+    assert 'id="limitations"' in page
+    assert 'id="energy"' in page
+    assert 'id="quality"' in page
+    assert 'id="methods"' in page
+    assert 'id="provenance"' in page
+    assert 'id="references"' in page
+    assert "Interpretation summary" in page
+    assert "Original technical files" in page
+    assert "specialist software and forensic audit" in page
 
 
 def test_building_report_route_is_not_shadowed(client, has_finished_run):
@@ -819,9 +1082,21 @@ def test_retry_failed_is_passed_to_the_runner_as_its_own_flag(tmp_path, monkeypa
 
     monkeypatch.setattr(stock_adapter.subprocess, "Popen", _FakePopen)
     monkeypatch.setattr(stock_adapter, "STOCK_ROOT", tmp_path / "stock")
+    # Its own inputs, not the machine's active project.  This test is about how
+    # one flag reaches the runner; leaving `start_run` to resolve the live
+    # settings made it pass or fail according to which city happened to be
+    # active, which is a property of the machine and not of the flag.
+    for name in ("stock.gpkg", "climate.json", "template.osm"):
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    inputs = stock_adapter.InputSet(
+        stock=tmp_path / "stock.gpkg",
+        climate=tmp_path / "climate.json",
+        template=tmp_path / "template.osm",
+    )
 
     stock_adapter.start_run("run1", "references", references=["A"],
-                            retry_failed=True, log_dir=tmp_path / "logs")
+                            inputs=inputs, retry_failed=True,
+                            log_dir=tmp_path / "logs")
     assert "--retry-failed" in captured["argv"]
     assert "--resume" not in captured["argv"]
 
@@ -864,3 +1139,153 @@ def test_scope_size_never_reports_a_scope_smaller_than_its_own_parts(tmp_path, m
     monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
 
     assert stock_adapter.scope_size("run1")["total"] == 1000
+
+
+def _curated_run(tmp_path, monkeypatch, rows, *, aggregate=True):
+    stock_root = tmp_path / "stock"
+    run = stock_root / "city"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    if aggregate:
+        (run / "aggregate.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+    monkeypatch.setattr(stock_adapter, "active_process", lambda _name: None)
+    return run
+
+
+def test_curated_csv_publishes_exactly_the_documented_schema(tmp_path, monkeypatch):
+    """The header is the contract the User Guide's Appendix A declares.
+
+    `/ledger.csv` builds its columns from whichever keys the first rows happen
+    to carry, so a run whose first record is an exclusion puts `reason` before
+    `status`.  A published table cannot move its columns between runs.
+    """
+    _curated_run(tmp_path, monkeypatch, [
+        {"refparcela": "B", "status": "ok", "cluster": "Z", "total_site_kwh_m2": 41.2},
+        {"refparcela": "A", "status": "ok", "cluster": "Z", "total_site_kwh_m2": 39.9},
+    ])
+
+    rows = stock_adapter.curated_building_rows("city")
+
+    assert list(rows[0]) == list(stock_adapter.CURATED_BUILDING_CSV_FIELDS)
+    assert len(stock_adapter.CURATED_BUILDING_CSV_FIELDS) == 88
+    assert [row["refparcela"] for row in rows] == ["A", "B"]   # deterministic
+
+
+def test_curated_csv_never_carries_a_local_path_or_a_traceback(tmp_path, monkeypatch):
+    """These are the two fields that made the raw export unpublishable.
+
+    The engine's own failure message quotes the absolute path of the `.err`
+    file it wants read.  The sentence is worth keeping; the path is this
+    machine's directory layout, and the project directory contains spaces -
+    which is what defeated the first attempt at scrubbing it.
+    """
+    stock_root = tmp_path / "stock"
+    run = stock_root / "city"
+    run.mkdir(parents=True)
+    (run / "ledger.jsonl").write_text(json.dumps({
+        "refparcela": "A", "status": "failed", "reason": "RuntimeError",
+        "message": f"1 unexplained Severe. See {run}/runs/A_deep/eplusout.err",
+        "model_osm": "/Volumes/disk/Mirza works/out/model.osm",
+        "traceback": 'File "/Users/someone/src/x.py", line 3\nRuntimeError',
+    }) + "\n", encoding="utf-8")
+    (run / "aggregate.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(stock_adapter, "STOCK_ROOT", stock_root)
+    monkeypatch.setattr(stock_adapter, "active_process", lambda _name: None)
+
+    rows = stock_adapter.curated_building_rows("city")
+
+    published = "\n".join("\x1f".join(row.values()) for row in rows)
+    assert "/Volumes" not in published
+    assert "/Users" not in published
+    assert str(run) not in published
+    assert "runs/A_deep/eplusout.err" in rows[0]["message"]   # still points at it
+    assert "traceback" not in stock_adapter.CURATED_BUILDING_CSV_FIELDS
+    assert "model_osm" not in stock_adapter.CURATED_BUILDING_CSV_FIELDS
+
+
+def test_an_exclusion_is_explained_in_words_not_only_in_a_code(tmp_path, monkeypatch):
+    """Twelve exclusions arrived with a machine code and no sentence."""
+    _curated_run(tmp_path, monkeypatch, [
+        {"refparcela": "A", "status": "excluded", "reason": "interior_rings_2"},
+        {"refparcela": "B", "status": "excluded", "reason": "duplicate_refparcela_3_rows"},
+    ])
+
+    rows = stock_adapter.curated_building_rows("city")
+
+    assert "2 interior ring" in rows[0]["message"]
+    assert "3 rows" in rows[1]["message"]
+    assert rows[0]["reason"] == "interior_rings_2"   # the code stays beside it
+
+
+def test_curated_csv_refuses_a_run_whose_totals_are_still_moving(tmp_path, monkeypatch):
+    """A partial ledger downloaded under a final name is the whole hazard."""
+    _curated_run(tmp_path, monkeypatch, [
+        {"refparcela": "A", "status": "ok", "total_site_kwh_m2": 40.0},
+    ], aggregate=False)
+
+    with pytest.raises(stock_adapter.RunActiveError):
+        stock_adapter.curated_building_rows("city")
+
+
+def test_a_measured_zero_and_an_absent_value_do_not_look_alike(tmp_path, monkeypatch):
+    _curated_run(tmp_path, monkeypatch, [{
+        "refparcela": "A", "status": "ok",
+        "space_heating_kwh_m2": 0.0,          # measured: the building never heated
+        "cooling_kwh_m2": None,               # absent from the record
+        "qa_all_passed": True,
+        "total_site_kwh_m2": float("nan"),
+    }])
+
+    row = stock_adapter.curated_building_rows("city")[0]
+
+    assert row["space_heating_kwh_m2"] == "0"
+    assert row["cooling_kwh_m2"] == ""
+    assert row["qa_all_passed"] == "true"      # not True, not 1
+    assert row["total_site_kwh_m2"] == ""      # NaN is not a measurement
+
+
+def test_a_small_number_is_written_in_full_not_as_an_exponent(tmp_path, monkeypatch):
+    """`repr` switches to an exponent below 1e-4.
+
+    Measured on the finished city run: 583 cells of `footprint_fidelity` came
+    out as `6.1e-05`, which left one column holding two visibly different kinds
+    of number in a table meant to be read.
+    """
+    _curated_run(tmp_path, monkeypatch, [{
+        "refparcela": "A", "status": "ok",
+        "footprint_fidelity": 6.1e-05,
+        "storey_rule_margin": 2.7e-08,
+        "total_site_kwh_m2": 45.04,
+    }])
+
+    row = stock_adapter.curated_building_rows("city")[0]
+
+    assert row["footprint_fidelity"] == "0.000061"
+    assert row["storey_rule_margin"] == "0.000000027"
+    assert row["total_site_kwh_m2"] == "45.04"   # unchanged where it was fine
+
+
+def test_text_that_a_spreadsheet_would_execute_is_neutralised(tmp_path, monkeypatch):
+    _curated_run(tmp_path, monkeypatch, [{
+        "refparcela": "A", "status": "failed", "reason": "=cmd|'/c calc'!A1",
+        "space_heating_kwh_m2": -1.5,
+    }])
+
+    row = stock_adapter.curated_building_rows("city")[0]
+
+    assert row["reason"].startswith("'=")
+    assert row["space_heating_kwh_m2"] == "-1.5"   # a negative number stays one
+
+
+def test_every_published_column_is_defined_in_the_dictionary():
+    entries = stock_adapter.curated_building_dictionary()
+
+    assert [item["field"] for item in entries] == list(
+        stock_adapter.CURATED_BUILDING_CSV_FIELDS)
+    assert all(item["meaning"] for item in entries)
+    carbon = {item["field"]: item["ledger_source"] for item in entries}
+    assert carbon["total_site_co2_t"] == "total_site_co2_t_yr"
+    assert not any(field.endswith("_yr")
+                   for field in stock_adapter.CURATED_BUILDING_CSV_FIELDS)

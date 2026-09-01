@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-cluster-district",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.59,
+      "y": 0.366,
+      "label": "Compare a cluster's geometric and cadastral intensity as two different denominators."
+    },
+    {
+      "number": 2,
+      "x": 0.755,
+      "y": 0.487,
+      "label": "Read Rai comparisons as model-to-reference research comparisons, not as measurements."
+    },
+    {
+      "number": 3,
+      "x": 0.34,
+      "y": 0.828,
+      "label": "Treat the Latin-hypercube band as pilot-building context, not as a range for the totals."
+    }
+  ]
+}

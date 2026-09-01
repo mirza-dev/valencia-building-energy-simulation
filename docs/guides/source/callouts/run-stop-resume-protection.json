@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "run-stop-resume",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.815,
+      "y": 0.311,
+      "label": "Confirm that the earlier run is stopped and its durable ledger is present."
+    },
+    {
+      "number": 2,
+      "x": 0.535,
+      "y": 0.508,
+      "label": "Resume with the exact same run name and scientific identity."
+    },
+    {
+      "number": 3,
+      "x": 0.365,
+      "y": 0.872,
+      "label": "Treat an identity mismatch refusal as evidence protection, not as an error to bypass."
+    }
+  ]
+}

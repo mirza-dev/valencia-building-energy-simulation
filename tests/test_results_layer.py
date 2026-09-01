@@ -337,6 +337,66 @@ def test_the_heatmap_draws_the_buildings_without_a_result(tmp_path):
     assert not list(tmp_path.glob("*.partial.png"))
 
 
+def test_geographic_views_partition_main_stock_and_two_distant_groups():
+    import results_maps as rm
+
+    coordinates = [
+        (0, 0), (100, 0), (200, 0), (0, 100), (100, 100), (200, 100),
+        (5000, 5000), (5100, 5000), (-5000, -5000), (-5100, -5000),
+    ]
+    frame = gpd.GeoDataFrame(
+        {"refparcela": [f"B{i}" for i in range(len(coordinates))],
+         "nombre": ["CENTRE"] * 6 + ["NORTH"] * 2 + ["SOUTH"] * 2},
+        geometry=[box(x, y, x + 20, y + 20) for x, y in coordinates],
+        crs="EPSG:25830")
+
+    views, evidence = rm.geographic_views(frame)
+
+    assert len(views) == 3
+    assert views[0]["id"] == "main"
+    assert sum(view["buildings"] for view in views) == len(frame)
+    assigned = [item for view in views for item in view["indices"]]
+    assert sorted(assigned) == list(range(len(frame)))
+    assert len(assigned) == len(set(assigned))
+    assert evidence["outside_frame"] == 0
+
+
+def test_publication_heatmap_writes_status_scale_and_hash_evidence(tmp_path):
+    import hashlib
+    import results_maps as rm
+
+    rows, stock = _many(8)
+    rows.append({"refparcela": "B0X", "status": "failed_qa",
+                 "reason": "unmet_hours"})
+    rows.append({"refparcela": "B0E", "status": "excluded",
+                 "reason": "outside geometry contract"})
+    stock = gpd.GeoDataFrame(
+        {"refparcela": [*stock["refparcela"], "B0X", "B0E"]},
+        geometry=[*stock.geometry, box(900, 0, 910, 10),
+                  box(1000, 0, 1010, 10)],
+        crs=stock.crs)
+    frame, _ = rl.build_frame(rows, stock)
+
+    block = rm.write_heatmap(
+        frame, tmp_path, title="UNIT_RUN", unit=rl.ANNUAL_UNIT,
+        period={"period": "annual", "unit": rl.ANNUAL_UNIT})
+    evidence = json.loads((tmp_path / rm.METADATA_FILENAME).read_text())
+    image = tmp_path / rm.MAP_FILENAME
+
+    assert block["written"] is True
+    assert block["outside_frame"] == 0
+    assert evidence["schema"] == rm.HEATMAP_EVIDENCE_VERSION
+    assert evidence["run"] == "UNIT_RUN"
+    assert set(evidence["status_classes"]) == set(rm.HEATMAP_STATUS_CLASSES)
+    assert evidence["status_classes"]["excluded"] == 1
+    assert evidence["status_classes"]["failed"] == 1
+    assert evidence["display_scale"]["values_are_not_modified"] is True
+    for stats in evidence["panels"].values():
+        assert set(stats) == set(rm.HEATMAP_PANEL_STATISTICS_FIELDS)
+    assert evidence["png"]["sha256"] == hashlib.sha256(
+        image.read_bytes()).hexdigest()
+
+
 def test_the_heatmap_says_so_rather_than_raising_without_energy(tmp_path):
     import results_maps as rm
 

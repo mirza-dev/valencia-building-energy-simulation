@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "run-preflight",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.29,
+      "y": 0.246,
+      "label": "Choose the study scope before requesting preflight."
+    },
+    {
+      "number": 2,
+      "x": 0.535,
+      "y": 0.508,
+      "label": "Use a stable run name because safe resume depends on the same identity."
+    },
+    {
+      "number": 3,
+      "x": 0.35,
+      "y": 0.632,
+      "label": "Read the preflight evidence - runnable, excluded, time basis and storage - before Start."
+    }
+  ]
+}

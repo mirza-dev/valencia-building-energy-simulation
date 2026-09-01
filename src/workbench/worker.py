@@ -11,6 +11,7 @@ from workbench.simulation_service import run_simulation_job
 from workbench.neighborhood_service import run_neighborhood_job
 from workbench.city_service import run_city_job
 from workbench.lhs_service import run_lhs_job
+from workbench.lhs_event_service import run_event_lhs_job
 from workbench.scenario_service import run_scenario_job
 
 
@@ -33,6 +34,8 @@ def main() -> int:
             run_city_job(job["id"])
         elif job["kind"] == "lhs":
             run_lhs_job(job["id"])
+        elif job["kind"] == "lhs_event":
+            run_event_lhs_job(job["id"])
         else:
             run_build_job(job["id"])
         return 0

@@ -22,7 +22,9 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import signal
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -31,6 +33,7 @@ import time
 import uuid
 import zipfile
 from dataclasses import dataclass
+from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -48,6 +51,7 @@ from workbench.scene import extract_scene_from_path
 PROJECT = Path(__file__).resolve().parents[2]
 RUNNER_PATH = PROJECT / "src/stock_runner.py"
 STOCK_ROOT = PROJECT / "out/stock"
+PUBLICATION_RESULTS_ROOT = PROJECT / "docs/results"
 
 # Entry points this adapter depends on.  Listed so a capability check can prove
 # the engine still offers them rather than discovering it mid-run.
@@ -81,6 +85,10 @@ SECONDS_PER_BUILDING = 60.1
 BYTES_PER_BUILDING_FULL = 5.8 * 1024 ** 2
 BYTES_PER_BUILDING_SUMMARY = 1.05 * 1024 ** 2
 _EXPORT_LOCK = threading.Lock()
+
+
+class RunActiveError(RuntimeError):
+    """A destructive run operation was refused because its process is live."""
 
 
 @dataclass(frozen=True)
@@ -252,6 +260,25 @@ def district_options(inputs: InputSet | None = None) -> list[str]:
     return sorted(stock["nombre"].dropna().astype(str).unique().tolist())
 
 
+def _was_a_hand_picked_list(run_dir: Path) -> bool:
+    """Whether this run's scope was a list of references someone chose.
+
+    A rate has to come from a run of the same shape as the one being estimated.
+    `ALL-VALENC-A_unfinished` retried the 1 406 buildings the full city run had
+    not finished - the hardest ones, under contention - and averaged 210.2 s
+    where the city itself averaged 96.8 s.  Newest by date, it would have told an
+    operator that the next full city needs 10.7 days when the city's own ledger
+    says 4.9.  A run states which it was, so this asks rather than guesses; an
+    absent `run_config.json` predates the field, and every run that old covered a
+    whole scope.
+    """
+    try:
+        config = json.loads((run_dir / "run_config.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return False
+    return isinstance(config, dict) and config.get("scope") == "references"
+
+
 def _seconds_per_building() -> tuple[float, str]:
     """How long a building takes here, measured rather than remembered.
 
@@ -270,6 +297,10 @@ def _seconds_per_building() -> tuple[float, str]:
     running for three days.  `energy_period` exists precisely to make this
     distinction legible; an absent block means a run from before it was
     introduced, and those were all annual.
+
+    Comparable in scope as well as in unit: a run of a hand-picked reference
+    list is a repair of the last run, not a sample of the next one, so its rate
+    describes repairs.  `_was_a_hand_picked_list` carries that measurement.
     """
     newest: tuple[float, float, str] | None = None
     if STOCK_ROOT.exists():
@@ -287,6 +318,8 @@ def _seconds_per_building() -> tuple[float, str]:
             if not isinstance(mean, (int, float)) or mean <= 0:
                 continue
             if period != "annual":
+                continue
+            if _was_a_hand_picked_list(path):
                 continue
             if newest is None or stamp > newest[0]:
                 newest = (stamp, float(mean), path.name)
@@ -368,7 +401,93 @@ def run_directory(name: str) -> Path:
         raise ValueError(f"invalid run name: {name!r}")
     if any(sep in text for sep in ("/", "\\", "\x00")):
         raise ValueError(f"invalid run name: {name!r}")
-    return (STOCK_ROOT / text).resolve()
+    root = STOCK_ROOT.resolve()
+    candidate = STOCK_ROOT / text
+    # A direct-child symlink still resolves outside the stock root.  Refuse it
+    # explicitly: callers use this helper as their containment boundary.
+    if candidate.is_symlink():
+        raise ValueError(f"run directory may not be a symlink: {name!r}")
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"run directory escaped the stock root: {name!r}") from exc
+    return resolved
+
+
+def _discard_root() -> Path:
+    """Where a deleted run waits while its bytes are reclaimed.
+
+    A sibling of the runs themselves, so the move is always within one
+    filesystem and therefore atomic.  The leading dot keeps it unreachable as a
+    run name - `run_directory` refuses those outright - and it holds no
+    `ledger.jsonl` of its own, so `list_runs` never sees it.
+    """
+    return STOCK_ROOT / ".discarded"
+
+
+def reclaim_discarded_runs() -> int:
+    """Delete what earlier removals moved aside, including across a restart."""
+    root = _discard_root()
+    if not root.is_dir():
+        return 0
+    reclaimed = 0
+    for path in list(root.iterdir()):
+        try:
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                path.unlink(missing_ok=True)
+            reclaimed += 1
+        except OSError:
+            # A partly reclaimed directory is not an error worth failing a
+            # request over: the next sweep picks up whatever is left.
+            continue
+    return reclaimed
+
+
+def delete_run(name: str) -> dict[str, Any]:
+    """Permanently remove one inactive run and only its exact cached exports."""
+    directory = run_directory(name)
+    if not directory.is_dir() or not (directory / "ledger.jsonl").is_file():
+        raise FileNotFoundError(name)
+
+    # Package creation and deletion may not observe each other halfway through.
+    with _EXPORT_LOCK:
+        if active_process(name) is not None:
+            raise RunActiveError(f"run {name!r} is still running")
+        ledger_key = str((directory / "ledger.jsonl").resolve())
+        # A full-city run is ~133 GB over ~26 000 directories; unlinking that
+        # inside the request took minutes with no response, which reads as a
+        # broken button rather than a slow one.  The rename is what makes the
+        # run gone - atomic, same filesystem, constant time - and the bytes are
+        # reclaimed behind it.  If the move cannot be done the old behaviour
+        # still applies, so a deletion never silently fails to delete.
+        discarded: Path | None = _discard_root() / f"{name}.{uuid.uuid4().hex}"
+        try:
+            discarded.parent.mkdir(parents=True, exist_ok=True)
+            directory.rename(discarded)
+        except OSError:
+            discarded = None
+            shutil.rmtree(directory)
+        _TALLY_CACHE.pop(ledger_key, None)
+
+        export_root = Path(os.environ.get(
+            "WORKBENCH_EXPORT_ROOT", PROJECT / "var/exports"))
+        removed_exports = 0
+        if export_root.is_dir():
+            pattern = re.compile(
+                rf"^stock_{re.escape(name)}_(?:full|selected-[0-9a-f]{{12}})\.zip$")
+            for path in export_root.iterdir():
+                if path.is_file() and not path.is_symlink() and pattern.fullmatch(path.name):
+                    path.unlink()
+                    removed_exports += 1
+    if discarded is not None:
+        # Daemon: the sweep on the next deletion, and on service start, finishes
+        # anything an exit interrupts.  Nothing reads what is in there.
+        threading.Thread(target=reclaim_discarded_runs, name="reclaim-discarded",
+                         daemon=True).start()
+    return {"deleted": True, "run": name, "removed_exports": removed_exports}
 
 
 def start_run(name: str, scope: str, *, district: str | None = None,
@@ -708,7 +827,11 @@ def summary(name: str) -> dict[str, Any]:
     out_dir = run_directory(name)
     cached = out_dir / "aggregate.json"
     if cached.exists():
-        return json.loads(cached.read_text(encoding="utf-8"))
+        aggregate = json.loads(cached.read_text(encoding="utf-8"))
+        publication = _publication_heatmap_block(name)
+        if publication is not None:
+            aggregate.setdefault("results_layer", {})["heatmap"] = publication
+        return aggregate
     rows = sr.read_ledger(out_dir / "ledger.jsonl")
     return sr.aggregate(rows)
 
@@ -782,7 +905,75 @@ def results_heatmap(name: str) -> Path:
     """
     import results_maps as rm
 
+    if active_process(name) is not None or summary_is_partial(name):
+        raise RunActiveError(
+            f"run {name!r} has not settled; the final heat map is unavailable")
+    publication = _publication_heatmap_paths(name)
+    if publication is not None:
+        return publication[0]
     return _result_artifact(name, rm.MAP_FILENAME)
+
+
+def _publication_heatmap_paths(name: str) -> tuple[Path, Path] | None:
+    """Return a verified report derivative without touching raw run evidence."""
+    import results_maps as rm
+
+    run_directory(name)  # central name/containment validation
+    directory = (PUBLICATION_RESULTS_ROOT / name).resolve()
+    try:
+        directory.relative_to(PUBLICATION_RESULTS_ROOT.resolve())
+    except ValueError:
+        return None
+    image = directory / rm.MAP_FILENAME
+    metadata = directory / rm.METADATA_FILENAME
+    if not image.is_file() or not metadata.is_file():
+        return None
+    try:
+        evidence = json.loads(metadata.read_text(encoding="utf-8"))
+        if evidence.get("schema") != rm.HEATMAP_EVIDENCE_VERSION:
+            return None
+        if evidence.get("run") != name:
+            return None
+        recorded = evidence.get("png") or {}
+        if recorded.get("file") != rm.MAP_FILENAME:
+            return None
+        digest = hashlib.sha256(image.read_bytes()).hexdigest()
+        if recorded.get("sha256") != digest:
+            return None
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return image, metadata
+
+
+def _publication_heatmap_block(name: str) -> dict[str, Any] | None:
+    paths = _publication_heatmap_paths(name)
+    if paths is None:
+        return None
+    image, metadata = paths
+    evidence = json.loads(metadata.read_text(encoding="utf-8"))
+    geography = evidence.get("geography") or {}
+    status = evidence.get("status_classes") or {}
+    return {
+        "written": True,
+        "publication_derivative": True,
+        "image": image.name,
+        "metadata": metadata.name,
+        "unit": evidence.get("unit"),
+        "denominator": evidence.get("denominator"),
+        "panels": list((evidence.get("panels") or {}).keys()),
+        "panel_statistics": evidence.get("panels") or {},
+        "status_classes": status,
+        "buildings_drawn": sum(int(status.get(key) or 0)
+                               for key in ("successful", "excluded", "failed")),
+        "buildings_without_result": (int(status.get("excluded") or 0)
+                                     + int(status.get("failed") or 0)),
+        "outside_frame": geography.get("outside_frame"),
+        "views": geography.get("views") or [],
+        "crs": evidence.get("crs"),
+        "profile_fingerprint": evidence.get("profile_fingerprint"),
+        "bytes": int(image.stat().st_size),
+        "sha256": (evidence.get("png") or {}).get("sha256"),
+    }
 
 
 def _result_artifact(name: str, filename: str) -> Path:
@@ -842,6 +1033,302 @@ def _cluster_lookup_for_run(out_dir: Path) -> dict[str, str]:
         return {}
 
 
+
+# ---------------------------------------------------------------------------
+# The user-facing Building CSV
+#
+# `/ledger.csv` streams the engineering record: columns in first-seen order,
+# rows in worker-completion order, 24 983 absolute `model_osm` paths and 111
+# truncated tracebacks.  Every cell in it is correct - it was checked against
+# the ledger and matched string for string - but it is the runner's own log,
+# not a table anyone can read, cite or diff.
+#
+# This is the published view of the same finished ledger.  Nothing is
+# recomputed: values are selected, renamed and formatted.  The order below is
+# the publication order of the User Guide's Appendix A, and
+# `verify_product_guide_contract.py` compares the two mechanically, so a field
+# cannot be published undocumented or documented unpublished.
+#
+# What is absent is as much of the contract as what is present.  `model_osm` is
+# an absolute path into one machine, `traceback` is a truncated multi-line dump
+# that begins mid-frame, and `run_identity` repeats a 64-character hash on
+# every row.  They stay in the raw ledger and the technical evidence.
+CURATED_BUILDING_CSV_FIELDS = (
+    "refparcela", "status", "reason", "message", "cluster", "run_mode",
+    "event_days", "event_window", "delta_peak_k", "delta_base_k", "seconds",
+    "pruned_bytes", "total_site_kwh", "space_heating_kwh", "cooling_kwh",
+    "dhw_kwh", "total_site_kwh_m2", "total_site_kwh_m2_conditioned",
+    "space_heating_kwh_m2", "cooling_kwh_m2", "dhw_kwh_m2", "fans_kwh_m2",
+    "pumps_kwh_m2", "lighting_kwh_m2", "equipment_kwh_m2",
+    "space_heating_kwh_m2_conditioned", "cooling_kwh_m2_conditioned",
+    "site_gas_kwh_m2", "site_elec_kwh_m2", "residential_site_kwh",
+    "terciario_site_kwh", "residential_total_site_kwh_m2", "dhw_share_pct",
+    "terciario_share_pct", "total_site_kwh_per_person",
+    "total_site_kwh_per_dwelling", "total_site_co2_kg_m2", "hvac_co2_kg_m2",
+    "total_site_co2_t", "hvac_co2_t", "footprint_m2", "res_area_m2",
+    "tipo15_res_area_m2", "res_area_source", "total_conditioned_area_m2",
+    "conditioned_to_cadastral_ratio", "altura_max", "n_floors_total",
+    "n_floors_residential", "residential_storeys_effective", "built_storeys",
+    "top_storey_fraction", "storey_cap_applied",
+    "mixed_use_storeys_converted", "mixed_use_basis",
+    "large_footprint_single_zone", "footprint_fidelity",
+    "simplify_tolerance_used_m", "storey_rule_margin", "storey_rule_snapped",
+    "n_party_surfaces", "n_shading_surfaces", "n_windows", "window_area_m2",
+    "pob_total", "num_vivend", "dwelling_area_m2", "padron_occupants",
+    "occupants_applied", "occupants_source", "occupancy_plausibility",
+    "ground_use", "ground_use_source", "wall_construction",
+    "roof_construction", "qa_all_passed", "warnings", "severes",
+    "severes_benign_shading_ems", "severes_unexplained", "fatals",
+    "profile_fingerprint", "climate_fingerprint", "template_fingerprint",
+    "policy_fingerprint", "stock_source_fingerprint", "runner_schema",
+    "zero_policy"
+)
+
+
+# Published period-neutral.  The ledger keeps its `_yr` keys for backward
+# compatibility, but an eight-day event total must never reach a reader under a
+# per-year label, so the rename happens at the publication boundary.
+CURATED_FIELD_SOURCES = {
+    "total_site_co2_t": "total_site_co2_t_yr",
+    "hvac_co2_t": "hvac_co2_t_yr",
+}
+
+# Descriptive columns the ledger never carried; the same read-only enrichment
+# the results layer performs, using its rule for which of them may be summed
+# across a reference's footprints and which may only be repeated.
+_CURATED_CONTEXT = ("cluster", "pob_total", "num_vivend", "altura_max")
+
+
+@lru_cache(maxsize=16)
+def _read_stock_context(path_text: str, mtime_ns: int) -> dict[str, dict[str, Any]]:
+    """Per-reference stock context, collapsed the way the results layer does."""
+    del mtime_ns  # part of the cache key; content is read from path_text
+    path = Path(path_text).resolve()
+    allowed_root = (PROJECT / "var").resolve()
+    if path != allowed_root and allowed_root not in path.parents:
+        return {}
+    wanted = [name for name in _CURATED_CONTEXT]
+    try:
+        frame = gpd.read_file(path, columns=["refparcela", *wanted],
+                              ignore_geometry=True)
+    except (OSError, RuntimeError, ValueError, KeyError):
+        return {}
+    available = [name for name in wanted if name in frame.columns]
+    if "refparcela" not in frame.columns or not available:
+        return {}
+    context: dict[str, dict[str, Any]] = {}
+    for record in frame[["refparcela", *available]].to_dict("records"):
+        reference = str(record.get("refparcela") or "").strip()
+        if not reference:
+            continue
+        held = context.setdefault(reference, {})
+        for name in available:
+            value = record.get(name)
+            if value is None:
+                continue
+            # A reference may carry several footprint rows.  Population is split
+            # across them and must be added back up; dwellings and height are
+            # repeated identically and must not be.  This is `results_layer`'s
+            # rule, imported rather than restated so the two cannot disagree.
+            if name in rl.CONTEXT_SUMMED:
+                try:
+                    held[name] = float(held.get(name) or 0.0) + float(value)
+                except (TypeError, ValueError):
+                    continue
+            elif name not in held:
+                held[name] = value
+    return context
+
+
+def _stock_context_for_run(out_dir: Path) -> dict[str, dict[str, Any]]:
+    config_path = out_dir / "run_config.json"
+    if not config_path.is_file():
+        return {}
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        prepared = Path(str(config["worker_config"]["prepared_gis"])).resolve()
+        return _read_stock_context(str(prepared), prepared.stat().st_mtime_ns)
+    except (KeyError, OSError, RuntimeError, ValueError, TypeError,
+            json.JSONDecodeError):
+        return {}
+
+
+def _is_numeric_text(text: str) -> bool:
+    try:
+        float(text)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _curated_cell(value: Any) -> str:
+    """One published cell.
+
+    A measured zero prints as `0`; something the record never carried stays
+    blank.  The two must never look alike, which is why `None` is not coerced.
+    A boolean is written as a word rather than `True`/`1`, so a spreadsheet
+    cannot average a flag, and a non-finite float is not a measurement and is
+    left blank rather than printed as `nan`.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return ""
+        if value.is_integer():
+            return str(int(value))
+        text = repr(value)
+        if "e" in text or "E" in text:
+            # `repr` switches to an exponent below 1e-4, which put 583 cells of
+            # `footprint_fidelity` into scientific notation and left that column
+            # holding two visibly different kinds of number.  Decimal renders
+            # the same value in full without padding it with zeros.
+            text = format(Decimal(text), "f")
+        return text
+    text = str(value)
+    if not text:
+        return ""
+    # Excel and LibreOffice execute a cell that opens with one of these.  Only
+    # text is guarded: a negative number must stay a number.
+    if text[0] in "=+-@" and not _is_numeric_text(text):
+        return "'" + text
+    return text
+
+
+# An exclusion's code carries its own count (`interior_rings_2`,
+# `duplicate_refparcela_3_rows`) but the runner records no sentence for it, and
+# a reader of the published table should not have to decode an identifier.  The
+# text below states what the code already says - it adds no fact the record
+# does not carry - and the machine code stays in `reason` beside it.
+_EXCLUSION_SENTENCES = (
+    (re.compile(r"^duplicate_refparcela_(\d+)_rows$"),
+     "The stock carries {0} rows under this reference, so it cannot be "
+     "resolved to one building."),
+    (re.compile(r"^interior_rings_(\d+)$"),
+     "The footprint has {0} interior ring(s); a courtyard outline is not "
+     "modelled as a single mass."),
+    (re.compile(r"^unmodellable_geometry$"),
+     "The footprint could not be turned into a closed, simple polygon."),
+)
+
+
+def _explain_exclusion(reason: str) -> str:
+    for pattern, sentence in _EXCLUSION_SENTENCES:
+        match = pattern.match(reason or "")
+        if match:
+            return sentence.format(*match.groups())
+    return ""
+
+
+def _without_local_paths(text: str, out_dir: Path) -> str:
+    """Keep an engine diagnostic, drop the machine it happened to run on.
+
+    A failure message can quote the absolute path of the `.err` file it wants
+    the reader to open.  The sentence is worth publishing; the path is this
+    installation's directory layout and means nothing on another computer, so
+    it becomes the run-relative path the evidence endpoints already use.
+    """
+    if "/" not in text:
+        return text
+    # The project lives under a path with spaces in it, so a pattern that ends
+    # at whitespace cuts the path in half and leaves the remainder in place.
+    # The two roots that can legitimately appear are known strings, so they are
+    # removed as strings; only what is left goes to a pattern.
+    cleaned = text.replace(str(out_dir) + "/", "").replace(str(out_dir), "")
+    cleaned = cleaned.replace(str(PROJECT) + "/", "").replace(str(PROJECT), "")
+    return re.sub(r"(?:/(?:Volumes|Users|home|private)/)[^\s,;]*", "", cleaned)
+
+
+def curated_building_rows(name: str) -> list[dict[str, str]]:
+    """The finished run's ledger as the published Building CSV.
+
+    Refuses a run whose totals are still moving: the partial and the final
+    record carry the same field names and differ by the unfinished remainder,
+    so a file downloaded mid-run would look final and be a fraction of the
+    stock.
+    """
+    out_dir = run_directory(name)
+    if not (out_dir / "ledger.jsonl").is_file():
+        raise FileNotFoundError(name)
+    if active_process(name) is not None or summary_is_partial(name):
+        raise RunActiveError(
+            f"run {name!r} has not finished: the Building CSV is published from "
+            "the settled ledger, not from a running tally")
+    rows = ledger_rows(name)
+    context = _stock_context_for_run(out_dir)
+
+    published: list[dict[str, str]] = []
+    for row in rows:
+        source = dict(row)
+        for key, value in context.get(str(source.get("refparcela")), {}).items():
+            if source.get(key) in (None, ""):
+                source[key] = value
+        # Energy per resident and per dwelling are not in the ledger, which
+        # reports intensity per floor area.  Both stay blank where the
+        # denominator is zero: "nobody to divide by" is not "uses nothing".
+        total = source.get("total_site_kwh")
+        for field, divisor in (("total_site_kwh_per_person", "pob_total"),
+                               ("total_site_kwh_per_dwelling", "num_vivend")):
+            try:
+                bottom = float(source.get(divisor) or 0.0)
+                source[field] = round(float(total) / bottom, 1) if (
+                    total is not None and bottom > 0) else None
+            except (TypeError, ValueError):
+                source[field] = None
+        # An exclusion records its explanation in `detail`, a failure in
+        # `message`.  `detail` is not published, so the one human-readable
+        # column must carry both or the 38 exclusions arrive unexplained.
+        if not source.get("message") and source.get("detail"):
+            source["message"] = source["detail"]
+        if not source.get("message") and source.get("status") != "ok":
+            source["message"] = _explain_exclusion(str(source.get("reason") or ""))
+        if source.get("message"):
+            source["message"] = _without_local_paths(str(source["message"]), out_dir)
+        published.append({
+            field: _curated_cell(
+                source.get(CURATED_FIELD_SOURCES.get(field, field)))
+            for field in CURATED_BUILDING_CSV_FIELDS
+        })
+    # Deterministic, so two runs of the same city diff cleanly instead of in
+    # worker-completion order.
+    published.sort(key=lambda item: (item.get("cluster", ""),
+                                     item.get("refparcela", "")))
+    return published
+
+
+def curated_building_dictionary() -> list[dict[str, str]]:
+    """The companion dictionary, read out of the guide that defines it.
+
+    Appendix A is the publication contract; writing a second description here
+    would create a second definition that could drift from it.
+    """
+    appendix = PROJECT / "docs/guides/source/user-guide.md"
+    entries: dict[str, tuple[str, str]] = {}
+    if appendix.is_file():
+        text = appendix.read_text(encoding="utf-8")
+        section = text.split("# Appendix A.", 1)[-1].split("## A.8", 1)[0]
+        for line in section.splitlines():
+            if not line.startswith("|"):
+                continue
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            # A.1-A.5 carry a middle column (unit and period, or which output
+            # the field applies to); A.6 and A.7 are two columns.  Both are
+            # read, or the diagnostic and provenance fields arrive undefined.
+            if len(cells) < 2 or cells[0].startswith("---"):
+                continue
+            qualifier = cells[1] if len(cells) >= 3 else ""
+            for token in re.findall(r"`([^`]+)`", cells[0]):
+                entries.setdefault(token.strip(), (qualifier, cells[-1]))
+    return [
+        {"field": field,
+         "ledger_source": CURATED_FIELD_SOURCES.get(field, field),
+         "unit_or_scope": entries.get(field, ("", ""))[0],
+         "meaning": entries.get(field, ("", ""))[1]}
+        for field in CURATED_BUILDING_CSV_FIELDS
+    ]
+
 def artifact_path(name: str, refparcela: str, filename: str) -> Path:
     """Resolve one evidence file for one building, or refuse.
 
@@ -886,8 +1373,32 @@ def building_report(name: str, refparcela: str) -> str:
     reference = str(Path(str(refparcela)).name)
     row = next((item for item in ledger_rows(name)
                 if str(item.get("refparcela")) == reference), None)
-    return building_report_view.render(
-        layers, run=run_directory(name).name, reference=reference, ledger_row=row)
+    metadata: dict[str, Any] = {}
+    try:
+        profile_path = artifact_path(name, reference, "verified_profile.json")
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+        if isinstance(profile, dict):
+            metadata["verified_profile"] = profile
+    except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
+        # Older and failed records may not preserve this optional companion.
+        # Its absence is rendered honestly; it must not hide deep_layers.json.
+        pass
+    try:
+        error_path = artifact_path(name, reference, "eplusout.err")
+        with error_path.open(encoding="utf-8", errors="replace") as handle:
+            first_line = handle.readline(512)
+        match = re.search(
+            r"EnergyPlus,\s*Version\s+([^,\r\n]+)", first_line, re.IGNORECASE)
+        if match:
+            metadata["energyplus_version"] = match.group(1).strip()
+    except (FileNotFoundError, OSError, ValueError):
+        pass
+    try:
+        return building_report_view.render(
+            layers, run=run_directory(name).name, reference=reference,
+            ledger_row=row, metadata=metadata)
+    except building_report_view.EvidenceIdentityError as exc:
+        raise ReportUnavailable(str(exc)) from exc
 
 
 class ReportUnavailable(RuntimeError):

@@ -1530,6 +1530,73 @@ export interface LhsRun extends RunRecord {
   current_compatibility?: { current: boolean; changed_roles: string[] }
 }
 
+export interface LhsEventVariable extends LhsVariable {
+  /** Whether the range came from a source or was assumed; printed, never hidden. */
+  source: 'sourced' | 'assumed'
+  pinned_value?: number
+  spread_fraction?: number
+}
+
+export interface LhsEventResult {
+  schema_version: number
+  settings: {
+    stock_run: string
+    refparcela: string
+    n: number
+    seed: number
+    workers?: number
+    event_days?: number
+    event_window?: string
+    input_snapshot_hashes?: Record<string, string>
+  }
+  summary: {
+    stock_run: string
+    scope: string
+    cluster: string
+    run_mode: 'microclimate_event'
+    event_days: number
+    event_window: string
+    /** e.g. "kWh/m² over the 8-day event"; never "/yr". */
+    energy_period: string
+    samples_expected: number
+    samples_completed: number
+    simulation_variables: number
+    post_variables: number
+    statistics: Record<string, LhsStatistic>
+  }
+  provenance: {
+    climate_fingerprint: string
+    template_fingerprint: string
+    slice: Record<string, unknown>
+    delta_peak_k: number
+    delta_base_k: number
+    pinned_envelope: Record<string, number>
+  }
+  qa: {
+    all_pass: boolean
+    scientific_status: ScientificStatus
+    checks: LhsCheck[]
+    /** Outputs measured and found invariant: reported, not silently dropped. */
+    constant_outputs?: Record<string, number>
+  }
+  variables: LhsEventVariable[]
+  variable_fingerprint: string
+  excluded_variables: Record<string, string>
+  sensitivity: Record<string, LhsDriver[]>
+  figures: { distributions: string; sensitivity: string }
+  summary_text: string
+}
+
+export interface LhsEventRun extends Omit<RunRecord, 'config' | 'run_type'> {
+  run_type: 'lhs_event'
+  /** Narrowed from `RunRecord`'s union: the study records which stock run it
+   *  belongs to, and that field is what scopes it to one Outputs page. */
+  config: LhsEventResult['settings']
+  result: LhsEventResult | null
+  verification: { ok: boolean; status: string; issues: string[] }
+  current_compatibility?: { current: boolean; changed_roles: string[] }
+}
+
 export interface LhsComparison {
   left_run_id: string
   right_run_id: string

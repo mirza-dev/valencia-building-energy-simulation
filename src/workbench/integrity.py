@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,62 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+# A file's SHA-256 is a pure function of its bytes, and this process re-reads
+# the same unchanged inputs constantly: /api/health, /api/capabilities, the LHS
+# staleness check and the stock profile all hash the same 110 MB Valencia
+# shapefile, and listing the LHS runs hashed it once per stored run.  Cold on
+# the external disk that read costs 2.85 s each time, which is the whole of an
+# 11 s /api/lhs/runs.
+#
+# The key is the file's identity as the filesystem reports it - device, inode,
+# size and nanosecond mtime - so any rewrite misses and is hashed again.  That
+# is sound here because the volume is APFS, with stable inodes and nanosecond
+# mtimes (both measured, not assumed).
+#
+# It is deliberately NOT reached from `verify_run_artifacts`: that gate exists
+# to catch a committed artifact being replaced underneath us, and it has to
+# read the real bytes every time rather than believe a stat signature.
+_DIGEST_MEMO: dict[tuple[str, int, int, int, int], str] = {}
+_DIGEST_MEMO_LIMIT = 4096
+
+
+def _digest_unchanged_file(path: Path) -> tuple[str, int]:
+    """`sha256_file` plus the size, skipping the read when nothing changed."""
+    info = path.stat()
+    key = (str(path), info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+    digest = _DIGEST_MEMO.get(key)
+    if digest is None:
+        digest = sha256_file(path)
+        if len(_DIGEST_MEMO) >= _DIGEST_MEMO_LIMIT:
+            _DIGEST_MEMO.clear()
+        _DIGEST_MEMO[key] = digest
+    return digest, info.st_size
+
+
+def warm_digest_memo(paths: Iterable[tuple[Path, str]]) -> int:
+    """Hash these inputs once now, so the first request does not wait for it.
+
+    The memo is per-process, so a restart empties it and the next caller pays
+    for reading a 110 MB shapefile off a cold external disk - 19 s, measured,
+    on the first `/api/lhs/runs` after a restart.  Doing it on a background
+    thread at start-up costs nobody anything: the answer is identical, it is
+    just already there.
+    """
+    warmed = 0
+    for path, kind in paths:
+        try:
+            snapshot_descriptor(Path(path), kind=kind)
+            warmed += 1
+        except (FileNotFoundError, OSError, ValueError):
+            continue
+    return warmed
+
+
+def forget_digest_memo() -> None:
+    """Drop the stat-keyed digests; for tests that rewrite files in place."""
+    _DIGEST_MEMO.clear()
+
+
 def dataset_components(path: Path) -> list[Path]:
     path = path.resolve()
     if path.suffix.lower() != ".shp":
@@ -87,11 +144,14 @@ def dataset_components(path: Path) -> list[Path]:
 
 
 def snapshot_descriptor(path: Path, *, kind: str) -> dict[str, Any]:
-    components = [{
-        "name": component.name,
-        "sha256": sha256_file(component),
-        "size_bytes": component.stat().st_size,
-    } for component in dataset_components(path)]
+    components = []
+    for component in dataset_components(path):
+        digest, size = _digest_unchanged_file(component)
+        components.append({
+            "name": component.name,
+            "sha256": digest,
+            "size_bytes": size,
+        })
     identity = {"kind": kind, "components": components}
     return {
         "schema_version": 1,

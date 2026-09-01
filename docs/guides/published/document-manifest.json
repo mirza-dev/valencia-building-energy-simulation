@@ -1,0 +1,24 @@
+{
+  "product": "Building Stock Energy Workbench",
+  "document_status": "final",
+  "publication_date": "28 August 2026",
+  "software_commit": "0836bdb1c689a34d13d1af76f764ed21f42a112b",
+  "source": {
+    "installation-guide.md": "9d9eac2885aa7f9d3533dc814768c9e3122fe8dded6facf1fd4d349c54744477",
+    "user-guide-figure-plan.json": "a4847fdaed2d06631a424f0456dd8facb8e769f56e765092313b7968c656dc9f",
+    "user-guide.md": "ffb00fbee42f7ee8ac3bfa8f303472210e032275eb5d0abba33cdb04b139bbd6",
+    "valencia-simulation-report.md": "e1f2bcf699ddffacc00e5bec77afe6da1964e484c5413299c9e1424c5684a03d"
+  },
+  "outputs": {
+    "Building Stock Energy Workbench - Installation Guide.docx": "4eb5fc9010f6794f0472f61b7429e8651539325b1cba4542fa07ab7a3ee917e8",
+    "Building Stock Energy Workbench - Installation Guide.pdf": "e2c9faadbcd9a680d4a0c57315bd5b8dbe3c152ab692aa8fd0fdcccb4adf0ee1",
+    "Building Stock Energy Workbench - User Guide.docx": "68dc9da4ae37b966895bd1b66a087fa21168601dfeac16503c6160d1ccaeebd6",
+    "Building Stock Energy Workbench - User Guide.pdf": "49735f06d764c8744efc02da0ab3fe9069e8c5eb3f729b3fcc82bf3162e9df1e",
+    "Building Stock Energy Workbench - Valencia Simulation Report.docx": "ee7e6b9b6a4c738aed1e7ed359f3094617c97cc0262ac829a807985d3cb6a7df",
+    "Building Stock Energy Workbench - Valencia Simulation Report.pdf": "b13a3d1febd6ebd079f0945e2b17dd502c623a8d1d3391619df34db23aea8d15",
+    "installation-guide.html": "fcc6203ea66ae309a852f515f4f96dd2a7fc1775f8333fb8c400fd5de8c2a96c",
+    "user-guide.html": "7ae4d66a2e54e08a53ace224d377c07eb45e1ce3da23c146adf39cbdea791331",
+    "valencia-simulation-report.html": "2c3ad38552b2278a549e0aea7986a5b8449d4112fa634070752ef144b5bc3589"
+  },
+  "note": "PDF files in this edition were rendered from the published HTML with Chrome (A4 print stylesheet), not converted from DOCX; the earlier LibreOffice converter is no longer installed on this host. DOCX, PDF and HTML hashes were recorded after that render. Settled ALL_VALENC-A_REAL evidence is included."
+}

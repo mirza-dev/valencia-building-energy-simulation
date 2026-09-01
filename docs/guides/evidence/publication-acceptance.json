@@ -1,0 +1,26 @@
+{
+  "schema": "bsew-publication-acceptance-v1",
+  "run": "ALL_VALENC-A_REAL",
+  "phase": "final",
+  "publication_date": "2026-08-28",
+  "exports_verified": true,
+  "review_completed": true,
+  "all_document_pages_inspected": true,
+  "html_responsive_print_verified": true,
+  "no_real_run_deleted": true,
+  "no_new_energy_run_started": true,
+  "artifact_hashes": {
+    "aggregate.json": "d4dee63a1e10f2ce16c8ac57b174f21eecd91a41abfa20fa1eb42bdf0c585f89",
+    "buildings.csv": "9ae87afcfb41bda199002cf55d708c9450dc37b2df318c624a55d536cf9f5897",
+    "buildings_dictionary.csv": "3b284be41bba7615de38e8a910c79ef0f61877d667820ed9c9200327ec5e2778",
+    "ledger.jsonl": "244e0f1ff407e54f3edaab347537ce60a3fdb9d43d496dea396dea547c876338",
+    "results_buildings.gpkg": "34c235c8b04ac648fb75a9aeeb955cb3d3ffa44d871e6a51e455085a36f43da2",
+    "results_buildings.qml": "1410137416eac5024aac6e27c583a4b6b1eb2f7d4badba51ad31ed0c0268c422",
+    "results_heatmap.json": "99ba02a400aa10c113f323afaa7b0db0144164cb048169dec3323373d938ced5",
+    "results_heatmap.png": "9c92626a8868be3b4c34b0348507c5299f3b68cd0a68b6c2b4615bbf4fb39e53",
+    "run_config.json": "30f5da100bd69ab03f821f94241c6b6ebd38923c4b4973228355d0f66c5e7f61",
+    "run_process.json": "4b13c6610bc97d2b157646b876692f1c6d46ace922a0866b000c9c26bc8bcf63",
+    "valencia-publication-evidence.json": "6bfc1cf434e591ccc194be3fc4c8b042ffe3bcb2c5798b6d3af1ea3b58b12793"
+  },
+  "review_note": "Settled run, latest-record scope, curated CSV, dictionary, GIS, style, heat map and preserved run files were reconciled before document rendering. All 74 DOCX pages were visually inspected. All 74 final PDF pages were rendered independently and were pixel-identical to the inspected DOCX renders. The three HTML editions passed 1440 px, 1024 px, 390 px, 200% equivalent zoom and A4 print checks; all 87 HTML print pages were visually inspected."
+}

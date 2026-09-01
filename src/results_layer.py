@@ -579,7 +579,7 @@ def write_results_layer(rows: list[dict], stock, out_dir: Path) -> dict:
     try:
         import results_maps
         block["heatmap"] = results_maps.write_heatmap(
-            frame, Path(out_dir), unit=period.get("unit"))
+            frame, Path(out_dir), unit=period.get("unit"), period=period)
     except Exception as exc:                        # noqa: BLE001
         block["heatmap"] = {"written": False,
                             "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}

@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-lecco-event",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.85,
+      "y": 0.283,
+      "label": "Confirm the eight-day event window before reading any LECCO_1 result."
+    },
+    {
+      "number": 2,
+      "x": 0.6,
+      "y": 0.42,
+      "label": "Keep event-period energy and operational emissions separate from annual metrics."
+    },
+    {
+      "number": 3,
+      "x": 0.72,
+      "y": 0.397,
+      "label": "Read coverage and Result Status before comparing event results across clusters."
+    }
+  ]
+}

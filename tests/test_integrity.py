@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import json
+import time
 from pathlib import Path
 import zipfile
 
@@ -151,3 +152,64 @@ def test_a_multi_component_dataset_is_not_given_the_benefit_of_the_doubt(tmp_pat
 
     assert result["ok"] is False
     assert result["renamed"] is False
+
+
+def test_an_unchanged_file_is_not_read_twice(tmp_path, monkeypatch):
+    """Hashing the same untouched input again must not re-read it.
+
+    /api/health, /api/capabilities, the LHS staleness check and the stock
+    profile all hash the same 110 MB Valencia shapefile, and listing the LHS
+    runs hashed it once per stored run - 2.85 s each, cold, on the external
+    disk.  This is the guard on the read being skipped, not on the timing.
+    """
+    integrity.forget_digest_memo()
+    source = tmp_path / "input.osm"
+    source.write_bytes(b"a model")
+    reads = []
+    real = integrity.sha256_file
+    monkeypatch.setattr(integrity, "sha256_file",
+                        lambda path: (reads.append(path), real(path))[1])
+
+    first = integrity.snapshot_descriptor(source, kind="template")
+    second = integrity.snapshot_descriptor(source, kind="template")
+
+    assert first == second
+    assert len(reads) == 1
+
+
+def test_a_rewrite_of_the_same_length_is_still_noticed(tmp_path):
+    """The memo may never make a changed input look unchanged.
+
+    Size alone would miss this; the key carries the nanosecond mtime and the
+    inode as well, which is what makes skipping the read sound.
+    """
+    integrity.forget_digest_memo()
+    source = tmp_path / "input.osm"
+    source.write_bytes(b"one")
+    before = integrity.snapshot_descriptor(source, kind="template")["snapshot_hash"]
+    time.sleep(0.02)
+    source.write_bytes(b"two")   # same length, different bytes
+
+    after = integrity.snapshot_descriptor(source, kind="template")["snapshot_hash"]
+
+    assert after != before
+
+
+def test_the_committed_artifact_gate_never_trusts_a_stat_signature(tmp_path, monkeypatch):
+    """`verify_run_artifacts` exists to catch a replaced artifact.
+
+    It must keep reading the real bytes, so it is deliberately not routed
+    through the memo the snapshot descriptors use.
+    """
+    integrity.forget_digest_memo()
+    artifact = tmp_path / "model.osm"
+    artifact.write_bytes(b"committed")
+    integrity.snapshot_descriptor(artifact, kind="template")   # fills the memo
+    reads = []
+    real = integrity.sha256_file
+    monkeypatch.setattr(integrity, "sha256_file",
+                        lambda path: (reads.append(path), real(path))[1])
+
+    integrity.sha256_file(artifact)
+
+    assert reads == [artifact]

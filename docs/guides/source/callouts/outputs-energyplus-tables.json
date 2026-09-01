@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-energyplus-tables",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.155,
+      "y": 0.105,
+      "label": "Confirm that the EnergyPlus table belongs to the same run and building reference."
+    },
+    {
+      "number": 2,
+      "x": 0.14,
+      "y": 0.437,
+      "label": "Read the site-energy table as original engine evidence behind the interpreted report."
+    },
+    {
+      "number": 3,
+      "x": 0.2,
+      "y": 0.355,
+      "label": "Do not treat these tables as measured consumption or calibrated performance."
+    }
+  ]
+}

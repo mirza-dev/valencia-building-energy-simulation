@@ -32,7 +32,7 @@ $BrowserJob = $null
 if ($env:VALENCIA_NO_BROWSER -ne '1') {
   $BrowserJob = Start-Job -ScriptBlock { param($Target); Start-Sleep -Seconds 2; Start-Process $Target } -ArgumentList $Url
 }
-Write-Host "Valencia Workbench: $Url"
+Write-Host "Building Stock Energy Workbench: $Url"
 Write-Host 'Press Ctrl+C to stop.'
 Set-Location -LiteralPath $ProjectDir
 try { & $Python -m workbench; exit $LASTEXITCODE }

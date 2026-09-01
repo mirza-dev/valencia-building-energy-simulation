@@ -1,0 +1,24 @@
+{
+  "schema": "bsew-figure-callouts-v1",
+  "figure_id": "outputs-final-overview",
+  "markers": [
+    {
+      "number": 1,
+      "x": 0.36,
+      "y": 0.168,
+      "label": "Confirm which settled run is selected before reading any number."
+    },
+    {
+      "number": 2,
+      "x": 0.79,
+      "y": 0.303,
+      "label": "Read coverage and Result Status before interpreting any energy or carbon metric."
+    },
+    {
+      "number": 3,
+      "x": 0.27,
+      "y": 0.331,
+      "label": "Keep each headline value with its displayed unit, period and denominator."
+    }
+  ]
+}
