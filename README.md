@@ -7,6 +7,12 @@ simulation with OpenStudio and EnergyPlus.**
 [![OpenStudio 3.11.0](https://img.shields.io/badge/OpenStudio-3.11.0-365C8D)](https://github.com/NREL/OpenStudio/releases/tag/v3.11.0)
 [![EnergyPlus 25.2.0](https://img.shields.io/badge/EnergyPlus-25.2.0-E67E22)](https://energyplus.net/)
 
+> [!IMPORTANT]
+> **Archived research record — 10 September 2026.** This repository preserves
+> the final BSEW software and published Valencia evidence. It is no longer
+> actively maintained or operated. See the [archive record](ARCHIVE.md) for the
+> frozen version, evidence boundaries and restoration requirements.
+
 BSEW converts cadastral building records, dwelling evidence, climate data and a
 validated OpenStudio template into reproducible building-stock results. It
 records the identity, quality status and preserved evidence of every building
